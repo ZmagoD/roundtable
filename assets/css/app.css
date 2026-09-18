@@ -464,13 +464,19 @@ a { text-decoration: none; color: inherit; }
 .sidebar-empty { color: var(--green-mid-34); line-height: 1.8; font-size: 12px; padding: 5px 12px; }
 .main-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .management-page { overflow-y: auto; background: var(--neutral-surface-1); }
-.management-content { width: min(980px, 100%); padding: 38px 48px 70px; }
+.management-content { width: min(1180px, 100%); padding: 38px 48px 70px; }
 .management-intro { margin-bottom: 26px; display: flex; justify-content: space-between; align-items: end; gap: 20px; }
 .management-intro h2, .schedule-editor h2 { font-size: 17px; font-weight: 620; margin-bottom: 7px; }
 .management-intro p, .schedule-editor > p { color: var(--neutral-mid-5); font-size: 12px; line-height: 1.7; }
+.schedule-workspace { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(330px, .75fr); align-items: start; gap: 28px; }
+.schedule-list-panel { min-width: 0; }
+.schedule-list-heading { display: flex; justify-content: space-between; align-items: end; margin-bottom: 13px; }
+.schedule-list-heading h2 { font-size: 15px; font-weight: 620; margin-top: 7px; }
+.schedule-list-count { color: var(--neutral-mid-5); font-size: 10px; }
 .schedule-table { display: grid; gap: 10px; }
-.schedule-card { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 17px 19px; border: 1px solid var(--line); border-radius: 10px; background: var(--green-surface-24); }
+.schedule-card { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 19px; border: 1px solid var(--line); border-radius: 10px; background: var(--green-surface-24); transition: border-color .15s, box-shadow .15s, transform .15s; }
 .schedule-card:hover { border-color: var(--green-soft-10); box-shadow: 0 8px 25px var(--green-ink-1); transform: translateY(-1px); }
+.schedule-card.selected { border-color: var(--green-mid-11); box-shadow: 0 0 0 1px var(--green-soft-9), 0 12px 30px var(--green-ink-1); }
 .schedule-card.off { opacity: .62; }
 .schedule-card-kicker { display: flex; align-items: center; gap: 10px; }
 .schedule-card h3 { font-size: 13px; margin: 5px 0 6px; }
@@ -480,12 +486,19 @@ a { text-decoration: none; color: inherit; }
 .schedule-status { border: 1px solid var(--line); border-radius: 999px; color: var(--neutral-mid-5); font-size: 9px; padding: 3px 7px; text-transform: uppercase; letter-spacing: .7px; }
 .schedule-status.active { border-color: var(--green-soft-9); color: var(--green-mid-19); background: var(--green-surface-11); }
 .schedule-card-actions { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
-.schedule-editor { margin-top: 34px; padding: 25px; border: 1px solid var(--line); border-radius: 12px; max-width: 620px; }
+.schedule-editor { position: sticky; top: 24px; padding: 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--green-surface-24); box-shadow: 0 16px 45px var(--green-ink-1); }
+.editor-heading { display: flex; align-items: center; gap: 12px; }
+.editor-heading h2 { margin-top: 6px; }
+.editor-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: var(--green-ink-8); background: var(--green-surface-11); font-size: 18px; }
+.editor-copy { color: var(--neutral-mid-5); font-size: 12px; line-height: 1.7; margin: 2px 0 17px; }
 .schedule-editor .input-field + .input-field { margin-top: 15px; }
 .schedule-cancel { display: block; margin: 12px auto 0; }
 .schedule-stats { display: flex; flex-direction: column; align-items: end; color: var(--neutral-mid-5); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
 .schedule-stats strong { color: var(--green-ink-10); font-size: 28px; letter-spacing: -1px; }
 .schedule-editor form { margin-top: 18px; }
+.schedule-empty { display: grid; justify-items: start; gap: 9px; min-height: 240px; padding: 32px; }
+.schedule-empty p { max-width: 280px; }
+.empty-state-icon { color: var(--green-ink-8); font-size: 24px; }
 .management-page .new-room { display: block; text-align: center; }
 .room-header { height: 120px; padding: 26px 34px; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); background: var(--neutral-surface-1); gap: 20px; }
 .eyebrow { color: var(--neutral-mid-5); font-size: 9px; font-weight: 650; letter-spacing: 1.8px; }
@@ -591,6 +604,7 @@ h1, h2, h3, p { margin: 0; }
 .connection-status { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); padding: 10px 20px; border-radius: 7px; background: var(--warm-surface-11); z-index: 100; }
 @media (min-width: 1600px) { .conversation-scroll { padding-left: 65px; padding-right: 65px; } .composer-wrap { padding-left: 60px; padding-right: 60px; } .agent-panel { width: 310px; } }
 @media (max-width: 1100px) { .sidebar { width: 190px; padding-left: 10px; padding-right: 10px; } .agent-panel { width: 235px; padding: 24px 13px; } .conversation-scroll { padding: 25px 23px; } .composer-wrap { padding: 14px 20px; } .brand { font-size: 18px; } .brand small { font-size: 7px; } }
+@media (max-width: 900px) { .schedule-workspace { grid-template-columns: 1fr; } .schedule-editor { position: static; } }
 @media (max-width: 850px) { .agent-panel { display: none; } .room-header { padding: 20px 24px; } }
 @media (max-width: 600px) { .sidebar { width: 65px; padding: 22px 7px; } .brand { padding: 0; justify-content: center; margin-bottom: 30px; } .brand > span:last-child, .sidebar-label > span, .room-link > span:nth-child(2), .sidebar-bottom, .sidebar-empty, .selected-dot { display: none; } .sidebar-label { justify-content: center; padding: 0; } .room-link { justify-content: center; padding: 7px; } .new-room { font-size: 9px; padding: 8px 1px; margin: 10px 0; } .room-header { height: 100px; padding: 17px; } .room-header h1 { font-size: 17px; } .header-actions { gap: 8px; } .live-badge { display: none; } .header-actions .button { padding: 8px; font-size: 10px; } .room-intro h2 { font-size: 19px; } .conversation-scroll { padding: 22px 17px; } .composer-wrap { padding: 10px; } .composer-hint span:last-child { display: none; } .welcome { padding: 22px; } .welcome-providers { gap: 10px; flex-wrap: wrap; } .welcome h1 { font-size: 42px; } .modal { padding: 25px; } .welcome > p { font-size: 11px; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
