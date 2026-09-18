@@ -639,3 +639,12 @@ h1, h2, h3, p { margin: 0; }
 
 .text-button.danger, .button.secondary.danger { color: var(--red-mid-1, #a5544a); }
 .button.secondary.danger { border-color: var(--red-mid-1, #a5544a); }
+
+/* Directory picker: type to narrow, click to walk in. */
+.directory-picker { list-style: none; margin: -4px 0 10px; padding: 6px; max-height: 210px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--green-surface-2); }
+.directory-picker li + li { margin-top: 2px; }
+.directory-picker button { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 6px 8px; border: none; border-radius: 6px; background: none; text-align: left; font-size: 12px; color: inherit; }
+.directory-picker button:hover { background: var(--green-soft-3); }
+.directory-name { font-weight: 600; }
+.directory-repo { font-size: 9px; letter-spacing: .6px; text-transform: uppercase; padding: 1px 5px; border-radius: 4px; background: var(--green-soft-3); color: var(--green); }
+.directory-path { margin-left: auto; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }

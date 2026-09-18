@@ -27,6 +27,7 @@ defmodule RoundtableWeb.RoomLive do
        approvals: [],
        providers: Roundtable.Agents.providers(),
        model_options: [],
+       directory_options: [],
        panel: nil,
        form_error: nil,
        message_form: to_form(%{"body" => "", "to" => "room"}, as: :message),
@@ -65,6 +66,7 @@ defmodule RoundtableWeb.RoomLive do
   def handle_event("panel", %{"name" => name}, socket) do
     socket = assign(socket, editing_agent: nil, editing_renamable: true)
     room_form = to_form(%{"directory" => socket.assigns.directory}, as: :room)
+    socket = assign(socket, directory_options: Roundtable.Directories.suggest(""))
 
     agent_form =
       to_form(
@@ -256,6 +258,25 @@ defmodule RoundtableWeb.RoomLive do
         else: attrs
 
     {:noreply, assign(socket, message_form: to_form(attrs, as: :message))}
+  end
+
+  def handle_event("room-draft", %{"room" => attrs}, socket) do
+    {:noreply,
+     assign(socket,
+       room_form: to_form(attrs, as: :room),
+       directory_options: Roundtable.Directories.suggest(attrs["directory"] || "")
+     )}
+  end
+
+  def handle_event("pick-directory", %{"path" => path}, socket) do
+    attrs = Map.put(socket.assigns.room_form.params, "directory", path)
+
+    {:noreply,
+     assign(socket,
+       room_form: to_form(attrs, as: :room),
+       # One click in, the next level out: picking is how you walk down a tree.
+       directory_options: Roundtable.Directories.suggest(path <> "/")
+     )}
   end
 
   def handle_event("agent-draft", %{"agent" => attrs}, socket) do

@@ -298,6 +298,51 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert html =~ "make a separate room"
     end
 
+    test "the room form suggests directories instead of asking you to remember one", %{view: view} do
+      html = view |> element("button.new-room", "+ New room") |> render_click()
+
+      # Something to click before a single character is typed.
+      assert html =~ "directory-picker"
+
+      html =
+        view
+        |> form("#room-form", room: %{name: "X", directory: File.cwd!() <> "/li"})
+        |> render_change()
+
+      assert html =~ "lib"
+      refute html =~ "directory-name\">mix.exs"
+    end
+
+    test "picking a directory fills the field and goes in", %{view: view} do
+      view |> element("button.new-room", "+ New room") |> render_click()
+
+      view
+      |> form("#room-form", room: %{name: "X", directory: File.cwd!() <> "/"})
+      |> render_change()
+
+      html =
+        view
+        |> element("[phx-click=pick-directory][phx-value-path='#{File.cwd!()}/lib']")
+        |> render_click()
+
+      # The field now holds it, and the picker has moved one level down.
+      assert html =~ "#{File.cwd!()}/lib"
+      assert html =~ "roundtable"
+    end
+
+    test "a git repository is marked as one", %{view: view} do
+      view |> element("button.new-room", "+ New room") |> render_click()
+
+      html =
+        view
+        |> form("#room-form",
+          room: %{name: "X", directory: Path.dirname(File.cwd!()) <> "/round"}
+        )
+        |> render_change()
+
+      assert html =~ "directory-repo"
+    end
+
     test "the theme can be switched, and follows the system by default", %{view: view} do
       html = render(view)
 

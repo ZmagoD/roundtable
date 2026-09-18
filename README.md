@@ -107,6 +107,15 @@ page. That is the same access the agents in the room already have, and the same
 reason the service binds to loopback, checks origins, and says not to put it
 behind a proxy without authentication.
 
+### Choosing the project directory
+
+The room form completes paths as you type, so you are not recalling one from
+memory: what is under `ROUNDTABLE_WORKSPACE` (or your home directory) before
+you type anything, then whatever your prefix could still become. Click one to
+fill the field and go a level in. Only directories are offered, never files,
+hidden ones only once you type a dot, and a git repository is marked as one —
+usually that is the directory you meant.
+
 ### As a desktop app
 
 `roundtable open` starts the service if it is not running and opens the UI in a

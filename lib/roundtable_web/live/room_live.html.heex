@@ -425,7 +425,13 @@
         end}
       </p>
       <p :if={@form_error} class="form-error" role="alert">{@form_error}</p>
-      <.form :if={@panel == "room"} for={@room_form} id="room-form" phx-submit="create-room">
+      <.form
+        :if={@panel == "room"}
+        for={@room_form}
+        id="room-form"
+        phx-change="room-draft"
+        phx-submit="create-room"
+      >
         <.input
           field={@room_form[:name]}
           label="Room name"
@@ -434,8 +440,24 @@
           maxlength="80"
           autofocus
         />
-        <.input field={@room_form[:directory]} label="Project directory" required />
-        <p class="form-note">Existing absolute path on this machine.</p>
+        <.input
+          field={@room_form[:directory]}
+          label="Project directory"
+          required
+          autocomplete="off"
+        />
+        <ul :if={@directory_options != []} class="directory-picker">
+          <li :for={path <- @directory_options}>
+            <button type="button" phx-click="pick-directory" phx-value-path={path}>
+              <span class="directory-name">{Path.basename(path)}</span>
+              <span :if={Roundtable.Directories.repository?(path)} class="directory-repo">git</span>
+              <span class="directory-path">{path}</span>
+            </button>
+          </li>
+        </ul>
+        <p class="form-note">
+          Type to narrow, or click to go in. An existing absolute path on this machine.
+        </p>
         <button class="button full" type="submit" phx-disable-with="Creating…">Create room
         <.icon name="hero-arrow-up-right" class="size-4" /></button>
       </.form>
