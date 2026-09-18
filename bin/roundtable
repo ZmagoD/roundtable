@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Resolve symlinks so the installed ~/.local/bin/roundtable finds the app tree.
+SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
+APP_ROOT="$(cd -- "$(dirname -- "$SELF")/.." && pwd)"
+cd "$APP_ROOT"
+export MIX_ENV=prod
+STATE_DIR="${ROUNDTABLE_STATE_DIR:-$APP_ROOT/.local}"
+mkdir -p "$STATE_DIR"
+# Room history and logs are private to the user running the service.
+chmod 700 "$STATE_DIR"
+umask 077
+export DATABASE_PATH="${DATABASE_PATH:-$STATE_DIR/roundtable.db}"
+if [[ ! -f "$STATE_DIR/secret" ]]; then
+  (umask 077; head -c 64 /dev/urandom | base64 > "$STATE_DIR/secret")
+fi
+export SECRET_KEY_BASE="$(cat "$STATE_DIR/secret")"
+RELEASE="$APP_ROOT/_build/prod/rel/roundtable/bin/roundtable"
+case "${1:-start}" in
+  setup)
+    mix deps.get --only prod
+    mix compile
+    mix assets.deploy
+    mix release --overwrite
+    echo "Ready. Run bin/roundtable start"
+    ;;
+  start)
+    if [[ ! -x "$RELEASE" ]]; then
+      echo "Run bin/roundtable setup first." >&2; exit 1
+    fi
+    if [[ -f "$STATE_DIR/beam.pid" ]] && kill -0 "$(cat "$STATE_DIR/beam.pid")" 2>/dev/null; then
+      echo "Roundtable is already running. See $STATE_DIR/server.log for its URL."; exit 0
+    fi
+    export PHX_SERVER=true ROUNDTABLE_PID_FILE="$STATE_DIR/beam.pid"
+    # A named node is the terminal client's address; see bin/roundtable tui.
+    export RELEASE_DISTRIBUTION="${RELEASE_DISTRIBUTION:-sname}"
+    export RELEASE_NODE="${RELEASE_NODE:-roundtable}"
+    nohup setsid "$RELEASE" start >> "$STATE_DIR/server.log" 2>&1 < /dev/null &
+    for _ in {1..50}; do
+      if [[ -f "$STATE_DIR/beam.pid" ]] && kill -0 "$(cat "$STATE_DIR/beam.pid")" 2>/dev/null; then
+        echo "Roundtable started. Log: $STATE_DIR/server.log"; exit 0
+      fi
+      sleep 0.1
+    done
+    echo "Startup failed; see $STATE_DIR/server.log" >&2
+    tail -n 15 "$STATE_DIR/server.log" >&2
+    exit 1
+    ;;
+  stop)
+    if [[ -f "$STATE_DIR/beam.pid" ]]; then
+      pid="$(cat "$STATE_DIR/beam.pid")"
+      if kill -0 "$pid" 2>/dev/null; then
+        # Refuse stale PID files belonging to another process.
+        if [[ -r "/proc/$pid/cmdline" ]] && tr '\0' ' ' < "/proc/$pid/cmdline" | grep -q 'roundtable'; then
+          kill -TERM "$pid"
+          for _ in {1..100}; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              echo "Roundtable stopped."; exit 0
+            fi
+            sleep 0.1
+          done
+          echo "Shutdown is taking longer than expected; inspect $STATE_DIR/server.log" >&2
+          exit 1
+        else
+          echo "PID could not be verified; inspect $STATE_DIR/beam.pid before stopping." >&2; exit 1
+        fi
+      else
+        echo "Roundtable is not running."
+      fi
+    else
+      echo "Roundtable is not running."
+    fi
+    ;;
+  status)
+    if [[ -f "$STATE_DIR/beam.pid" ]] && kill -0 "$(cat "$STATE_DIR/beam.pid")" 2>/dev/null; then
+      echo "Roundtable is running."
+    else
+      echo "Roundtable is stopped."
+    fi
+    tail -n 12 "$STATE_DIR/server.log" 2>/dev/null || true
+    ;;
+  tui)
+    cookie_file="$APP_ROOT/_build/prod/rel/roundtable/releases/COOKIE"
+    if [[ ! -f "$cookie_file" ]]; then
+      echo "Run bin/roundtable setup first." >&2; exit 1
+    fi
+    host="$(hostname -s 2>/dev/null || hostname)"
+    node="${ROUNDTABLE_NODE:-roundtable@$host}"
+    # +Bc delivers ^C to the client as a keystroke instead of opening the
+    # emulator's break menu, so the client can restore the terminal on the way out.
+    exec elixir --erl "+Bc" --sname "roundtable_tui_$$" --cookie "$(cat "$cookie_file")" \
+      -S mix tui --node "$node"
+    ;;
+  logs) tail -f "$STATE_DIR/server.log" ;;
+  update)
+    # One update path: the installer knows how to fetch, build and relink.
+    if [[ ! -x "$APP_ROOT/install.sh" ]]; then
+      echo "install.sh is missing from $APP_ROOT." >&2; exit 1
+    fi
+    exec "$APP_ROOT/install.sh" --prefix "$APP_ROOT"
+    ;;
+  *) echo "Usage: bin/roundtable {setup|start|stop|status|logs|tui|update}"; exit 1 ;;
+esac
