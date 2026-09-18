@@ -9,8 +9,11 @@ defmodule Roundtable.TUI.Render do
   """
   alias Roundtable.TUI.{Commands, State}
 
-  @sidebar 20
-  @chrome 6
+  @sidebar 18
+  @gutter 2
+  @sender 10
+  # masthead, two rules, input, status
+  @chrome 5
 
   @dim "\e[2m"
   @bold "\e[1m"
@@ -23,7 +26,7 @@ defmodule Roundtable.TUI.Render do
   @doc "Full-screen frame, cursor parked at the end of the input line."
   def render(%State{size: {rows, cols}} = state) when rows >= 8 and cols >= 40 do
     body = rows - @chrome
-    width = cols - @sidebar - 3
+    width = cols - @sidebar - @gutter
     left = sidebar(state, body)
     # The changes pane takes from the transcript, never from the frame.
     changes = changes_lines(state, width, div(body, 2))
@@ -35,13 +38,13 @@ defmodule Roundtable.TUI.Render do
 
     [
       "\e[H\e[2J",
-      top_border(state, cols),
-      Enum.zip(left, right) |> Enum.map(fn {l, r} -> ["│", l, "│", r, "│\n"] end),
-      middle_border(cols),
+      masthead(state, cols),
+      rule(cols),
+      Enum.zip(left, right)
+      |> Enum.map(fn {l, r} -> [l, String.duplicate(" ", @gutter), r, "\n"] end),
+      rule(cols),
       input_line(state, cols),
-      plain_border(cols),
       status_line(state, cols),
-      bottom_border(cols),
       cursor_to(state, rows, cols)
     ]
   end
@@ -56,7 +59,7 @@ defmodule Roundtable.TUI.Render do
 
   @doc "How many lines the scrollable pane currently holds."
   def total_lines(%State{size: {_, cols}} = state) do
-    width = cols - @sidebar - 3
+    width = cols - @sidebar - @gutter
 
     if state.help_visible,
       do: length(help_lines(width)),
@@ -71,69 +74,65 @@ defmodule Roundtable.TUI.Render do
     end
   end
 
-  defp top_border(state, cols) do
-    title =
+  defp masthead(state, cols) do
+    where =
       case state.room do
         nil -> "no room"
-        room -> "#{room.name} · #{room.directory}"
+        room -> "#{room.name}#{branch(state)} · #{room.directory}"
       end
 
-    right = cols - @sidebar - 3
-    label = cut(title, max(right - 3, 0))
+    left = " roundtable"
+    right = cut(where, max(cols - width(left) - 2, 0))
+    gap = max(cols - width(left) - width(right) - 1, 1)
 
-    [
-      "┌─ rooms ",
-      String.duplicate("─", max(@sidebar - 8, 0)),
-      "┬─ ",
-      @bold,
-      label,
-      @reset,
-      " ",
-      String.duplicate("─", max(right - 3 - width(label), 0)),
-      "┐\n"
-    ]
+    [@bold, @green, left, @reset, String.duplicate(" ", gap), @dim, right, @reset, " \n"]
   end
 
-  defp middle_border(cols),
-    do: [
-      "├",
-      String.duplicate("─", @sidebar),
-      "┴",
-      String.duplicate("─", cols - @sidebar - 3),
-      "┤\n"
-    ]
+  defp branch(%{changes: %{branch: branch}}) when is_binary(branch), do: " · " <> branch
+  defp branch(_state), do: ""
 
-  defp plain_border(cols), do: ["├", String.duplicate("─", cols - 2), "┤\n"]
-  defp bottom_border(cols), do: ["└", String.duplicate("─", cols - 2), "┘"]
+  # A rule rather than a border: it separates without enclosing.
+  defp rule(cols), do: [@dim, String.duplicate("─", cols), @reset, "\n"]
 
   defp sidebar(state, height) do
     rooms =
       Enum.map(state.rooms, fn room ->
         current? = state.room && room.id == state.room.id
-        marker = if current?, do: "▸ ", else: "  "
-        line = pad(marker <> room.name, @sidebar)
-        if current?, do: [@bold, line, @reset], else: line
+        # An accent bar marks where you are; the others sit quietly behind it.
+        bar = if current?, do: "▌", else: " "
+        line = pad(" #{bar} #{cut(room.name, @sidebar - 4)}", @sidebar)
+        if current?, do: [@green, @bold, line, @reset], else: [@dim, line, @reset]
       end)
 
     agents =
       Enum.map(state.agents, fn agent ->
         status = State.agent_status(agent, state.runs)
         {dot, colour} = agent_dot(status)
-        name = cut(agent.name, @sidebar - 12)
-        line = pad(" #{dot} #{pad(name, @sidebar - 12)} #{cut(status, 8)}", @sidebar)
-        [colour, line, @reset]
+        name = cut(agent.name, @sidebar - 6)
+        line = pad(" #{dot} #{name}", @sidebar)
+
+        if status == "idle",
+          do: [@dim, line, @reset],
+          else: [colour, line, @reset]
       end)
 
-    rows =
-      rooms ++
-        [pad("", @sidebar), [@dim, pad(" agents", @sidebar), @reset]] ++
-        case agents do
-          [] -> [[@dim, pad("  none yet", @sidebar), @reset]]
-          list -> list
-        end
-
-    fit(rows, height, pad("", @sidebar), :top)
+    fit(
+      [label("rooms")] ++
+        rooms ++ [blank(), label("agents")] ++ agent_rows(agents),
+      height,
+      blank(),
+      :top
+    )
   end
+
+  defp agent_rows([]), do: [[@dim, pad("   nobody yet", @sidebar), @reset]]
+  defp agent_rows(agents), do: agents
+
+  # Small dim caps, the way a section is named when there is no box to title.
+  defp label(text),
+    do: [@dim, pad(" " <> String.upcase(text), @sidebar), @reset]
+
+  defp blank, do: pad("", @sidebar)
 
   # The palette sits where a completion menu belongs: just above what you are
   # typing, so the eye does not have to travel.
@@ -310,9 +309,10 @@ defmodule Roundtable.TUI.Render do
   defp plural(_), do: "files"
 
   defp heading(text, width) do
-    # One column is spent on the leading rule, so the label cannot have it all.
-    label = cut(" " <> text <> " ", max(width - 1, 0))
-    [@dim, "─", label, String.duplicate("─", max(width - 1 - width(label), 0)), @reset]
+    text = cut(text, max(width - 2, 0))
+    trailing = max(width - width(text) - 2, 0)
+
+    [@dim, text, " ", String.duplicate("─", trailing), " ", @reset]
   end
 
   defp entry_line(entry, width) do
@@ -394,33 +394,42 @@ defmodule Roundtable.TUI.Render do
 
   def transcript_lines(state, width) do
     messages =
-      Enum.flat_map(state.messages, fn message ->
+      state.messages
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {message, index} ->
         stamp = Calendar.strftime(message.inserted_at, "%H:%M")
-        sender = cut(message.sender, 8)
-        colour = if message.kind == "agent", do: @cyan, else: @bold
-        head = "#{stamp} #{pad(sender, 8)} "
+        sender = cut(message.sender, @sender)
+        colour = if message.kind == "agent", do: @cyan, else: @green
+        head = "#{stamp} #{pad(sender, @sender)} "
         indent = String.duplicate(" ", width(head))
+        body = width - width(head)
 
-        message.body
-        |> wrap(width - width(head))
-        |> Enum.with_index()
-        |> Enum.map(fn
-          {text, 0} ->
-            [
-              @dim,
-              stamp,
-              @reset,
-              " ",
-              colour,
-              pad(sender, 8),
-              @reset,
-              " ",
-              pad(text, width - width(head))
-            ]
+        # A blank line between turns: a wall of text is hard to read, and a
+        # room is mostly other people's paragraphs.
+        spacer = if index == 0, do: [], else: [pad("", width)]
 
-          {text, _} ->
-            [indent, pad(text, width - width(head))]
-        end)
+        spacer ++
+          (message.body
+           |> wrap(body)
+           |> Enum.with_index()
+           |> Enum.map(fn
+             {text, 0} ->
+               [
+                 @dim,
+                 stamp,
+                 @reset,
+                 " ",
+                 colour,
+                 @bold,
+                 pad(sender, @sender),
+                 @reset,
+                 " ",
+                 pad(text, body)
+               ]
+
+             {text, _} ->
+               [indent, pad(text, body)]
+           end))
       end)
 
     messages ++ approval_lines(state, width) ++ failure_lines(state, width)
@@ -459,16 +468,18 @@ defmodule Roundtable.TUI.Render do
   end
 
   defp input_line(state, cols) do
-    prompt = if state.mode == :command, do: ":", else: ">"
-    inner = cols - 2
-    text = cut(state.input, inner - 3)
-    ["│ ", @bold, prompt, @reset, " ", pad(text, inner - 3), "│\n"]
+    bar = if state.mode == :command, do: @green, else: @dim
+    placeholder = state.input == "" and state.mode == :message
+    text = if placeholder, do: "Say something, or / for commands", else: state.input
+    body = pad(cut(text, max(cols - 4, 0)), max(cols - 4, 0))
+
+    [" ", bar, "▌", @reset, " ", if(placeholder, do: [@dim, body, @reset], else: body), " \n"]
   end
 
   defp status_line(state, cols) do
     left =
       state.status ||
-        "? help · ^P who · ^T changes · ^G lazygit · ^C quit"
+        "?  help    ^P  who    ^T  changes    ^G  lazygit    ^C  quit"
 
     right = if state.connected, do: state.target, else: "disconnected"
 
@@ -479,15 +490,14 @@ defmodule Roundtable.TUI.Render do
         true -> @dim
       end
 
-    inner = cols - 2
-    room = max(inner - width(right) - 3, 0)
-    ["│ ", colour, pad(cut(left, room), room), @reset, " ", @dim, right, @reset, " │\n"]
+    room = max(cols - width(right) - 2, 0)
+    [" ", colour, pad(cut(left, room), room), @reset, @dim, right, @reset, " "]
   end
 
   # Park the hardware cursor where the next character will land.
   defp cursor_to(state, rows, _cols) do
-    column = 5 + width(String.slice(state.input, 0, state.cursor))
-    "\e[?25h\e[#{rows - 2};#{column}H"
+    column = 4 + width(String.slice(state.input, 0, state.cursor))
+    "\e[?25h\e[#{rows - 1};#{column}H"
   end
 
   defp fit(rows, height, filler, align) do

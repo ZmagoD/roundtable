@@ -328,21 +328,21 @@ that to decide who to hand work to:
 `^P` shows who is in the room, what they run on, and what each is for:
 
 ```
-┌─ rooms ────────────┬─ Checkout · /tmp/rt-demo-project ───────────────────────────────────────────┐
-│▸ Checkout          │─ participants · 3 ──────────────────────────────────────────────────────────│
-│                    │ ○ @architect  claude · claude-opus-5 · premium                              │
-│ agents             │   Plan and assign. Never write code yourself.                               │
-│ ○ archite… idle    │                                                                             │
-│ ○ builder  idle    │ ○ @builder  codex · provider default · economy                              │
-│ ○ reviewer idle    │   Implement exactly what architect specifies.                               │
-│                    │                                                                             │
-│                    │ ○ @reviewer  claude · claude-sonnet-5 · standard                            │
-│                    │   Review diffs for correctness and tests.                                   │
-│                    │                                                                             │
-│ : /quit                                                                                          │
-├──────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ ? help · ^P who · ^T changes · ^G lazygit · ^C quit                                   in-process │
-└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+ roundtable                                                Checkout · main · /tmp/rt-demo-project 
+──────────────────────────────────────────────────────────────────────────────────────────────────
+ ROOMS              participants · 3 ──────────────────────────────────────────────────────────── 
+ ▌ Checkout          ○ @architect  claude · opus · premium                                        
+                       Plan and assign. Never write code yourself.                                
+ AGENTS                                                                                           
+ ○ architect         ○ @builder  codex · provider default · economy                               
+ ○ builder             Implement exactly what architect specifies.                                
+ ○ reviewer                                                                                       
+                     ○ @reviewer  claude · sonnet · standard                                      
+                       Review diffs for correctness and tests.                                    
+                                                                                                  
+──────────────────────────────────────────────────────────────────────────────────────────────────
+ ▌ /quit                                                                                          
+ ?  help    ^P  who    ^T  changes    ^G  lazygit    ^C  quit                          in-process 
 ```
 
 **Give the work to someone.** A message with an `@name` starts that
@@ -362,36 +362,32 @@ room's directory, updating while a turn runs. `^T` hides it; `^G` hands the
 terminal to lazygit and takes it back when you quit:
 
 ```
-┌─ rooms ────────────┬─ Checkout · /tmp/rt-demo-project ───────────────────────────────────────────┐
-│▸ Checkout          │               .                                                             │
-│                    │12:45 you      @reviewer does the rounding look right?                       │
-│ agents             │12:45 reviewer The rounding math itself checks out — `round(total * (100 - pe│
-│ ○ archite… idle    │               rcent) / 100)` uses Elixir's `round/1`, which rounds half away│
-│ ○ builder  idle    │                from zero, so 105 at 10% off is 94.5 → 95, matching builder's│
-│ ○ reviewer idle    │                claim.                                                       │
-│                    │                                                                             │
-│                    │               The gap is coverage, not correctness: the only test added is `│
-│                    │               discount(100, 10) == 90`, which is an exact division with noth│
-│                    │               ing to round — it doesn't touch the boundary case builder just│
-│                    │                described in chat. Architect asked for "a test for the bounda│
-│                    │               ry cases" (plural), and right now the actual half-unit roundin│
-│                    │               g behavior (e.g. 105/10%) is unverified by the suite, along wi│
-│                    │               th edges like 0% and 100%.                                    │
-│                    │                                                                             │
-│                    │               @builder please add test cases to `test/cart_test.exs` for: `d│
-│                    │               iscount(105, 10) == 95` (the .5 rounding case), `discount(100,│
-│                    │                0) == 100`, and `discount(100, 100) == 0`. No implementation │
-│                    │               change needed — just closing the test gap before this lands.  │
-│                    │─ changes · main ────────────────────────────────────────────────────────────│
-│                    │  M lib/cart.ex                                                         +4 -0│
-│                    │  M test/cart_test.exs                                                  +4 -0│
-│                    │ ?? NOTES.md                                                                 │
-│                    │ 3 files, +8 -0                                                              │
-├────────────────────┴─────────────────────────────────────────────────────────────────────────────┤
-│ >                                                                                                │
-├──────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ Connected to in-process. /help for commands.                                          in-process │
-└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+ roundtable                                                Checkout · main · /tmp/rt-demo-project 
+──────────────────────────────────────────────────────────────────────────────────────────────────
+ ROOMS                                                                                            
+ ▌ Checkout                                                                                       
+                                                                                                  
+ AGENTS                                                                                           
+ ○ architect                                                                                      
+ ○ builder                                                                                        
+ ○ reviewer                                                                                       
+                                                                                                  
+                                                                                                  
+                    13:52 you        @architect we need a percentage discount on the cart total.  
+                                                                                                  
+                    13:52 architect  Two pieces: Cart.discount/2 rounding to whole units, and a te
+                                     st for the boundary cases. @builder take the implementation. 
+                                                                                                  
+                    13:52 builder    Added Cart.discount/2 with a test for 10% off 100. @reviewer 
+                                     over to you.                                                 
+                    changes · main ────────────────────────────────────────────────────────────── 
+                      M lib/cart.ex                                                          +2 -0
+                      M test/cart_test.exs                                                   +4 -0
+                     ?? NOTES.md                                                                  
+                     3 files, +6 -0                                                               
+──────────────────────────────────────────────────────────────────────────────────────────────────
+ ▌ Say something, or / for commands                                                               
+ Connected to in-process. /help for commands.                                          in-process 
 ```
 
 **Answer for the tools.** When an agent asks to run something, the request
