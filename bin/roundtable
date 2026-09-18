@@ -118,6 +118,50 @@ case "${1:-start}" in
       fi
     done
     ;;
+  open)
+    # Start the service if it is not up: opening a window onto nothing is worse
+    # than waiting a second for it.
+    if [[ ! -f "$STATE_DIR/beam.pid" ]] || ! kill -0 "$(cat "$STATE_DIR/beam.pid")" 2>/dev/null; then
+      "$SELF" start || exit 1
+      sleep 1
+    fi
+
+    url="$(grep -o 'http://127\.0\.0\.1:[0-9]*' "$STATE_DIR/server.log" | tail -n 1)"
+    if [[ -z "$url" ]]; then
+      echo "Could not find the service URL in $STATE_DIR/server.log" >&2; exit 1
+    fi
+
+    # --app gives a window with no browser chrome, its own icon and its own
+    # entry in the task switcher. Any Chromium-family browser will do, which is
+    # every distribution; xdg-open is the fallback to an ordinary tab.
+    for browser in ${ROUNDTABLE_BROWSER:-} chromium chromium-browser google-chrome \
+                   google-chrome-stable brave brave-browser microsoft-edge vivaldi-stable; do
+      if command -v "$browser" >/dev/null 2>&1; then
+        exec "$browser" --app="$url" >/dev/null 2>&1
+      fi
+    done
+
+    echo "No Chromium-family browser found; opening a normal tab." >&2
+    exec xdg-open "$url"
+    ;;
+  install-desktop)
+    apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+    mkdir -p "$apps"
+    cat > "$apps/roundtable.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Roundtable
+Comment=A shared room for you and your coding agents
+Exec=$APP_ROOT/bin/roundtable open
+Icon=$APP_ROOT/priv/static/images/favicon.svg
+Terminal=false
+Categories=Development;
+StartupWMClass=chrome-127.0.0.1__-Default
+DESKTOP
+    command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$apps" || true
+    echo "Installed $apps/roundtable.desktop"
+    echo "Roundtable should now appear in your launcher."
+    ;;
   logs) tail -f "$STATE_DIR/server.log" ;;
   update)
     # One update path: the installer knows how to fetch, build and relink.
@@ -126,5 +170,8 @@ case "${1:-start}" in
     fi
     exec "$APP_ROOT/install.sh" --prefix "$APP_ROOT"
     ;;
-  *) echo "Usage: bin/roundtable {setup|start|stop|status|logs|tui|update}"; exit 1 ;;
+  *)
+    echo "Usage: bin/roundtable {setup|start|stop|status|logs|tui|open|install-desktop|update}"
+    exit 1
+    ;;
 esac

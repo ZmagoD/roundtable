@@ -66,6 +66,22 @@ defmodule Roundtable.TUI.EffectsTest do
     assert context.state.status =~ "Second"
   end
 
+  test "a relative directory resolves against the client's own shell", %{context: context} do
+    # "." is where the person started the client, not where the service lives.
+    context = TUI.perform({:create_room, "Here", "."}, context)
+
+    assert context.state.room.directory == File.cwd!()
+  end
+
+  test "an agent's directory is resolved the same way", %{context: context} do
+    attrs = %{"name" => "grace", "provider" => "opencode", "directory" => "."}
+    context = TUI.perform({:create_agent, attrs}, context)
+
+    assert context.state.status =~ "@grace joined"
+    grace = Chat.agents(context.state.room.id) |> Enum.find(&(&1.name == "grace"))
+    assert grace.directory == File.cwd!()
+  end
+
   test "a room on a directory that does not exist reports the changeset", %{context: context} do
     context = TUI.perform({:create_room, "Nowhere", "/does/not/exist"}, context)
 

@@ -208,7 +208,7 @@ defmodule Roundtable.TUI do
 
   def perform({:create_agent, attrs}, context) do
     attrs = Map.put_new_lazy(attrs, "directory", fn -> context.state.room.directory end)
-    attrs = Map.update!(attrs, "directory", &(&1 || context.state.room.directory))
+    attrs = Map.update!(attrs, "directory", &expand(&1 || context.state.room.directory))
 
     case Client.create_agent(context.client, context.state.room.id, attrs) do
       {:ok, agent} -> refresh(context) |> status("@#{agent.name} joined.")
@@ -320,6 +320,12 @@ defmodule Roundtable.TUI do
 
   defp first_room(rooms) when is_list(rooms), do: List.first(rooms)
   defp first_room(_), do: nil
+
+  # Resolved here, in the client, because this process runs in the shell the
+  # person started it from. The service is somewhere else entirely, and "." to
+  # it would mean its own install directory.
+  defp expand(directory) when is_binary(directory), do: Path.expand(directory)
+  defp expand(other), do: other
 
   defp status(context, message), do: %{context | state: State.put_status(context.state, message)}
 

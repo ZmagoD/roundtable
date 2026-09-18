@@ -122,6 +122,13 @@ defmodule Roundtable.TUI.StateTest do
 
     assert effects == [{:create_room, "Design Team", "/srv/design"}]
 
+    # A relative path is passed through; the client resolves it against the
+    # shell it is running in, which is where the person actually is.
+    for path <- [".", "./web", "../sibling", "~/projects/web"] do
+      {_, effects} = state() |> type("/new-room Web #{path}") |> State.handle_key(:enter)
+      assert effects == [{:create_room, "Web", path}]
+    end
+
     {state, []} = state() |> type("/new-room NoPath") |> State.handle_key(:enter)
     assert state.status =~ "Usage: /new-room"
 

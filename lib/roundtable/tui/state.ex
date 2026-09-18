@@ -241,14 +241,17 @@ defmodule Roundtable.TUI.State do
   end
 
   defp dispatch(state, "new-room", args) do
-    # The directory is the last absolute path on the line, so a room can be
-    # called "Design Team" without its second word becoming the path.
-    case Regex.run(~r/^(.+?)\s+(\/\S*)$/, String.trim(args)) do
+    # The directory is the last path-looking token, so a room can be called
+    # "Design Team" without its second word becoming the path. It may be
+    # relative: the client resolves it against the shell it was started in,
+    # which is the directory the person is actually sitting in.
+    case Regex.run(~r/^(.+?)\s+([~.\/]\S*)$/, String.trim(args)) do
       [_, name, directory] ->
         {state, [{:create_room, name, directory}]}
 
       _ ->
-        {put_status(state, "Usage: /new-room <name> <absolute directory>"), []}
+        {put_status(state, "Usage: /new-room <name> <directory>, for example /new-room Web ."),
+         []}
     end
   end
 

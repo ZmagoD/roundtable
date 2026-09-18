@@ -55,6 +55,7 @@ availability check and the web server binding it.
 
 ```sh
 roundtable start
+roundtable open    # the browser UI in its own window
 roundtable status  # includes the URL and recent logs
 roundtable logs
 roundtable stop
@@ -70,6 +71,18 @@ set `DATABASE_PATH` to use a specific database. Never run two service instances
 against the same database: one coordinator owns its delivery queue.
 The service survives closing the terminal; automatic start at login is not installed.
 
+### As a desktop app
+
+`roundtable open` starts the service if it is not running and opens the UI in a
+Chromium-family browser with `--app`: a window with no browser chrome, its own
+icon and its own entry in the task switcher. `roundtable install-desktop` adds
+a launcher entry for it.
+
+There is nothing to package. The UI is a local web server and the browser is
+the runtime, so the same two commands work on every distribution — the only
+thing installed is a `.desktop` text file. Set `ROUNDTABLE_BROWSER` to choose a
+browser; without a Chromium-family one it falls back to an ordinary tab.
+
 ## Terminal client
 
 ```sh
@@ -84,6 +97,12 @@ leaves running turns alone: a 30-minute turn keeps going, and reattaching shows
 where it got to. The service node is `roundtable@<hostname>`; override it with
 `ROUNDTABLE_NODE`, and the cookie with `ROUNDTABLE_COOKIE`.
 
+Agents do not run in the browser or in the client: the service starts each
+provider CLI as a process on your machine, in that participant's working
+directory. So point a room at the project you want worked on — from the
+directory itself, `/new-room My App .` is enough — and the agent has the access
+your user has there, subject to the provider's own permissions.
+
 Type a message to post it to the room, or `@name` to assign a turn — `Tab`
 cycles the recipient. Lines beginning with `/` are commands:
 
@@ -91,7 +110,7 @@ cycles the recipient. Lines beginning with `/` are commands:
 | --- | --- |
 | `/help`, or `?` on an empty line | the full help screen |
 | `/rooms`, `/room <name>` | list rooms, switch to one |
-| `/new-room <name> <dir>` | create a room on an existing absolute directory |
+| `/new-room <name> <dir>` | create a room; `.` is the directory you started the client in |
 | `/agent <name> <provider> [dir]` | add a participant; `--model`, `--role`, `--tier`, `--dir` |
 | `/role <agent> <text>` | set what a participant is for |
 | `/model <agent> <id\|default>` | pin a model, or hand the choice back |
