@@ -29,6 +29,7 @@ defmodule RoundtableWeb.RoomLive do
        schedules: [],
        schedule_form: to_form(%{"days" => "", "at" => "09:00"}, as: :schedule),
        editing_schedule: nil,
+       team_form: to_form(%{}, as: :team),
        room_form: to_form(%{}, as: :room),
        agent_form: to_form(%{}, as: :agent),
        runs: [],
@@ -90,6 +91,14 @@ defmodule RoundtableWeb.RoomLive do
     {:noreply,
      assign(socket,
        panel: name,
+       team_form:
+         to_form(
+           %{
+             "directory" => socket.assigns.directory,
+             "provider" => team_provider(socket.assigns.providers)
+           },
+           as: :team
+         ),
        form_error: nil,
        model_options: Roundtable.Agents.models(agent_form[:provider].value),
        room_form: room_form,
@@ -395,6 +404,20 @@ defmodule RoundtableWeb.RoomLive do
       {:error, changeset} ->
         {:noreply,
          assign(socket, form_error: errors(changeset), room_form: to_form(attrs, as: :room))}
+    end
+  end
+
+  def handle_event("build-team", %{"team" => attrs}, socket) do
+    case Coordinator.build_team(attrs) do
+      {:ok, room} ->
+        {:noreply, push_patch(socket, to: ~p"/rooms/#{room.id}")}
+
+      {:error, changeset} ->
+        {:noreply,
+         assign(socket,
+           form_error: errors(changeset),
+           team_form: to_form(attrs, as: :team)
+         )}
     end
   end
 
@@ -762,6 +785,13 @@ defmodule RoundtableWeb.RoomLive do
 
   # The first provider that is installed and can name its models, so the form
   # opens on something with a list rather than an empty one.
+  defp team_provider(providers) do
+    case Enum.find(providers, &(&1.installed and &1.id in ["codex", "claude"])) do
+      nil -> "codex"
+      provider -> provider.id
+    end
+  end
+
   defp default_provider do
     providers = Roundtable.Agents.providers()
 

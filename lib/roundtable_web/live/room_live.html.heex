@@ -22,6 +22,7 @@
       </.link>
       <p :if={@rooms == []} class="sidebar-empty">A little space for your next big idea.</p>
     </nav>
+    <button id="build-team-button" class="new-room" phx-click="panel" phx-value-name="team">Build a team</button>
     <button class="new-room" phx-click="panel" phx-value-name="room">+ New room</button>
     <button id="model-presets-button" class="new-room" phx-click="panel" phx-value-name="models">Model presets</button>
     <button id="profiles-button" class="new-room" phx-click="panel" phx-value-name="profiles">Agent profiles</button>
@@ -417,6 +418,7 @@
         {case @panel do
           "room" -> if(@editing_room, do: "WHAT THIS ROOM IS DOING", else: "A NEW SPACE")
           "models" -> "CAPABILITY & COST"
+          "team" -> "START WITH A GOAL"
           "profiles" -> "YOUR PEOPLE"
           "schedules" -> "STANDING INSTRUCTIONS"
           _ -> if(@editing_agent, do: "CHANGE A PARTICIPANT", else: "EXPAND YOUR TEAM")
@@ -426,6 +428,7 @@
         {case @panel do
           "room" -> if(@editing_room, do: "Edit this room", else: "Create a room")
           "models" -> "Model presets"
+          "team" -> "Build a team"
           "profiles" -> "Agent profiles"
           "schedules" -> "Schedules"
           _ -> if(@editing_agent, do: "Edit this agent", else: "Invite an agent")
@@ -438,6 +441,9 @@
               do: "Its name, and the brief everyone in it works to.",
               else: "Give your project a place to come together."
             )
+
+          "team" ->
+            "Describe the work. A team builder will help choose roles and add the participants for you."
 
           "models" ->
             "Save your models once. Choose the right one for each task."
@@ -462,6 +468,39 @@
         end}
       </p>
       <p :if={@form_error} class="form-error" role="alert">{@form_error}</p>
+      <.form :if={@panel == "team"} for={@team_form} id="team-form" phx-submit="build-team">
+        <.input
+          field={@team_form[:name]}
+          label="Team name"
+          placeholder="e.g. Billing"
+          required
+          maxlength="80"
+        />
+        <.input
+          field={@team_form[:context]}
+          label="What would you like the team to do?"
+          type="textarea"
+          rows="5"
+          required
+          maxlength="4000"
+          placeholder="Describe your project, the help you need, and any preferences for the team."
+        />
+        <.input field={@team_form[:directory]} label="Project directory" required />
+        <.input
+          field={@team_form[:provider]}
+          label="Team builder"
+          type="select"
+          options={
+            for provider <- @providers,
+                provider.id in ["codex", "claude"],
+                do: {provider.label, provider.id}
+          }
+        />
+        <p class="form-note">
+          Creates a room and starts one agent turn using your chosen provider's account. The team builder uses the provider's default model and asks for approval when its tools need it.
+        </p>
+        <button class="button full" type="submit" phx-disable-with="Starting…">Start building my team</button>
+      </.form>
       <.form
         :if={@panel == "room"}
         for={@room_form}

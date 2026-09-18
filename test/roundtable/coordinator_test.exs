@@ -32,6 +32,44 @@ defmodule Roundtable.CoordinatorTest do
     %{room: room, ada: ada, linus: linus}
   end
 
+  test "team builder starts, requests approval, and completes through the normal worker" do
+    assert {:ok, room} =
+             Coordinator.build_team(%{
+               name: "New team",
+               directory: File.cwd!(),
+               provider: "codex",
+               context: "Choose a reviewer for this project."
+             })
+
+    assert_receive {:agent_started, pid, agent, run, prompt}, 1000
+    assert agent.name == "team-builder"
+    assert agent.room_id == room.id
+    assert prompt =~ "Choose a reviewer for this project."
+    assert prompt =~ "assemble a small, useful team"
+    Coordinator.event(run.id, {:approval, "setup-tool", %{"command" => "add_participant"}})
+    assert map_size(Coordinator.approvals()) == 1
+    assert :ok = Coordinator.approve(run.id, "setup-tool", "accept")
+    assert_receive {:decision, "setup-tool", "accept"}
+    ref = Process.monitor(pid)
+    GenServer.cast(pid, {:finish, "Your team is ready."})
+    assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 1000
+    _ = :sys.get_state(Coordinator)
+    assert Repo.get!(Run, run.id).status == "completed"
+    assert Enum.any?(Chat.messages(room.id), &(&1.body == "Your team is ready."))
+  end
+
+  test "invalid team setup does not start a worker" do
+    assert {:error, _} =
+             Coordinator.build_team(%{
+               name: "New team",
+               directory: File.cwd!(),
+               provider: "codex",
+               context: ""
+             })
+
+    refute_receive {:agent_started, _, _, _, _}
+  end
+
   test "serializes a participant's turns while others work in parallel, then delegates", %{
     room: room,
     ada: ada,

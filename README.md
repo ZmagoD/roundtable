@@ -577,6 +577,15 @@ for those older sessions.
 
 ### Ask for a room instead of filling the form
 
+Choose **Build a team** in the sidebar to start without manually adding your
+first participant. Give the team a name, a project directory and a description
+of the work, then choose Codex or Claude Code. Roundtable creates the room and
+a `team-builder` participant and starts its first turn. It can use the tools
+below to choose roles, reuse profiles and add teammates. You can continue the
+conversation with it as your needs change. It uses the provider's default model
+and keeps tool approvals enabled; the initial turn uses your provider account.
+
+
 Setting a team up is form-filling — a room, a directory, a brief, four
 participants — and you are usually already here, talking to an agent. So ask it
 instead:

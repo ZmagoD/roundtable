@@ -3,6 +3,140 @@ defmodule RoundtableWeb.RoomLiveTest do
   import Phoenix.LiveViewTest
   alias Roundtable.Chat
 
+  test "build a team creates its helper and queues the request", %{conn: conn} do
+    {:ok, view, _} = live(conn, "/")
+    view |> element("#build-team-button") |> render_click()
+
+    view
+    |> form("#team-form",
+      team: %{
+        name: "Payments",
+        directory: File.cwd!(),
+        provider: "codex",
+        context: "Help me choose an implementer and a reviewer."
+      }
+    )
+    |> render_submit()
+
+    assert has_element?(view, "h1", "Payments")
+    [room] = Chat.rooms()
+    [agent] = Chat.agents(room.id)
+    assert agent.name == "team-builder"
+    assert agent.provider == "codex"
+    refute agent.auto_approve
+    assert agent.model == nil
+    assert [%{status: "queued", agent_id: id}] = Chat.runs(room.id)
+    assert id == agent.id
+    assert has_element?(view, ".message-text", "Help me choose an implementer")
+  end
+
+  test "invalid team setup keeps the form and creates nothing", %{conn: conn} do
+    {:ok, view, _} = live(conn, "/")
+    view |> element("#build-team-button") |> render_click()
+
+    view
+    |> form("#team-form",
+      team: %{
+        name: "Payments",
+        directory: "/roundtable-missing-directory",
+        provider: "codex",
+        context: "Help me build a team."
+      }
+    )
+    |> render_submit()
+
+    assert has_element?(view, "#team-form")
+    assert has_element?(view, "[role=alert]")
+    assert Chat.rooms() == []
+  end
+
+  test "team setup rejects unsupported providers and empty goals" do
+    for attrs <- [
+          %{name: "Team", directory: File.cwd!(), provider: "grok", context: "A goal"},
+          %{name: "Team", directory: File.cwd!(), provider: "codex", context: " "}
+        ] do
+      assert {:error, %Ecto.Changeset{}} = Chat.build_team(attrs)
+      assert Chat.rooms() == []
+    end
+  end
+
+  test "team builder is available inside an existing room and cancel creates nothing", %{
+    conn: conn
+  } do
+    {:ok, room} = Chat.create_room(%{name: "Existing", directory: File.cwd!()})
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+    view |> element("#build-team-button") |> render_click()
+    assert has_element?(view, "#team-form select option[value=codex]")
+    assert has_element?(view, "#team-form select option[value=claude]")
+    refute has_element?(view, "#team-form select option[value=grok]")
+    refute has_element?(view, "#team-form select option[value=opencode]")
+    view |> element(".modal-close") |> render_click()
+    refute has_element?(view, "#team-form")
+    assert [^room] = Chat.rooms()
+    assert Chat.agents(room.id) == []
+  end
+
+  test "failed team setup preserves the draft and can be corrected with Claude", %{conn: conn} do
+    {:ok, view, _} = live(conn, "/")
+    view |> element("#build-team-button") |> render_click()
+
+    view
+    |> form("#team-form",
+      team: %{
+        name: "Design",
+        directory: "missing",
+        provider: "claude",
+        context: "Choose a design team"
+      }
+    )
+    |> render_submit()
+
+    assert has_element?(view, "#team-form input[name='team[name]'][value=Design]")
+    assert has_element?(view, "#team-form select option[value=claude][selected]")
+    view |> form("#team-form", team: %{directory: File.cwd!()}) |> render_submit()
+    [room] = Chat.rooms()
+    [agent] = Chat.agents(room.id)
+    assert agent.provider == "claude"
+    assert room.context == "Choose a design team"
+    {:ok, reopened, _} = live(conn, "/rooms/#{room.id}")
+    assert has_element?(reopened, ".agent-card strong", "team-builder")
+    assert has_element?(reopened, ".message-text", "Choose a design team")
+    assert [_] = Chat.runs(room.id)
+  end
+
+  test "team builder defaults to an installed supported provider", %{conn: conn} do
+    path = System.get_env("PATH")
+
+    directory =
+      Path.join(System.tmp_dir!(), "roundtable-provider-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(directory)
+    File.write!(Path.join(directory, "claude"), "#!/bin/sh\nexit 0\n")
+    File.chmod!(Path.join(directory, "claude"), 0o755)
+    System.put_env("PATH", directory)
+
+    on_exit(fn ->
+      System.put_env("PATH", path)
+      File.rm_rf!(directory)
+    end)
+
+    {:ok, view, _} = live(conn, "/")
+    view |> element("#build-team-button") |> render_click()
+    assert has_element?(view, "#team-form select option[value=claude][selected]")
+    refute has_element?(view, "#team-form select option[value=codex][selected]")
+  end
+
+  test "team builder form remains usable when no provider is installed", %{conn: conn} do
+    path = System.get_env("PATH")
+    System.put_env("PATH", "/roundtable-no-provider-binaries")
+    on_exit(fn -> System.put_env("PATH", path) end)
+
+    {:ok, view, _} = live(conn, "/")
+    view |> element("#build-team-button") |> render_click()
+    assert has_element?(view, "#team-form select option[value=codex][selected]")
+    assert Chat.rooms() == []
+  end
+
   test "create a room, add two sessions of one provider, and assign work", %{conn: conn} do
     {:ok, view, _} = live(conn, "/")
     view |> element(".welcome button") |> render_click()

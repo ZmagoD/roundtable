@@ -189,6 +189,61 @@ defmodule Roundtable.Chat do
 
   defp topic(id), do: "room:#{id}"
 
+  @doc "Creates a room, its team builder and the first request together."
+  def build_team(attrs) do
+    attrs = normalise(attrs)
+
+    changeset =
+      %Room{}
+      |> Room.changeset(attrs)
+      |> valid_directory()
+      |> Ecto.Changeset.validate_required([:context])
+
+    changeset =
+      if attrs["provider"] in ["codex", "claude"] and
+           attrs["provider"] in Roundtable.Agents.ids(),
+         do: changeset,
+         else: Ecto.Changeset.add_error(changeset, :provider, "must be Codex or Claude Code")
+
+    result =
+      Repo.transaction(fn ->
+        with {:ok, room} <- Repo.insert(changeset),
+             {:ok, _agent} <-
+               create_agent(room.id, %{
+                 "name" => "team-builder",
+                 "provider" => attrs["provider"],
+                 "role" => team_builder_role()
+               }),
+             {:ok, _message} <-
+               post(
+                 room.id,
+                 "@team-builder Help me build the team for this project. " <> room.context,
+                 broadcast: false
+               ) do
+          room
+        else
+          {:error, error} -> Repo.rollback(error)
+        end
+      end)
+
+    notify_rooms(result)
+  end
+
+  defp team_builder_role do
+    """
+    Help the human assemble a small, useful team for their project. Use Roundtable's
+    tools to inspect this room, available providers, model presets and agent profiles.
+    Ask focused questions in the conversation only when essential details are missing.
+    Otherwise set the room brief and add suitable participants here, reusing profiles
+    where appropriate. Give each participant a clear role and explain your choices.
+    Use only available providers and discovered model IDs; leave the model at its
+    provider default when uncertain. Keep automatic approval off unless the human asks.
+    Check existing participants before adding anyone so you do not duplicate the team.
+    Set up schedules if requested. Do not implement the project or start teammates'
+    work while assembling the team. Finish with a short roster and how to start work.
+    """
+  end
+
   def create_room(attrs) do
     %Room{} |> Room.changeset(attrs) |> valid_directory() |> Repo.insert() |> notify_rooms()
   end
