@@ -105,7 +105,18 @@ defmodule Roundtable.Terminal do
       System.cmd("kill", ["-TERM", "--", "-#{state.os_pid}"], stderr_to_stdout: true)
     end
 
-    if state[:port] && Port.info(state.port), do: Port.close(state.port)
+    close_port(state[:port])
     :ok
+  end
+
+  # Checking first and closing after is a race the port can win: the process on
+  # the other end exits on its own, and closing a port that has gone raises.
+  defp close_port(nil), do: :ok
+
+  defp close_port(port) do
+    Port.close(port)
+    :ok
+  rescue
+    ArgumentError -> :ok
   end
 end

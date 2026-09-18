@@ -123,6 +123,32 @@ defmodule Roundtable.TerminalTest do
     assert {_, 1} = System.cmd("kill", ["-0", shell_pid], stderr_to_stdout: true)
   end
 
+  test "shutting down when the shell has already gone does not raise", %{directory: directory} do
+    {:ok, terminal} = Terminal.start_link(owner: self(), directory: directory)
+
+    # Exactly the race CI caught: the port dies between the check and the close.
+    type(terminal, "exit\n")
+    assert_receive {:terminal_exit, _}, 10_000
+
+    # Whatever state it is in, stopping it must not raise out of terminate/2.
+    if Process.alive?(terminal), do: GenServer.stop(terminal, :normal)
+    refute Process.alive?(terminal)
+  end
+
+  test "terminate survives a port that is already closed", %{directory: directory} do
+    {:ok, terminal} = Terminal.start_link(owner: self(), directory: directory)
+    :sys.get_state(terminal)
+
+    port = Port.open({:spawn_executable, "/bin/cat"}, [:binary])
+    Port.close(port)
+
+    # terminate/2 is called with whatever the state held a moment ago.
+    assert Roundtable.Terminal.terminate(:normal, %{owner: self(), port: port, os_pid: nil}) ==
+             :ok
+
+    GenServer.stop(terminal, :normal)
+  end
+
   test "a directory that does not exist is refused" do
     # start_link links, so a refusing init sends this process an exit signal.
     Process.flag(:trap_exit, true)
