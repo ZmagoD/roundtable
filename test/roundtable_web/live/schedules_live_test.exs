@@ -54,6 +54,8 @@ defmodule RoundtableWeb.SchedulesLiveTest do
   test "creates, disables and deletes a schedule", %{conn: conn, room: room, agent: agent} do
     {:ok, view, _html} = live(conn, "/schedules")
 
+    view |> element("header button[phx-click=new-schedule]") |> render_click()
+
     view
     |> form("#workspace-schedule-form",
       schedule: %{agent_id: agent.id, name: "Board check", prompt: "Check the board", at: "08:00"}
@@ -81,7 +83,8 @@ defmodule RoundtableWeb.SchedulesLiveTest do
     Chat.delete_agent(agent.id)
     {:ok, view, _html} = live(conn, "/schedules")
     assert has_element?(view, ".empty-state")
-    assert has_element?(view, ".schedule-editor", "Add an agent")
+    view |> element("header button[phx-click=new-schedule]") |> render_click()
+    assert has_element?(view, "#schedule-modal", "Add an agent")
     refute has_element?(view, "#workspace-schedule-form")
   end
 end

@@ -14,6 +14,7 @@ defmodule RoundtableWeb.SchedulesLive do
        schedules: Chat.schedules_with_context(),
        rooms: Chat.rooms(),
        agents: Chat.agents(),
+       schedule_modal: false,
        editing_id: nil,
        form_error: nil,
        schedule_form: schedule_form(Chat.agents())
@@ -29,6 +30,7 @@ defmodule RoundtableWeb.SchedulesLive do
     {:noreply,
      assign(socket,
        editing_id: nil,
+       schedule_modal: true,
        form_error: nil,
        schedule_form: schedule_form(socket.assigns.agents)
      )}
@@ -40,6 +42,7 @@ defmodule RoundtableWeb.SchedulesLive do
     {:noreply,
      assign(socket,
        editing_id: schedule.id,
+       schedule_modal: true,
        form_error: nil,
        schedule_form: to_form(schedule_attrs(schedule), as: :schedule)
      )}
@@ -60,7 +63,7 @@ defmodule RoundtableWeb.SchedulesLive do
       {:ok, _schedule} ->
         {:noreply,
          socket
-         |> assign(editing_id: nil, form_error: nil)
+         |> assign(editing_id: nil, schedule_modal: false, form_error: nil)
          |> refresh()}
 
       {:error, changeset} ->
@@ -82,7 +85,11 @@ defmodule RoundtableWeb.SchedulesLive do
 
   def handle_event("delete-schedule", %{"id" => id}, socket) do
     Chat.delete_schedule(String.to_integer(id))
-    {:noreply, socket |> assign(editing_id: nil) |> refresh()}
+    {:noreply, socket |> assign(editing_id: nil, schedule_modal: false) |> refresh()}
+  end
+
+  def handle_event("close-schedule-modal", _params, socket) do
+    {:noreply, assign(socket, editing_id: nil, schedule_modal: false, form_error: nil)}
   end
 
   defp refresh(socket) do
