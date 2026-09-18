@@ -182,6 +182,51 @@ defmodule Roundtable.Chat do
     )
   end
 
+  @doc """
+  What the rooms are doing right now, in counts.
+
+  For something outside the app — a desktop widget, a script — that needs to
+  know whether anyone is waiting on a person. Room names and counts only:
+  nothing said in a room leaves through here.
+  """
+  def overview do
+    members =
+      Map.new(Repo.all(from a in Agent, group_by: a.room_id, select: {a.room_id, count(a.id)}))
+
+    # One row per room and status, rather than a query per room: a bar widget
+    # asks this every few seconds.
+    work =
+      Map.new(
+        Repo.all(
+          from r in Run,
+            join: a in assoc(r, :agent),
+            where: r.status in ["queued", "running", "approval"],
+            group_by: [a.room_id, r.status],
+            select: {{a.room_id, r.status}, count(r.id)}
+        )
+      )
+
+    rooms =
+      Enum.map(rooms(), fn room ->
+        %{
+          id: room.id,
+          name: room.name,
+          participants: Map.get(members, room.id, 0),
+          queued: Map.get(work, {room.id, "queued"}, 0),
+          running: Map.get(work, {room.id, "running"}, 0),
+          waiting_for_approval: Map.get(work, {room.id, "approval"}, 0)
+        }
+      end)
+
+    %{rooms: rooms, totals: totals(rooms)}
+  end
+
+  defp totals(rooms) do
+    [:participants, :queued, :running, :waiting_for_approval]
+    |> Map.new(fn key -> {key, Enum.sum_by(rooms, & &1[key])} end)
+    |> Map.put(:rooms, length(rooms))
+  end
+
   def subscribe(room_id), do: Phoenix.PubSub.subscribe(Roundtable.PubSub, topic(room_id))
 
   def broadcast(room_id),

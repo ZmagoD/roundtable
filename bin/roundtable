@@ -16,6 +16,44 @@ if [[ ! -f "$STATE_DIR/secret" ]]; then
 fi
 export SECRET_KEY_BASE="$(cat "$STATE_DIR/secret")"
 RELEASE="$APP_ROOT/_build/prod/rel/roundtable/bin/roundtable"
+
+service_running() {
+  [[ -f "$STATE_DIR/beam.pid" ]] && kill -0 "$(cat "$STATE_DIR/beam.pid")" 2>/dev/null
+}
+
+# The port the service actually got. It writes the URL down at boot; the log is
+# the fallback for a service that was already running before it did.
+service_url() {
+  if [[ -s "$STATE_DIR/url" ]]; then
+    cat "$STATE_DIR/url"
+  else
+    grep -o 'http://127\.0\.0\.1:[0-9]*' "$STATE_DIR/server.log" 2>/dev/null | tail -n 1
+  fi
+}
+
+# One object for a desktop widget or a script: whether the service is up, and,
+# when it is reachable, what it says about the rooms. The service answer is
+# nested rather than merged, so neither side has to parse the other's JSON.
+status_json() {
+  if ! service_running; then
+    echo '{"running":false,"pid":null,"url":null,"status":null}'
+    return
+  fi
+
+  local url rooms="" quoted_url="null"
+  url="$(service_url)"
+
+  if [[ -n "$url" ]]; then
+    quoted_url="\"$url\""
+    if command -v curl >/dev/null 2>&1; then
+      rooms="$(curl -fsS --max-time 2 "$url/status.json" 2>/dev/null || true)"
+    fi
+  fi
+
+  printf '{"running":true,"pid":%s,"url":%s,"status":%s}\n' \
+    "$(cat "$STATE_DIR/beam.pid")" "$quoted_url" "${rooms:-null}"
+}
+
 case "${1:-start}" in
   setup)
     mix deps.get --only prod
@@ -31,7 +69,9 @@ case "${1:-start}" in
     if [[ -f "$STATE_DIR/beam.pid" ]] && kill -0 "$(cat "$STATE_DIR/beam.pid")" 2>/dev/null; then
       echo "Roundtable is already running. See $STATE_DIR/server.log for its URL."; exit 0
     fi
+    rm -f "$STATE_DIR/url"
     export PHX_SERVER=true ROUNDTABLE_PID_FILE="$STATE_DIR/beam.pid"
+    export ROUNDTABLE_URL_FILE="$STATE_DIR/url"
     # A named node is the terminal client's address; see bin/roundtable tui.
     export RELEASE_DISTRIBUTION="${RELEASE_DISTRIBUTION:-sname}"
     export RELEASE_NODE="${RELEASE_NODE:-roundtable}"
@@ -72,8 +112,13 @@ case "${1:-start}" in
     fi
     ;;
   status)
-    if [[ -f "$STATE_DIR/beam.pid" ]] && kill -0 "$(cat "$STATE_DIR/beam.pid")" 2>/dev/null; then
-      echo "Roundtable is running."
+    if [[ "${2:-}" == "--json" ]]; then
+      status_json
+      exit 0
+    fi
+    if service_running; then
+      url="$(service_url)"
+      echo "Roundtable is running. ${url:+Open $url}"
     else
       echo "Roundtable is stopped."
     fi
@@ -121,14 +166,14 @@ case "${1:-start}" in
   open)
     # Start the service if it is not up: opening a window onto nothing is worse
     # than waiting a second for it.
-    if [[ ! -f "$STATE_DIR/beam.pid" ]] || ! kill -0 "$(cat "$STATE_DIR/beam.pid")" 2>/dev/null; then
+    if ! service_running; then
       "$SELF" start || exit 1
       sleep 1
     fi
 
-    url="$(grep -o 'http://127\.0\.0\.1:[0-9]*' "$STATE_DIR/server.log" | tail -n 1)"
+    url="$(service_url)"
     if [[ -z "$url" ]]; then
-      echo "Could not find the service URL in $STATE_DIR/server.log" >&2; exit 1
+      echo "Could not find the service URL; see $STATE_DIR/server.log" >&2; exit 1
     fi
 
     # --app gives a window with no browser chrome, its own icon and its own
@@ -171,7 +216,7 @@ DESKTOP
     exec "$APP_ROOT/install.sh" --prefix "$APP_ROOT"
     ;;
   *)
-    echo "Usage: bin/roundtable {setup|start|stop|status|logs|tui|open|install-desktop|update}"
+    echo "Usage: bin/roundtable {setup|start|stop|status [--json]|logs|tui|open|install-desktop|update}"
     exit 1
     ;;
 esac

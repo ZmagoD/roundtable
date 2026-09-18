@@ -15,6 +15,11 @@ defmodule RoundtableWeb.Router do
   # of the browser's session or CSRF machinery applies to it.
   scope "/" do
     forward "/mcp", RoundtableWeb.Plugs.MCP
+
+    # What the service is doing, in counts, for a desktop widget or a script.
+    # No pipeline either: a read with no session, and the endpoint's host
+    # allow-list is what keeps a remote page from making it.
+    forward "/status.json", RoundtableWeb.Plugs.Status
   end
 
   scope "/", RoundtableWeb do

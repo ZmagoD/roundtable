@@ -34,6 +34,23 @@ defmodule Roundtable.ChatTest do
     assert id == ada.id and mid == message.id
   end
 
+  test "the overview counts rooms, participants and turns without their content", %{
+    room: room,
+    ada: ada
+  } do
+    {:ok, _} = Chat.post(room.id, "@ada take a look")
+    Repo.update_all(Run, set: [status: "approval"])
+    {:ok, other} = Chat.create_room(%{"name" => "Quiet", "directory" => File.cwd!()})
+
+    assert %{rooms: [build, quiet], totals: totals} = Chat.overview()
+    assert build.id == room.id and build.name == "Build"
+    assert build.participants == 2 and build.waiting_for_approval == 1 and build.queued == 0
+    assert quiet.id == other.id and quiet.participants == 0
+    assert totals.rooms == 2 and totals.participants == 2 and totals.waiting_for_approval == 1
+    refute Map.has_key?(build, :messages)
+    assert ada.room_id == room.id
+  end
+
   test "room boundaries, email addresses, and sender exclusion", %{
     room: room,
     ada: ada,
