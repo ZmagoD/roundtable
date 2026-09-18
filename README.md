@@ -100,6 +100,8 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/retry [run]` | retry the newest failed run, or one by id |
 | `/approve accept\|decline [n]` | answer a pending tool approval |
 | `/changes [agent\|room\|off]` | watch a different directory, or hide the pane |
+| `/ask <room>/<agent> <question>` | ask another room; the answer comes back here |
+| `/delegate <room>/<agent> <task>` | hand work to another room; it reports back |
 | `/lazygit` | hand the terminal to lazygit |
 | `/refresh` | re-read the room now, without waiting for an update |
 | `/quit` | leave (Ctrl-C and Ctrl-D also work) |
@@ -142,6 +144,34 @@ afterwards.
 Without the service running, `mix tui --local` starts a standalone client that
 owns the database itself. Use it only when the background service is stopped —
 two coordinators on one database fight over the same delivery queue.
+
+### Rooms as teams
+
+Rooms are sealed from each other. An agent sees only its own room's roster and
+history, and `@name` resolves only inside the room — two rooms can both have a
+`grace`. That makes a room a team rather than a channel.
+
+A room is addressed from another room by its name in lowercase with dashes, so
+`Design Team` is `design-team`:
+
+```
+/ask design-team/grace what spacing should the room list use?
+```
+
+The question is delivered into Design Team as an ordinary turn for `@grace`,
+carrying only what was asked — not the asking room's history. When that turn
+finishes, the answer is posted back into the asking room. An agent can do the
+same by writing `@design-team/grace …` in its reply; the answer then mentions
+that agent, so it wakes up and can use it. Each agent's prompt lists the other
+rooms it can reach.
+
+`/delegate` is the same path for work rather than a question, and reports back
+when it is done. Agents can ask other rooms on their own, but only a human can
+delegate to one.
+
+The four-hop cap spans rooms: a cross-room request inherits the asking
+message's depth, so Platform → Design → Platform terminates like any other
+chain rather than resetting each time it crosses a boundary.
 
 ## Working together
 

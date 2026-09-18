@@ -141,6 +141,11 @@ defmodule Roundtable.Coordinator do
             depth: source.depth + 1
           )
         end
+
+        # If this turn was another room's question, carry the answer home.
+        Chat.deliver_answer(run.message_id, run.output)
+      else
+        Chat.fail_request(run.message_id, error || status)
       end
     end)
 

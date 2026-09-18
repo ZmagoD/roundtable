@@ -209,7 +209,8 @@ defmodule Roundtable.TUI.State do
        "/room <name> · /new-room <name> <dir> · /agent <name> <provider> [dir] · " <>
          "/stop <agent> · /reset <agent> · /retry [run] · /approve accept|decline [n] · " <>
          "/changes [agent|room|off] · /who · /role <agent> <text> · " <>
-         "/model <agent> <id> · /lazygit · /quit"
+         "/model <agent> <id> · /ask <room>/<agent> <q> · /delegate <room>/<agent> <task> · " <>
+         "/lazygit · /quit"
      ), []}
   end
 
@@ -230,9 +231,11 @@ defmodule Roundtable.TUI.State do
   end
 
   defp dispatch(state, "new-room", args) do
-    case String.split(args, " ", parts: 2) do
-      [name, directory] when name != "" ->
-        {state, [{:create_room, name, String.trim(directory)}]}
+    # The directory is the last absolute path on the line, so a room can be
+    # called "Design Team" without its second word becoming the path.
+    case Regex.run(~r/^(.+?)\s+(\/\S*)$/, String.trim(args)) do
+      [_, name, directory] ->
+        {state, [{:create_room, name, directory}]}
 
       _ ->
         {put_status(state, "Usage: /new-room <name> <absolute directory>"), []}
@@ -296,6 +299,19 @@ defmodule Roundtable.TUI.State do
 
       _ ->
         {put_status(state, "Usage: /model <agent> <model id|default>"), []}
+    end
+  end
+
+  defp dispatch(state, kind, args) when kind in ~w(ask delegate) do
+    case String.split(String.trim(args), " ", parts: 2) do
+      [target, body] when body != "" ->
+        {state, [{:cross_room, kind, target, body}]}
+
+      _ ->
+        {put_status(
+           state,
+           "Usage: /#{kind} <room>/<agent> <#{(kind == "ask" && "question") || "task"}>"
+         ), []}
     end
   end
 

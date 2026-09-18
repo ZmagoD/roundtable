@@ -87,6 +87,15 @@ defmodule Roundtable.TUI.StateTest do
     {_, effects} = state() |> type("/new-room Infra /srv/infra") |> State.handle_key(:enter)
     assert effects == [{:create_room, "Infra", "/srv/infra"}]
 
+    # A team's name usually has a space in it; the path is the last token.
+    {_, effects} =
+      state() |> type("/new-room Design Team /srv/design") |> State.handle_key(:enter)
+
+    assert effects == [{:create_room, "Design Team", "/srv/design"}]
+
+    {state, []} = state() |> type("/new-room NoPath") |> State.handle_key(:enter)
+    assert state.status =~ "Usage: /new-room"
+
     {_, effects} = state() |> type("/agent bob codex") |> State.handle_key(:enter)
 
     assert [{:create_agent, %{"name" => "bob", "provider" => "codex", "directory" => nil}}] =

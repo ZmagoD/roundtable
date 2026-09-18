@@ -211,6 +211,20 @@ defmodule Roundtable.TUI do
     end
   end
 
+  defp perform({:cross_room, _kind, _target, _body}, %{state: %{room: nil}} = context),
+    do: status(context, "Open a room first.")
+
+  defp perform({:cross_room, kind, target, body}, context) do
+    case Client.cross_room_request(context.client, kind, context.state.room.id, target, body) do
+      {:ok, request} ->
+        refresh(context)
+        |> status("Sent to #{target}. The reply lands here (request ##{request.id}).")
+
+      {:error, reason} ->
+        status(context, describe(reason))
+    end
+  end
+
   defp perform({:update_agent, agent_id, attrs}, context) do
     case Client.update_agent(context.client, agent_id, attrs) do
       {:ok, agent} -> refresh(context) |> status("@#{agent.name} updated.")
