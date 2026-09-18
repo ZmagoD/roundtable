@@ -1,0 +1,125 @@
+<div class="app-shell">
+  <aside class="sidebar">
+    <.link class="brand" navigate={~p"/"}>
+      <span class="brand-mark">r<span>t</span></span><span>roundtable<small>YOUR AGENT WORKSPACE</small></span>
+    </.link>
+    <div class="sidebar-label">
+      <span>ROOMS</span><.link class="icon-button" navigate={~p"/"} aria-label="Rooms">⌂</.link>
+    </div>
+    <nav aria-label="Rooms">
+      <.link :for={room <- @rooms} class="room-link" navigate={~p"/rooms/#{room.id}"}>
+        <span class="hash">#</span><span>{room.name}</span>
+      </.link>
+    </nav>
+    <.link class="new-room" navigate={~p"/"}>Back to workspace</.link>
+    <div class="sidebar-bottom">
+      <span class="online-dot"></span>
+      Local workspace<small>Messages saved on this machine</small>
+    </div>
+  </aside>
+
+  <main class="main-panel management-page">
+    <header class="room-header">
+      <div>
+        <div class="eyebrow">WORKSPACE</div><h1>Schedules</h1><p>
+          Standing instructions across every room
+        </p>
+      </div>
+      <button class="button" phx-click="new-schedule">New schedule
+      <.icon name="hero-plus" class="size-4" /></button>
+    </header>
+
+    <section class="management-content">
+      <div class="management-intro">
+        <h2>Keep work moving while you are away</h2>
+        <p>
+          Schedules use this machine's local time and wake an existing participant with an ordinary room message.
+        </p>
+      </div>
+      <div :if={@schedules == []} class="empty-state">
+        <strong>No schedules yet</strong><p>Create one here or from a room's Schedules panel.</p>
+      </div>
+      <div :if={@schedules != []} class="schedule-table" role="list">
+        <article
+          :for={schedule <- @schedules}
+          class={["schedule-card", !schedule.enabled && "off"]}
+          role="listitem"
+        >
+          <div class="schedule-card-main">
+            <div class="eyebrow">#{schedule.room.name}</div>
+            <h3>{schedule.agent.name} · {schedule.at}</h3>
+            <p>{schedule.prompt}</p>
+            <small>{(schedule.days == "" && "Every day") || "Days: " <> schedule.days} · {if schedule.enabled,
+              do: "Running",
+              else: "Off"}</small>
+          </div>
+          <div class="schedule-card-actions">
+            <button class="text-button" phx-click="edit-schedule" phx-value-id={schedule.id}>Edit</button>
+            <button class="text-button" phx-click="toggle-schedule" phx-value-id={schedule.id}>{if schedule.enabled,
+              do: "Switch off",
+              else: "Switch on"}</button>
+            <button
+              class="text-button danger"
+              phx-click="delete-schedule"
+              phx-value-id={schedule.id}
+              data-confirm="Delete this schedule?"
+            >Delete</button>
+          </div>
+        </article>
+      </div>
+
+      <div class="schedule-editor">
+        <h2>{if @editing_id, do: "Edit schedule", else: "Create schedule"}</h2>
+        <p :if={@form_error} class="form-error" role="alert">{@form_error}</p>
+        <p :if={@agents == []} class="form-note">
+          Add an agent to a room before creating a schedule.
+        </p>
+        <.form
+          :if={@agents != []}
+          for={@schedule_form}
+          id="workspace-schedule-form"
+          phx-submit="save-schedule"
+        >
+          <.input
+            field={@schedule_form[:agent_id]}
+            label="Participant"
+            type="select"
+            options={
+              Enum.map(@agents, fn agent ->
+                {"#{room_name(@rooms, agent.room_id)} · #{agent.name}", agent.id}
+              end)
+            }
+          />
+          <.input
+            field={@schedule_form[:prompt]}
+            label="What to say"
+            type="textarea"
+            rows="3"
+            required
+            maxlength="4000"
+            placeholder="Sweep the bug board and report what is worth doing today"
+          />
+          <.input
+            field={@schedule_form[:at]}
+            label="Times of day"
+            required
+            placeholder="09:00 or 09:00,17:30"
+          />
+          <.input
+            field={@schedule_form[:days]}
+            label="Days"
+            type="select"
+            options={days_options(@schedule_form[:days].value)}
+          />
+          <.input
+            field={@schedule_form[:enabled]}
+            label="Running"
+            type="select"
+            options={[{"Yes", "true"}, {"No", "false"}]}
+          />
+          <button class="button full" type="submit" phx-disable-with="Saving…">Save schedule</button>
+        </.form>
+      </div>
+    </section>
+  </main>
+</div>

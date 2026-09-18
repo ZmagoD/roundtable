@@ -27,6 +27,7 @@ defmodule RoundtableWeb.Router do
 
     live "/", RoomLive, :index
     live "/rooms/:id", RoomLive, :show
+    live "/schedules", SchedulesLive, :index
   end
 
   # Enable LiveDashboard in development

@@ -463,6 +463,21 @@ a { text-decoration: none; color: inherit; }
 .sidebar-bottom small { display: block; color: var(--neutral-mid-3); font-size: 10px; margin-top: 7px; }
 .sidebar-empty { color: var(--green-mid-34); line-height: 1.8; font-size: 12px; padding: 5px 12px; }
 .main-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.management-page { overflow-y: auto; background: var(--neutral-surface-1); }
+.management-content { width: min(980px, 100%); padding: 38px 48px 70px; }
+.management-intro { margin-bottom: 26px; }
+.management-intro h2, .schedule-editor h2 { font-size: 17px; font-weight: 620; margin-bottom: 7px; }
+.management-intro p, .schedule-editor > p { color: var(--neutral-mid-5); font-size: 12px; line-height: 1.7; }
+.schedule-table { display: grid; gap: 10px; }
+.schedule-card { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 17px 19px; border: 1px solid var(--line); border-radius: 10px; background: var(--green-surface-24); }
+.schedule-card.off { opacity: .62; }
+.schedule-card h3 { font-size: 13px; margin: 5px 0 6px; }
+.schedule-card p { color: var(--green-mid-22); font-size: 12px; line-height: 1.5; }
+.schedule-card small { display: block; color: var(--neutral-mid-5); font-size: 10px; margin-top: 8px; }
+.schedule-card-actions { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
+.schedule-editor { margin-top: 34px; padding: 25px; border: 1px solid var(--line); border-radius: 12px; max-width: 620px; }
+.schedule-editor form { margin-top: 18px; }
+.management-page .new-room { display: block; text-align: center; }
 .room-header { height: 120px; padding: 26px 34px; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); background: var(--neutral-surface-1); gap: 20px; }
 .eyebrow { color: var(--neutral-mid-5); font-size: 9px; font-weight: 650; letter-spacing: 1.8px; }
 h1, h2, h3, p { margin: 0; }

@@ -26,6 +26,7 @@
     <button class="new-room" phx-click="panel" phx-value-name="room">+ New room</button>
     <button id="model-presets-button" class="new-room" phx-click="panel" phx-value-name="models">Model presets</button>
     <button id="profiles-button" class="new-room" phx-click="panel" phx-value-name="profiles">Agent profiles</button>
+    <.link class="new-room" navigate={~p"/schedules"}>Schedules</.link>
     <div class="sidebar-bottom">
       <span class="online-dot"></span>
       Local workspace<small>Messages saved on this machine</small>
@@ -392,9 +393,12 @@
             <pre :if={@diff} class="changes-diff"><code>{@diff}</code></pre>
           </section>
           <div class="room-note">
-            <span>✳</span><h3>A shared place to think.</h3><p>
-              Agents receive unread room messages with their next assignment. Use @all to ask everyone.
-            </p><p>Work continues when you close this tab.</p>
+            <span>✳</span><h3>A shared place to think and act.</h3><p>
+              Agents receive the room's unread context with their next assignment. Mention one agent to
+              start its turn, or use @all when everyone should see the work.
+            </p><p>
+              Queued work keeps running while the Roundtable service is on, even after you close this tab.
+            </p>
           </div>
         </aside>
       </div>

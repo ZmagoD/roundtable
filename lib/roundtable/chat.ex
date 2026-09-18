@@ -80,6 +80,15 @@ defmodule Roundtable.Chat do
   @doc "Every standing instruction there is, for the process that runs them."
   def schedules, do: Repo.all(from s in Schedule, order_by: [asc: s.id])
 
+  @doc "Every standing instruction with the room and participant it belongs to."
+  def schedules_with_context do
+    Repo.all(
+      from s in Schedule,
+        order_by: [asc: s.room_id, asc: s.id],
+        preload: [:room, :agent]
+    )
+  end
+
   def schedule!(id), do: Repo.get!(Schedule, id)
 
   @doc """
@@ -193,6 +202,7 @@ defmodule Roundtable.Chat do
   def room!(id), do: Repo.get!(Room, id)
   def agent!(id), do: Repo.get!(Agent, id)
   def agents(room_id), do: Repo.all(from a in Agent, where: a.room_id == ^room_id, order_by: a.id)
+  def agents, do: Repo.all(from a in Agent, order_by: [asc: a.room_id, asc: a.id])
 
   def messages(room_id),
     do: Repo.all(from m in Message, where: m.room_id == ^room_id, order_by: m.id)

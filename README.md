@@ -687,8 +687,11 @@ Or use the terminal:
 
 Weekdays are numbered 1 (Monday) through 7 (Sunday); omit `--days` for every day.
 A schedule accepts up to 12 times of day. In the browser, open **Schedules**
-inside a room to create, edit, switch off or delete one. An agent can create,
-edit or disable schedules through its tools, but cannot delete them.
+inside a room to manage that room's instructions, or use the **Schedules** link
+in the sidebar (at `/schedules`) to see and manage schedules across every room.
+The workspace page is useful when you want to audit or change several rooms at
+once. An agent can create, edit or disable schedules through its tools, but
+cannot delete them.
 
 Roundtable must be running for schedules to fire; the browser can be closed.
 The scheduler checks every 30 seconds, so these are not exact-second timers.
@@ -767,7 +770,8 @@ provider CLIs. `Roundtable.Client` is the seam: it calls the coordination core
 directly in-node, or over distributed Erlang from a terminal, so a client never
 opens the database itself.
 SQLite stores rooms, participants, messages, native session IDs, durable run
-records, agent profiles, model presets and schedules. Message insertion and delivery creation are transactional; PubSub
+records, agent profiles, model presets, schedules and room knowledge notes.
+Message insertion and delivery creation are transactional; PubSub
 updates connected browsers. A coordinator serializes queue transitions.
 Its runtime supervisor restarts the workers, the coordinator and the scheduler
 that runs a room's standing instructions together if any of them fails. On startup, active runs become interrupted, so they

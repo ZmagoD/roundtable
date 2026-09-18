@@ -105,6 +105,8 @@ approval channel, so there would be nowhere to say no.
 ## Have a room start its own morning
 
 **Schedules** in the room header wakes one participant at the times you choose.
+The **Schedules** link in the sidebar opens `/schedules`, where you can audit
+and manage instructions across every room.
 In the terminal client:
 
 ```
@@ -120,7 +122,8 @@ the first one when you come back.
 Times are this machine's own local time. A schedule missed by more than ten
 minutes is skipped rather than run late. `/schedules` lists them with their ids,
 `/unschedule <id>` stops one, and in the browser a schedule can be switched off
-and left there for next time.
+and left there for next time. The workspace page can switch off or delete an
+instruction without opening each room first.
 
 ## Let an orchestrator run unattended
 
