@@ -9,6 +9,7 @@ defmodule Roundtable.Chat.Agent do
     field :role, :string, default: ""
     field :model, :string
     field :cost_tier, :string, default: "unknown"
+    field :auto_approve, :boolean, default: false
     field :directory, :string
     field :session_id, :string
     field :session_model, :string
@@ -26,7 +27,10 @@ defmodule Roundtable.Chat.Agent do
     agent
     |> cast(
       attrs,
-      if(renamable?, do: [:name, :role, :model, :cost_tier], else: ~w(role model cost_tier)a)
+      if(renamable?,
+        do: ~w(name role model cost_tier auto_approve)a,
+        else: ~w(role model cost_tier auto_approve)a
+      )
     )
     |> update_change(:name, &String.downcase/1)
     |> validate_required([:name])
@@ -56,7 +60,7 @@ defmodule Roundtable.Chat.Agent do
 
   def changeset(agent, attrs) do
     agent
-    |> cast(attrs, [:name, :provider, :role, :model, :directory, :cost_tier])
+    |> cast(attrs, ~w(name provider role model directory cost_tier auto_approve)a)
     |> update_change(:name, &String.downcase/1)
     |> validate_required([:room_id, :name, :provider, :directory])
     |> validate_format(:name, ~r/^[a-z][a-z0-9_-]{0,29}$/)

@@ -78,6 +78,59 @@ defmodule Roundtable.CoordinatorTest do
     assert Coordinator.approvals() == %{}
   end
 
+  test "a participant set to approve its own tools is never held", %{room: room, ada: ada} do
+    Chat.change(ada, auto_approve: true)
+    Coordinator.post(room.id, "@ada do work")
+    assert_receive {:agent_started, _pid, _, run, _}, 1000
+    Coordinator.event(run.id, {:approval, "req-1", %{"command" => "mix test"}})
+
+    assert_receive {:decision, "req-1", "accept"}, 1000
+    assert Coordinator.approvals() == %{}
+    # The turn never stopped, so it is still the running one.
+    assert Repo.get!(Run, run.id).status == "running"
+    Coordinator.stop(ada.id)
+  end
+
+  test "retrying takes the model the participant runs on now", %{room: room, ada: ada} do
+    Coordinator.post(room.id, "@ada do work")
+    assert_receive {:agent_started, pid, _, run, _}, 1000
+    ref = Process.monitor(pid)
+    GenServer.cast(pid, {:fail, "provider said no"})
+    assert_receive {:DOWN, ^ref, :process, ^pid, _}, 1000
+    _ = :sys.get_state(Coordinator)
+
+    Chat.update_agent(ada.id, %{"model" => "a-model-that-works"})
+    Coordinator.retry(run.id)
+
+    assert_receive {:agent_started, _pid, %{model: "a-model-that-works"}, _, _}, 1000
+    assert Repo.get!(Run, run.id).model == "a-model-that-works"
+    Coordinator.stop(ada.id)
+  end
+
+  test "retrying keeps a model that was chosen for that turn", %{room: room, ada: ada} do
+    {:ok, preset} =
+      Chat.create_model_preset(%{
+        "name" => "Planner",
+        "provider" => "codex",
+        "model" => "premium-model",
+        "cost_tier" => "premium"
+      })
+
+    {:ok, options} = Chat.assignment(ada, to_string(preset.id), "planning")
+    Coordinator.post(room.id, "@ada plan", assignment: options)
+    assert_receive {:agent_started, pid, _, run, _}, 1000
+    ref = Process.monitor(pid)
+    GenServer.cast(pid, {:fail, "provider said no"})
+    assert_receive {:DOWN, ^ref, :process, ^pid, _}, 1000
+    _ = :sys.get_state(Coordinator)
+
+    Chat.update_agent(ada.id, %{"model" => "something-else"})
+    Coordinator.retry(run.id)
+
+    assert_receive {:agent_started, _pid, %{model: "premium-model"}, _, _}, 1000
+    Coordinator.stop(ada.id)
+  end
+
   test "reset removes the native session while keeping room history", %{room: room, ada: ada} do
     Chat.change(ada, session_id: "native", last_seen_id: 42)
     Coordinator.post(room.id, "A note without a mention")

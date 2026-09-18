@@ -37,7 +37,10 @@ defmodule Roundtable.Chat do
          name: agent.name,
          model: (preset && preset.model) || agent.model,
          cost_tier: (preset && preset.cost_tier) || agent.cost_tier,
-         purpose: purpose
+         purpose: purpose,
+         # A preset is a choice about this turn, so it outlives a later change
+         # to what the participant runs on by default.
+         pinned: preset != nil
        }}
     end
   end
@@ -131,9 +134,38 @@ defmodule Roundtable.Chat do
     |> Agent.rename_changeset(attrs, renamable?(agent))
     |> Repo.update()
     |> tap(fn
-      {:ok, agent} -> broadcast(agent.room_id)
-      _ -> :ok
+      {:ok, updated} ->
+        adopt_model(agent, updated)
+        broadcast(updated.room_id)
+
+      _ ->
+        :ok
     end)
+  end
+
+  @doc """
+  Makes a new model take effect, rather than from some later turn onwards.
+
+  Two things would otherwise keep running on the old one: turns already queued,
+  which carry the model they were created with, and the provider's own session,
+  which a resumed turn continues on whatever it was started with. So the queue
+  is brought onto the new model — except where the human pinned one for that
+  turn — and the session is dropped, which starts a fresh one with the room's
+  history behind it.
+
+  A turn already running is left alone: it is mid-conversation with a provider,
+  and the next one picks the new model up.
+  """
+  def adopt_model(%{model: same}, %{model: same}), do: :ok
+
+  def adopt_model(_previous, agent) do
+    from(r in Run,
+      where: r.agent_id == ^agent.id and r.status == "queued" and r.model_pinned == false
+    )
+    |> Repo.update_all(set: [model: agent.model, cost_tier: agent.cost_tier])
+
+    change(agent, session_id: nil, session_model: nil, last_seen_id: 0)
+    :ok
   end
 
   @doc """
@@ -250,6 +282,7 @@ defmodule Roundtable.Chat do
         agent_id: agent.id,
         message_id: message.id,
         model: assignment.model,
+        model_pinned: Map.get(assignment, :pinned, false),
         cost_tier: assignment.cost_tier,
         purpose: assignment.purpose
       })
@@ -262,7 +295,7 @@ defmodule Roundtable.Chat do
     do: assignment
 
   defp assignment_for(agent, _),
-    do: %{model: agent.model, cost_tier: agent.cost_tier, purpose: "general"}
+    do: %{model: agent.model, cost_tier: agent.cost_tier, purpose: "general", pinned: false}
 
   # What each agent is told about the others: enough to pick the right one, and
   # nothing about what they are doing.
@@ -343,8 +376,12 @@ defmodule Roundtable.Chat do
 
   defp metadata(nil), do: %{}
 
+  # :pinned is bookkeeping for the run, not something the room needs to read.
   defp metadata(assignment),
-    do: Map.new(assignment, fn {key, value} -> {Atom.to_string(key), value} end)
+    do:
+      assignment
+      |> Map.drop([:pinned])
+      |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
 
   def recipients(body, agents) do
     names =

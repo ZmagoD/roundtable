@@ -189,6 +189,20 @@ defmodule Roundtable.TUI.StateTest do
     assert state.status =~ "No approval #9"
   end
 
+  test "auto switches a participant's tool approvals, and says how when it cannot" do
+    {_, effects} = state() |> type("/auto ada on") |> State.handle_key(:enter)
+    assert effects == [{:update_agent, 7, %{"auto_approve" => true}}]
+
+    {_, effects} = state() |> type("/auto ada off") |> State.handle_key(:enter)
+    assert effects == [{:update_agent, 7, %{"auto_approve" => false}}]
+
+    {state, []} = state() |> type("/auto ada maybe") |> State.handle_key(:enter)
+    assert state.status =~ "Usage: /auto"
+
+    {state, []} = state() |> type("/auto nobody on") |> State.handle_key(:enter)
+    assert state.status =~ "nobody"
+  end
+
   test "the one-line command dump is gone; /help is the full screen" do
     {state, []} = state() |> type("/commands") |> State.handle_key(:enter)
 

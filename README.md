@@ -164,6 +164,7 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/agent <name> <provider>` | add a participant; `--model`, `--role`, `--tier` |
 | `/role <agent> <text>` | set what a participant is for |
 | `/model <agent> <id\|default>` | pin a model, or hand the choice back |
+| `/auto <agent> on\|off` | let it approve its own tool use |
 | `/rename <agent> <new name>` | rename a participant, before its first turn |
 | `/providers` | which agent CLIs are installed |
 | `/models <provider> [filter]` | model names that provider offers |
@@ -481,6 +482,17 @@ requests are presented in the chat; OpenCode's CLI adapter uses its configured
 permissions and cannot interactively grant a new approval. Errors are visible
 with partial output and a retry control. Each turn has a 30-minute timeout.
 
+### Letting a participant approve its own tools
+
+An agent that orchestrates, or one you set going and leave alone, stops at every
+tool request and waits for you. Set **Tool approvals** to *Approve automatically*
+on that participant — in its form, with `/auto <agent> on` in the terminal
+client, or with **Always allow** on a request that is already waiting. Its turns
+then run without stopping, and each granted request is written to the service
+log (`bin/roundtable logs`). The roster marks who is on it, and it stays off
+until you say otherwise. Turn it off again with *Ask me before each tool* or
+`/auto <agent> off`.
+
 For concurrent code changes, create separate Git worktrees and set each agent's
 working directory accordingly. Automatic worktree creation/merging is not built in.
 All messages are public within their room. Agents process new messages at the
@@ -514,9 +526,13 @@ model guidance, not an enforced budget optimizer: create appropriately named
 participants and review their handoffs. Automatic agent-to-agent mentions use
 the recipient's configured default model.
 
-A change of model starts a fresh native session and supplies room history. This
-also applies when returning from an expensive override to the provider default,
-so a resumed session cannot silently keep the expensive model selected. Repeated
+A change of model takes effect at once: turns already queued move onto the new
+model, and the native session is dropped so the next turn starts a fresh one
+with room history behind it — a resumed session would otherwise carry on with
+the model it began on. Retrying a failed turn also takes the participant's
+current model, which is what makes changing the model the way off one that just
+failed. A model you chose for a particular assignment is kept: it stays on that
+turn, and on its retries, whatever the participant's default becomes. Repeated
 turns with the same model resume the native session as usual. For efficient
 parallel work, keep separate named agents for your regular model/role combinations.
 

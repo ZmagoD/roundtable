@@ -400,6 +400,20 @@ defmodule Roundtable.TUI.State do
     end
   end
 
+  defp dispatch(state, "auto", args) do
+    case String.split(String.trim(args), " ", parts: 2) do
+      [name, setting] when setting in ~w(on off) ->
+        with_agent(
+          state,
+          name,
+          &{state, [{:update_agent, &1.id, %{"auto_approve" => setting == "on"}}]}
+        )
+
+      _ ->
+        {put_status(state, "Usage: /auto <agent> on|off — on lets it run tools unattended"), []}
+    end
+  end
+
   defp dispatch(state, kind, args) when kind in ~w(ask delegate) do
     case String.split(String.trim(args), " ", parts: 2) do
       [target, body] when body != "" ->

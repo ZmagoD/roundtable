@@ -8,6 +8,7 @@ defmodule Roundtable.Coordinator do
   decides what happens next.
   """
   use GenServer
+  require Logger
 
   # Turns that may run at once, across every room.
   @max_workers 4
@@ -86,7 +87,7 @@ defmodule Roundtable.Coordinator do
     run = Repo.get!(Run, run_id)
 
     if run.status in ["failed", "interrupted", "stopped"] do
-      Chat.change(run, status: "queued", error: nil, output: "")
+      Chat.change(run, [status: "queued", error: nil, output: ""] ++ current_model(run))
     end
 
     {:reply, :ok, schedule(state)}
@@ -133,17 +134,21 @@ defmodule Roundtable.Coordinator do
   end
 
   defp apply_event(state, run, agent, {:approval, request_id, params}) do
-    Chat.change(run, status: "approval")
+    if agent.auto_approve do
+      grant(state, run, agent, request_id, params)
+    else
+      Chat.change(run, status: "approval")
 
-    approval = %{
-      run_id: run.id,
-      request_id: request_id,
-      agent: agent.name,
-      room_id: agent.room_id,
-      params: params
-    }
+      approval = %{
+        run_id: run.id,
+        request_id: request_id,
+        agent: agent.name,
+        room_id: agent.room_id,
+        params: params
+      }
 
-    %{state | approvals: Map.put(state.approvals, {run.id, request_id}, approval)}
+      %{state | approvals: Map.put(state.approvals, {run.id, request_id}, approval)}
+    end
   end
 
   defp apply_event(state, run, agent, {:done, status, error}) do
@@ -164,6 +169,32 @@ defmodule Roundtable.Coordinator do
     if Enum.any?(state.approvals, fn {{run_id, _}, _} -> run_id == run.id end),
       do: :ok,
       else: Chat.change(run, status: "running")
+  end
+
+  # A participant set to approve its own tools never stops for the human, so
+  # the run stays running and the log is where the decision can be read back.
+  defp grant(state, run, agent, request_id, params) do
+    %{pid: pid} = state.workers[run.id]
+    send(pid, {:approval, request_id, "accept"})
+    Logger.info("auto-approved for @#{agent.name} (run #{run.id}): #{summarise(params)}")
+    state
+  end
+
+  defp summarise(params) do
+    case Jason.encode(params) do
+      {:ok, json} -> String.slice(json, 0, 300)
+      {:error, _} -> inspect(params, limit: 10)
+    end
+  end
+
+  # A retry is a fresh attempt, so it runs on what the participant runs on now.
+  # Retrying after changing the model is how someone gets off a model that just
+  # failed — keeping the old one would defeat that.
+  defp current_model(%{model_pinned: true}), do: []
+
+  defp current_model(run) do
+    agent = Chat.agent!(run.agent_id)
+    [model: agent.model, cost_tier: agent.cost_tier]
   end
 
   defp finish_turn("completed", run, agent, _error) do

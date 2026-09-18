@@ -14,6 +14,7 @@ defmodule Roundtable.TUI.Commands do
     {"agent", "<name> <provider> [--model m] [--role text] [--tier t]", "add a participant"},
     {"role", "<agent> <text>", "change what a participant is for"},
     {"model", "<agent> <id|default>", "pin a model, or hand the choice back"},
+    {"auto", "<agent> on|off", "let it approve its own tool use"},
     {"rename", "<agent> <new>", "rename one, before its first turn"},
     {"remove", "<agent>", "remove a participant; its messages stay"},
     {"stop", "<agent>", "stop its queue"},

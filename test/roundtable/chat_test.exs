@@ -150,6 +150,48 @@ defmodule Roundtable.ChatTest do
     assert {:error, _} = Chat.assignment(ada, "999999", "general")
   end
 
+  test "a new model reaches work already waiting, and the session it would resume", %{
+    room: room,
+    ada: ada
+  } do
+    Chat.change(ada, model: "old-model", session_id: "native", session_model: "old-model")
+    {:ok, _} = Chat.post(room.id, "@ada one")
+    {:ok, _} = Chat.post(room.id, "@ada two")
+
+    {:ok, _} = Chat.update_agent(ada.id, %{"model" => "new-model"})
+
+    assert Enum.all?(Chat.runs(room.id), &(&1.model == "new-model"))
+    # The provider would otherwise carry on with the model the session began on.
+    assert Chat.agent!(ada.id).session_id == nil
+    assert Chat.agent!(ada.id).session_model == nil
+  end
+
+  test "a model chosen for one turn survives a later change of default", %{room: room, ada: ada} do
+    {:ok, preset} =
+      Chat.create_model_preset(%{
+        "name" => "Planning",
+        "provider" => "codex",
+        "model" => "premium-model",
+        "cost_tier" => "premium"
+      })
+
+    {:ok, options} = Chat.assignment(ada, to_string(preset.id), "planning")
+    {:ok, _} = Chat.post(room.id, "@ada plan", assignment: options)
+
+    {:ok, _} = Chat.update_agent(ada.id, %{"model" => "new-model"})
+
+    [run] = Chat.runs(room.id)
+    assert run.model_pinned
+    assert run.model == "premium-model"
+  end
+
+  test "changing something other than the model leaves the session alone", %{ada: ada} do
+    Chat.change(ada, session_id: "native", session_model: nil)
+    {:ok, _} = Chat.update_agent(ada.id, %{"role" => "review only"})
+
+    assert Chat.agent!(ada.id).session_id == "native"
+  end
+
   test "the roster tells each agent who is busy", %{room: room, ada: ada} do
     {:ok, message} = Chat.post(room.id, "@ada start")
     run = Repo.get_by!(Run, agent_id: ada.id, message_id: message.id)

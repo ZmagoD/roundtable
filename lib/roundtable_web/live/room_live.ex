@@ -149,6 +149,7 @@ defmodule RoundtableWeb.RoomLive do
           "role" => agent.role,
           "model" => agent.model,
           "cost_tier" => agent.cost_tier,
+          "auto_approve" => to_string(agent.auto_approve),
           "directory" => agent.directory
         }
 
@@ -394,6 +395,26 @@ defmodule RoundtableWeb.RoomLive do
     end
 
     {:noreply, refresh(socket)}
+  end
+
+  # The request in front of you is where this decision belongs: allow it, and
+  # say that this participant may go on without asking.
+  def handle_event("always-allow", %{"run" => run, "request" => request, "agent" => name}, socket) do
+    socket =
+      case Enum.find(socket.assigns.agents, &(&1.name == name)) do
+        nil ->
+          socket
+
+        agent ->
+          Chat.update_agent(agent.id, %{"auto_approve" => true})
+          put_flash(socket, :info, "#{agent.name} approves its own tool use from now on.")
+      end
+
+    handle_event(
+      "approval",
+      %{"run" => run, "request" => request, "decision" => "accept"},
+      socket
+    )
   end
 
   @impl true

@@ -154,6 +154,13 @@
                   phx-value-decision="accept"
                 >Allow once</button><button
                   class="button secondary"
+                  phx-click="always-allow"
+                  phx-value-run={approval.run_id}
+                  phx-value-request={Jason.encode!(approval.request_id)}
+                  phx-value-agent={approval.agent}
+                  data-confirm={"Let #{approval.agent} run tools without asking? It will not stop for approval again until you turn this off."}
+                >Always allow {approval.agent}</button><button
+                  class="button secondary"
                   phx-click="approval"
                   phx-value-run={approval.run_id}
                   phx-value-request={Jason.encode!(approval.request_id)}
@@ -304,7 +311,11 @@
             <div class="agent-state">
               <span class={["status", status(agent, @runs)]}>{status(agent, @runs)}</span><span>{if agent.session_id,
                 do: "Session saved",
-                else: "Fresh session"}</span>
+                else: "Fresh session"}</span><span
+                :if={agent.auto_approve}
+                class="auto-approve"
+                title="Runs tools without stopping to ask"
+              >auto-approves</span>
             </div>
             <details>
               <summary>Session details</summary><dl>
@@ -545,8 +556,19 @@
           type="select"
           options={cost_options()}
         />
+        <.input
+          field={@agent_form[:auto_approve]}
+          label="Tool approvals"
+          type="select"
+          options={[{"Ask me before each tool", "false"}, {"Approve automatically", "true"}]}
+        />
         <p class="form-note">
-          Uses your installed CLI and its existing login. Each agent has a separate session. OpenCode uses its configured tool permissions; interactive approvals are currently supported for Codex and Claude.
+          Approving automatically suits an agent that orchestrates or runs long
+          on its own: it never stops for you, and every granted request is
+          written to the server log. Uses your installed CLI and its existing
+          login. Each agent has a separate session. OpenCode uses its configured
+          tool permissions; interactive approvals are currently supported for
+          Codex and Claude.
         </p>
         <button class="button full" type="submit" phx-disable-with="Saving…">
           {if @editing_agent, do: "Save changes", else: "Add agent"}

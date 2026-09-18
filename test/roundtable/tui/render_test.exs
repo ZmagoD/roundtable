@@ -248,7 +248,8 @@ defmodule Roundtable.TUI.RenderTest do
         provider: "claude",
         model: nil,
         cost_tier: "premium",
-        role: nil
+        role: nil,
+        auto_approve: true
       }
     ]
 
@@ -270,6 +271,8 @@ defmodule Roundtable.TUI.RenderTest do
     assert screen =~ "@linus"
     assert screen =~ "provider default"
     assert screen =~ "no role set"
+    # Whose tools nobody is being asked about is worth seeing at a glance.
+    assert screen =~ "approves its own tools"
   end
 
   test "the roster replaces the transcript while it is open" do

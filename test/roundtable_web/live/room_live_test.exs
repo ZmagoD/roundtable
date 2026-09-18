@@ -187,6 +187,51 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert %{session_id: nil, last_seen_id: 0} = Chat.agent!(agent.id)
     end
 
+    test "tool approvals are switched on from the participant's own form", %{
+      view: view,
+      agent: agent
+    } do
+      view |> element("button.agent-edit[phx-value-id='#{agent.id}']") |> render_click()
+
+      html =
+        view
+        |> form("#agent-form", agent: %{auto_approve: "true"})
+        |> render_submit()
+
+      assert Chat.agent!(agent.id).auto_approve
+      assert html =~ "auto-approves"
+    end
+
+    test "always allow answers the request in front of you and stops the asking", %{
+      conn: conn,
+      room: room,
+      agent: agent
+    } do
+      Application.put_env(:roundtable, :agent_worker, Roundtable.TestWorker)
+      Application.put_env(:roundtable, :test_observer, self())
+      Application.put_env(:roundtable, :start_agents, true)
+
+      on_exit(fn ->
+        Application.put_env(:roundtable, :start_agents, false)
+        Application.delete_env(:roundtable, :agent_worker)
+        Application.delete_env(:roundtable, :test_observer)
+      end)
+
+      Roundtable.Coordinator.post(room.id, "@ada do work")
+      assert_receive {:agent_started, _pid, _, run, _}, 1000
+      Roundtable.Coordinator.event(run.id, {:approval, "req-1", %{"command" => "ls"}})
+
+      {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+      assert has_element?(view, ".approval-card")
+
+      view |> element("[phx-click=always-allow]") |> render_click()
+
+      assert_receive {:decision, "req-1", "accept"}, 1000
+      assert Chat.agent!(agent.id).auto_approve
+      assert Roundtable.Coordinator.approvals() == %{}
+      Roundtable.Coordinator.stop(agent.id)
+    end
+
     test "a failed run can be retried from the browser", %{conn: conn, room: room, agent: agent} do
       {:ok, message} = Chat.post(room.id, "@ada work")
       run = Roundtable.Repo.get_by!(Roundtable.Chat.Run, message_id: message.id)

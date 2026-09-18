@@ -19,6 +19,11 @@ defmodule Roundtable.TestWorker do
     {:stop, :normal, run}
   end
 
+  def handle_cast({:fail, error}, run) do
+    Roundtable.Coordinator.event(run.id, {:done, "failed", error})
+    {:stop, :normal, run}
+  end
+
   def handle_info({:approval, id, decision}, run) do
     send(Application.fetch_env!(:roundtable, :test_observer), {:decision, id, decision})
     {:noreply, run}

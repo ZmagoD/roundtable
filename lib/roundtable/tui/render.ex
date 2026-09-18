@@ -249,8 +249,11 @@ defmodule Roundtable.TUI.Render do
             text -> text |> Markdown.wrap(width - 4) |> Enum.map(&("   " <> &1))
           end
 
+        # Its own line: a headline narrow enough to truncate would hide it.
+        notes = if agent.auto_approve, do: ["   approves its own tools"], else: []
+
         [[colour, pad(headline, width), @reset]] ++
-          Enum.map(role, &[@dim, pad(&1, width), @reset]) ++
+          Enum.map(role ++ notes, &[@dim, pad(&1, width), @reset]) ++
           [pad("", width)]
       end)
 

@@ -523,6 +523,7 @@ h1, h2, h3, p { margin: 0; }
 .status.running { color: var(--green-mid-27); background: var(--green-surface-18); }
 .status.approval { color: var(--warm-mid-7); background: var(--warm-surface-2); }
 .status.queued { color: var(--blue-mid-3); background: var(--blue-surface-1); }
+.auto-approve { border-radius: 4px; padding: 3px 6px; color: var(--warm-mid-7); background: var(--warm-surface-2); }
 .agent-card details { margin-top: 12px; padding-top: 9px; border-top: 1px solid var(--green-surface-17); font-size: 9px; color: var(--neutral-mid-6); }
 .agent-card dl { overflow-wrap: anywhere; margin: 10px 0; }
 .agent-card dt { color: var(--green-mid-5); margin-top: 9px; }
