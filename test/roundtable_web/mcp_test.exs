@@ -110,6 +110,18 @@ defmodule RoundtableWeb.Plugs.MCPTest do
     assert json_response(conn, 403)["error"] =~ "no longer"
   end
 
+  test "a request addressed to another host never reaches the tools", %{conn: conn, ada: ada} do
+    # DNS rebinding: a page that resolves its own domain to 127.0.0.1 would
+    # otherwise be able to call these with the browser's own credentials.
+    conn =
+      %{conn | host: "rebound.example.com"}
+      |> put_req_header("authorization", "Bearer " <> MCP.token(ada))
+      |> post("/mcp", Jason.encode!(request("tools/list")))
+
+    assert conn.status == 400
+    refute conn.resp_body =~ "create_room"
+  end
+
   test "there is no stream to attach to", %{conn: conn, ada: ada} do
     conn =
       conn

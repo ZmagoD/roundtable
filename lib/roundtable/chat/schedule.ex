@@ -11,6 +11,10 @@ defmodule Roundtable.Chat.Schedule do
   use Ecto.Schema
   import Ecto.Changeset
 
+  # Times of day one schedule may hold. A standing instruction is a rhythm, not
+  # a loop: anything past this is a turn every few minutes, paid for every day.
+  @max_times 12
+
   schema "schedules" do
     belongs_to :room, Roundtable.Chat.Room
     belongs_to :agent, Roundtable.Chat.Agent
@@ -107,8 +111,14 @@ defmodule Roundtable.Chat.Schedule do
 
   defp validate_times(changeset) do
     case get_field(changeset, :at) do
-      at when is_binary(at) and at != "" -> changeset
+      at when is_binary(at) and at != "" -> validate_count(changeset, at)
       _ -> add_error(changeset, :at, "needs a time of day, like 09:00 or 09:00,17:30")
     end
+  end
+
+  defp validate_count(changeset, at) do
+    if length(String.split(at, ",")) > @max_times,
+      do: add_error(changeset, :at, "can have at most #{@max_times} times of day"),
+      else: changeset
   end
 end

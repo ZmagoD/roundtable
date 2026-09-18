@@ -173,6 +173,19 @@ defmodule Roundtable.SchedulerTest do
       assert "needs a time of day, like 09:00 or 09:00,17:30" in errors_on(changeset).at
     end
 
+    test "more times than anyone means is refused", %{room: room, ada: ada} do
+      every_five = Enum.map_join(0..23, ",", &"#{&1}:00")
+
+      assert {:error, changeset} =
+               Chat.create_schedule(room.id, %{
+                 "agent_id" => ada.id,
+                 "prompt" => "sweep",
+                 "at" => every_five
+               })
+
+      assert "can have at most 12 times of day" in errors_on(changeset).at
+    end
+
     test "somebody from another room is refused", %{room: room, ada: ada} do
       {:ok, other} = Chat.create_room(%{"name" => "Billing", "directory" => File.cwd!()})
 

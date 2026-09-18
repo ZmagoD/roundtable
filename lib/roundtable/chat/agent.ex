@@ -39,7 +39,7 @@ defmodule Roundtable.Chat.Agent do
     |> validate_required([:name])
     |> refuse_rename(renamable?, attrs)
     |> validate_format(:name, ~r/^[a-z][a-z0-9_-]{0,29}$/)
-    |> validate_exclusion(:name, ["you", "system", "all"])
+    |> validate_exclusion(:name, ["you", "system", "all", "schedule"])
     |> validate_length(:role, max: 4000)
     |> validate_inclusion(:cost_tier, ["economy", "standard", "premium", "unknown"])
     |> unique_constraint(:name,
@@ -67,7 +67,7 @@ defmodule Roundtable.Chat.Agent do
     |> update_change(:name, &String.downcase/1)
     |> validate_required([:room_id, :name, :provider, :directory])
     |> validate_format(:name, ~r/^[a-z][a-z0-9_-]{0,29}$/)
-    |> validate_exclusion(:name, ["you", "system", "all"])
+    |> validate_exclusion(:name, ["you", "system", "all", "schedule"])
     |> validate_inclusion(:provider, Roundtable.Agents.ids())
     |> validate_length(:role, max: 4000)
     |> validate_inclusion(:cost_tier, ["economy", "standard", "premium", "unknown"])

@@ -229,6 +229,22 @@ defmodule Roundtable.ChatTest do
              })
   end
 
+  test "nobody is called schedule, because the scheduler already is", %{room: room} do
+    # Its messages are signed "schedule"; a participant of that name would be
+    # indistinguishable from the room's own standing instructions.
+    assert {:error, changeset} =
+             Chat.create_agent(room.id, %{
+               "name" => "schedule",
+               "provider" => "codex",
+               "directory" => File.cwd!()
+             })
+
+    assert "is reserved" in errors_on(changeset).name
+
+    assert {:error, _} =
+             Chat.create_agent_profile(%{"name" => "schedule", "provider" => "codex"})
+  end
+
   test "recovery marks active turns interrupted and keeps sessions and pending deliveries", %{
     room: room,
     ada: ada

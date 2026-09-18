@@ -251,6 +251,50 @@ defmodule Roundtable.MCPTest do
     end
   end
 
+  describe "what a participant may not change" do
+    test "it cannot let a new participant approve its own tools", %{room: room, ada: ada} do
+      assert {:error, message} =
+               MCP.call(ada, "add_participant", %{
+                 "name" => "linus",
+                 "provider" => "claude",
+                 "auto_approve" => true
+               })
+
+      assert message =~ "human"
+      assert Chat.agents(room.id) |> Enum.map(& &1.name) == ["ada"]
+    end
+
+    test "nor give itself the same", %{ada: ada} do
+      assert {:error, _} =
+               MCP.call(ada, "update_participant", %{
+                 "participant" => "ada",
+                 "auto_approve" => true
+               })
+
+      refute Chat.agent!(ada.id).auto_approve
+    end
+
+    test "nor save a profile that carries it in", %{ada: ada} do
+      assert {:error, _} =
+               MCP.call(ada, "create_profile", %{
+                 "name" => "runner",
+                 "provider" => "claude",
+                 "auto_approve" => true
+               })
+
+      assert {:error, _} =
+               MCP.call(ada, "update_profile", %{"profile" => "runner", "auto_approve" => true})
+
+      assert Chat.agent_profiles() == []
+    end
+
+    test "and the tools never offer it in the first place" do
+      for tool <- MCP.tools() do
+        refute Map.has_key?(tool.inputSchema.properties, "auto_approve")
+      end
+    end
+  end
+
   describe "standing instructions" do
     test "a participant can be put on a schedule", %{room: room, ada: ada} do
       assert {:ok, text} =
@@ -334,7 +378,7 @@ defmodule Roundtable.MCPTest do
   describe "wiring into a provider" do
     alias Roundtable.Agents.Protocol
 
-    test "claude is given the server on the command line", %{ada: ada} do
+    test "claude is given the server on the command line, and the token is not", %{ada: ada} do
       {"claude", args} = Protocol.command(ada)
       pairs = Enum.chunk_every(args, 2, 1)
 
@@ -342,9 +386,23 @@ defmodule Roundtable.MCPTest do
       server = Jason.decode!(config)["mcpServers"]["roundtable"]
 
       assert server["url"] == "http://127.0.0.1:4002/mcp"
-      assert "Bearer " <> token = server["headers"]["Authorization"]
-      assert {:ok, %{id: id}} = MCP.participant(token)
+      # Named, not written: an argument list is world-readable through /proc.
+      assert server["headers"]["Authorization"] == "Bearer ${ROUNDTABLE_MCP_TOKEN}"
+
+      assert [{~c"ROUNDTABLE_MCP_TOKEN", token}] = Protocol.env(ada)
+      assert {:ok, %{id: id}} = token |> to_string() |> MCP.participant()
       assert id == ada.id
+    end
+
+    test "and no provider is given it any other way", %{room: room, ada: ada} do
+      {:ok, codex} = Chat.create_agent(room.id, %{"name" => "linus", "provider" => "codex"})
+
+      for agent <- [ada, codex] do
+        {_executable, args} = Protocol.command(agent)
+        [{_variable, token}] = Protocol.env(agent)
+
+        refute Enum.any?(args, &String.contains?(&1, to_string(token)))
+      end
     end
 
     test "codex takes its overrides before the subcommand, and its token from the environment",
@@ -359,6 +417,7 @@ defmodule Roundtable.MCPTest do
 
       assert [{~c"ROUNDTABLE_MCP_TOKEN", token}] = Protocol.env(codex)
       assert {:ok, _} = token |> to_string() |> MCP.participant()
+      refute Enum.any?(args, &String.contains?(&1, to_string(token)))
     end
 
     test "a provider with no way to say no is given nothing", %{room: room} do

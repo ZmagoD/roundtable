@@ -48,13 +48,17 @@ defmodule Roundtable.Agents.Protocol do
       else: []
   end
 
-  defp flags("claude", url, token) do
+  # The token is named here, not written here: an argument list is world-readable
+  # through /proc, and a participant's key to the rooms has no business being in
+  # it. Claude Code expands ${VAR} in an MCP configuration from its own
+  # environment, which is where `env/1` puts it.
+  defp flags("claude", url, _token) do
     config = %{
       mcpServers: %{
         roundtable: %{
           type: "http",
           url: url,
-          headers: %{"Authorization" => "Bearer #{token}"}
+          headers: %{"Authorization" => "Bearer ${#{@token_variable}}"}
         }
       }
     }
@@ -62,8 +66,8 @@ defmodule Roundtable.Agents.Protocol do
     ["--mcp-config", Jason.encode!(config)]
   end
 
-  # Codex reads the token from the environment instead, which keeps it out of
-  # the process list every user on the machine can read.
+  # Codex names the variable to read rather than expanding one, for the same
+  # reason and to the same effect.
   defp flags("codex", url, _token) do
     [
       "-c",
@@ -73,14 +77,17 @@ defmodule Roundtable.Agents.Protocol do
     ]
   end
 
-  @doc "Environment for the CLI: a participant's key to its own rooms."
-  def env(%{provider: "codex"} = agent) do
+  @doc """
+  Environment for the CLI: a participant's key to its own rooms.
+
+  The only place the token is passed. Every provider that is offered the tools
+  reads it from here, so it never appears in an argument list.
+  """
+  def env(agent) do
     if MCP.offered?(agent),
       do: [{~c"#{@token_variable}", String.to_charlist(MCP.token(agent))}],
       else: []
   end
-
-  def env(_agent), do: []
 
   @doc "A flag and its value, or nothing: an empty value would be a parse error."
   def optional(_flag, value) when value in [nil, ""], do: []

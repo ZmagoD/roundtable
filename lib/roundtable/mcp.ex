@@ -143,8 +143,7 @@ defmodule Roundtable.MCP do
             "provider" => string("Which CLI runs it: #{Enum.join(Agents.ids(), ", ")}."),
             "model" => string("Model id for that provider. Leave it out for the CLI's default."),
             "role" => role_property(),
-            "cost_tier" => cost_tier_property(),
-            "auto_approve" => auto_approve_property()
+            "cost_tier" => cost_tier_property()
           })
       },
       %{
@@ -160,8 +159,7 @@ defmodule Roundtable.MCP do
               "name" => string("A new name, while it has not taken a turn yet."),
               "model" => string("Model id for its provider."),
               "role" => role_property(),
-              "cost_tier" => cost_tier_property(),
-              "auto_approve" => auto_approve_property()
+              "cost_tier" => cost_tier_property()
             },
             ["participant"]
           )
@@ -178,8 +176,7 @@ defmodule Roundtable.MCP do
               "provider" => string("Which CLI runs it: #{Enum.join(Agents.ids(), ", ")}."),
               "model" => string("Model id for that provider."),
               "role" => role_property(),
-              "cost_tier" => cost_tier_property(),
-              "auto_approve" => auto_approve_property()
+              "cost_tier" => cost_tier_property()
             },
             ["name", "provider"]
           )
@@ -243,8 +240,7 @@ defmodule Roundtable.MCP do
               "provider" => string("Which CLI runs it: #{Enum.join(Agents.ids(), ", ")}."),
               "model" => string("Model id for that provider."),
               "role" => role_property(),
-              "cost_tier" => cost_tier_property(),
-              "auto_approve" => auto_approve_property()
+              "cost_tier" => cost_tier_property()
             },
             ["profile"]
           )
@@ -303,7 +299,8 @@ defmodule Roundtable.MCP do
   end
 
   def call(agent, "add_participant", args) do
-    with {:ok, room} <- room(agent, args),
+    with :ok <- refuse_approvals(args),
+         {:ok, room} <- room(agent, args),
          {:ok, added} <- add(room, args) do
       done(
         agent,
@@ -314,7 +311,8 @@ defmodule Roundtable.MCP do
   end
 
   def call(agent, "update_participant", args) do
-    with {:ok, room} <- room(agent, args),
+    with :ok <- refuse_approvals(args),
+         {:ok, room} <- room(agent, args),
          {:ok, target} <- participant_in(room, args["participant"]),
          attrs = take(args, participant_fields()),
          {:ok, updated} <- write(Chat.update_agent(target.id, attrs)) do
@@ -323,7 +321,8 @@ defmodule Roundtable.MCP do
   end
 
   def call(agent, "create_profile", args) do
-    with {:ok, profile} <- write(Chat.create_agent_profile(take(args, profile_fields()))) do
+    with :ok <- refuse_approvals(args),
+         {:ok, profile} <- write(Chat.create_agent_profile(take(args, profile_fields()))) do
       done(
         agent,
         "saved the profile #{profile.name}, running on #{profile.provider}" <>
@@ -333,7 +332,8 @@ defmodule Roundtable.MCP do
   end
 
   def call(agent, "update_profile", args) do
-    with {:ok, profile} <- profile(args["profile"]),
+    with :ok <- refuse_approvals(args),
+         {:ok, profile} <- profile(args["profile"]),
          attrs = take(args, profile_fields()),
          {:ok, updated} <- write(Chat.update_agent_profile(profile.id, attrs)) do
       done(agent, "updated the profile #{updated.name}: #{changed(attrs)}.")
@@ -374,14 +374,21 @@ defmodule Roundtable.MCP do
   def call(_agent, name, _args),
     do: {:error, "There is no tool called #{name} here."}
 
+  # Deliberately without auto_approve. Whether a participant stops to ask is the
+  # switch that makes every other tool here safe, so it is the human's alone —
+  # and a participant that could set it on itself would be past the gate that
+  # was watching it.
   defp participant_fields,
-    do: %{
-      "name" => "name",
-      "model" => "model",
-      "role" => "role",
-      "cost_tier" => "cost_tier",
-      "auto_approve" => "auto_approve"
-    }
+    do: %{"name" => "name", "model" => "model", "role" => "role", "cost_tier" => "cost_tier"}
+
+  defp refuse_approvals(args) do
+    if Map.has_key?(args, "auto_approve"),
+      do:
+        {:error,
+         "Tool approvals are the human's to set, on the participant's own card or with " <>
+           "/auto. They cannot be changed from here."},
+      else: :ok
+  end
 
   defp profile_fields, do: Map.put(participant_fields(), "provider", "provider")
 
@@ -585,13 +592,5 @@ defmodule Roundtable.MCP do
       type: "string",
       enum: ["economy", "standard", "premium", "unknown"],
       description: "A planning hint about relative cost. Not a verified price."
-    }
-
-  defp auto_approve_property,
-    do: %{
-      type: "boolean",
-      description:
-        "Whether it approves its own tool calls. Leave it false unless the human asks for " <>
-          "an unattended participant."
     }
 end

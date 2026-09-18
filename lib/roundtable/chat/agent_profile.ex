@@ -27,7 +27,7 @@ defmodule Roundtable.Chat.AgentProfile do
     # The name is used as the participant's name in a room, so it follows the
     # same rule rather than producing an invalid agent later.
     |> validate_format(:name, ~r/^[a-z][a-z0-9_-]{0,29}$/)
-    |> validate_exclusion(:name, ["you", "system", "all"])
+    |> validate_exclusion(:name, ["you", "system", "all", "schedule"])
     |> validate_inclusion(:provider, Roundtable.Agents.ids())
     |> validate_inclusion(:cost_tier, ["economy", "standard", "premium", "unknown"])
     |> validate_length(:role, max: 4000)
