@@ -43,7 +43,10 @@ defmodule Roundtable.TUI.SessionTest do
           {"DRIVE_SCRIPT", script},
           {"DRIVE_TIMEOUT", to_string(Keyword.get(opts, :timeout, 60))},
           {"DATABASE_PATH", database},
-          {"MIX_ENV", "test"}
+          {"MIX_ENV", "test"},
+          # The runtime's tty driver will not enter raw mode for a terminal it
+          # cannot identify, and CI runners leave TERM unset.
+          {"TERM", "xterm-256color"}
         ],
         stderr_to_stdout: true
       )
@@ -93,7 +96,9 @@ defmodule Roundtable.TUI.SessionTest do
   test "^C restores the terminal as cleanly as /quit does", %{database: database} do
     output = drive("12:\\x03", database, timeout: 40)
 
-    assert String.contains?(output, "\e[?1049h")
+    assert String.contains?(output, "\e[?1049h"),
+           "the client never took the screen; it printed: #{String.slice(output, 0, 400)}"
+
     assert String.contains?(output, "\e[?1049l"), "^C left the terminal in the alternate screen"
   end
 
@@ -103,7 +108,8 @@ defmodule Roundtable.TUI.SessionTest do
     script = "12:/new-room Repo #{File.cwd!()}\\r|22:/quit\\r"
     drawn = drive(script, database) |> frames() |> Enum.join("\n")
 
-    assert drawn =~ "changes ·", "the changes pane never appeared"
+    assert drawn =~ "changes ·",
+           "the changes pane never appeared; the client printed: #{String.slice(drawn, 0, 400)}"
   end
 
   test "it refuses to start when there is no terminal, rather than corrupting one",
