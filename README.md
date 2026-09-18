@@ -89,7 +89,7 @@ cycles the recipient. Lines beginning with `/` are commands:
 
 | Command | Effect |
 | --- | --- |
-| `/help` | list the commands |
+| `/help`, or `?` on an empty line | the full help screen |
 | `/rooms`, `/room <name>` | list rooms, switch to one |
 | `/new-room <name> <dir>` | create a room on an existing absolute directory |
 | `/agent <name> <provider> [dir]` | add a participant; `--model`, `--role`, `--tier`, `--dir` |
@@ -105,6 +105,9 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/lazygit` | hand the terminal to lazygit |
 | `/refresh` | re-read the room now, without waiting for an update |
 | `/quit` | leave (Ctrl-C and Ctrl-D also work) |
+
+Press `?` on an empty line for a help screen listing every command and key —
+the client is meant to be learnable from inside it, without this page.
 
 `↑`/`↓` and `PgUp`/`PgDn` scroll the transcript, `^L` redraws. Approvals and
 failed runs appear inline with the command that answers them.

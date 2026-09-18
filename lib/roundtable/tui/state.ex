@@ -26,6 +26,7 @@ defmodule Roundtable.TUI.State do
             changes_visible: true,
             changes_target: nil,
             roster_visible: false,
+            help_visible: false,
             handoff: nil,
             quit: false
 
@@ -95,6 +96,9 @@ defmodule Roundtable.TUI.State do
 
   def handle_key(state, :enter), do: submit(clear_status(state))
 
+  def handle_key(%{input: ""} = state, {:char, "?"}),
+    do: {%{clear_status(state) | help_visible: not state.help_visible, scroll: 0}, []}
+
   def handle_key(state, {:char, char}) do
     {before, rest} = split(state)
     {%{state | input: before <> char <> rest, cursor: state.cursor + 1} |> retype(), []}
@@ -136,6 +140,9 @@ defmodule Roundtable.TUI.State do
   def handle_key(state, :down), do: {scroll(state, -1), []}
   def handle_key(state, :page_up), do: {scroll(state, body_height(state)), []}
   def handle_key(state, :page_down), do: {scroll(state, -body_height(state)), []}
+
+  def handle_key(%{help_visible: true} = state, :escape),
+    do: {%{state | help_visible: false}, []}
 
   def handle_key(%{roster_visible: true} = state, :escape),
     do: {%{state | roster_visible: false}, []}
@@ -203,7 +210,10 @@ defmodule Roundtable.TUI.State do
   defp dispatch(state, name, _args) when name in ~w(quit q exit),
     do: {%{state | quit: true}, [:quit]}
 
-  defp dispatch(state, "help", _) do
+  defp dispatch(state, "help", _),
+    do: {%{state | help_visible: not state.help_visible, scroll: 0}, []}
+
+  defp dispatch(state, "commands", _) do
     {put_status(
        state,
        "/room <name> · /new-room <name> <dir> · /agent <name> <provider> [dir] · " <>

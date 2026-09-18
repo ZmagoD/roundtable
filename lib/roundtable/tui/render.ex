@@ -28,10 +28,7 @@ defmodule Roundtable.TUI.Render do
     # The changes pane takes from the transcript, never from the frame.
     changes = changes_lines(state, width, div(body, 2))
 
-    upper =
-      if state.roster_visible,
-        do: roster(state, body - length(changes), width),
-        else: transcript(state, body - length(changes), width)
+    upper = upper_pane(state, body - length(changes), width)
 
     right = upper ++ changes
 
@@ -56,9 +53,22 @@ defmodule Roundtable.TUI.Render do
     ]
   end
 
-  @doc "How many transcript lines the current room would produce."
-  def total_lines(%State{size: {_, cols}} = state),
-    do: length(transcript_lines(state, cols - @sidebar - 3))
+  @doc "How many lines the scrollable pane currently holds."
+  def total_lines(%State{size: {_, cols}} = state) do
+    width = cols - @sidebar - 3
+
+    if state.help_visible,
+      do: length(help_lines(width)),
+      else: length(transcript_lines(state, width))
+  end
+
+  defp upper_pane(state, height, width) do
+    cond do
+      state.help_visible -> help(state, height, width)
+      state.roster_visible -> roster(state, height, width)
+      true -> transcript(state, height, width)
+    end
+  end
 
   defp top_border(state, cols) do
     title =
@@ -122,6 +132,76 @@ defmodule Roundtable.TUI.Render do
         end
 
     fit(rows, height, pad("", @sidebar), :top)
+  end
+
+  @doc false
+  def help(state, height, width) do
+    lines = help_lines(width)
+    visible = max(height - 2, 1)
+    max_scroll = max(length(lines) - visible, 0)
+    offset = min(state.scroll, max_scroll)
+
+    footer =
+      if max_scroll > 0,
+        do: [[@dim, pad(" ↑↓ for more · Esc or ? to close", width), @reset]],
+        else: [[@dim, pad(" Esc or ? to close", width), @reset]]
+
+    ([heading("how to use Roundtable", width)] ++
+       (lines |> Enum.drop(offset) |> Enum.take(visible)) ++ footer)
+    |> fit(height, pad("", width), :top)
+  end
+
+  @help [
+    {:section, "Talking"},
+    {"<message>", "post to the room; everyone reads it next turn"},
+    {"@name <message>", "assign a turn to that participant"},
+    {"@all <message>", "assign to everyone in the room"},
+    {"Tab", "cycle which participant you are addressing"},
+    {:section, "Who is here"},
+    {"/who   ^P", "roster: provider, model, cost tier, role, status"},
+    {"/agent <name> <provider>", "add one; providers are codex, claude, opencode"},
+    {"  [dir] [--model m]", "its own worktree, and a model to pin"},
+    {"  [--role text] [--tier t]", "what it is for; economy, standard, premium"},
+    {"/role <agent> <text>", "change what a participant is for"},
+    {"/model <agent> <id>", "pin a model, or 'default' to unpin"},
+    {"/stop <agent>", "stop its queue"},
+    {"/reset <agent>", "clear its session; history stays"},
+    {"/retry [run]", "retry the newest failed run, or one by id"},
+    {"/approve accept|decline [n]", "answer a pending tool approval"},
+    {:section, "Rooms"},
+    {"/rooms", "list them"},
+    {"/room <name>", "switch to one"},
+    {"/new-room <name> <dir>", "create one on an existing absolute directory"},
+    {:section, "Other rooms"},
+    {"/ask <room>/<agent> <q>", "their answer is posted back here"},
+    {"/delegate <room>/<agent> <task>", "they report back when it is done"},
+    {"", "a room is addressed in lowercase with dashes"},
+    {:section, "Changes"},
+    {"^T   /changes [agent|room|off]", "the git pane; follow an agent's worktree"},
+    {"^G   /lazygit", "hand the terminal over; quit it to come back"},
+    {:section, "Getting around"},
+    {"↑ ↓  PgUp PgDn", "scroll"},
+    {"^L", "redraw"},
+    {"Esc", "close a pane, or clear the line"},
+    {"^U  ^W  Home  End", "edit the line"},
+    {"^C   ^D   /quit", "leave; running turns carry on"}
+  ]
+
+  defp help_lines(width) do
+    Enum.map(@help, fn
+      {:section, title} ->
+        [@bold, pad(" " <> title, width), @reset]
+
+      {keys, description} ->
+        column = min(32, max(div(width, 2), 12))
+
+        [
+          @cyan,
+          pad("  " <> cut(keys, column - 3), column),
+          @reset,
+          pad(description, width - column)
+        ]
+    end)
   end
 
   @doc false
@@ -259,6 +339,32 @@ defmodule Roundtable.TUI.Render do
   end
 
   @doc false
+  def transcript_lines(%{room: nil}, width) do
+    [
+      [@bold, pad(" Nothing here yet.", width), @reset],
+      pad("", width),
+      [@dim, pad(" Make a room on a project directory:", width), @reset],
+      [@cyan, pad("   /new-room My Project /path/to/project", width), @reset],
+      pad("", width),
+      [@dim, pad(" Then bring someone in, and give them work:", width), @reset],
+      [@cyan, pad("   /agent ada claude --role \"Implement what I ask for.\"", width), @reset],
+      [@cyan, pad("   @ada have a look at the tests", width), @reset],
+      pad("", width),
+      [@dim, pad(" Press ? for everything else.", width), @reset]
+    ]
+  end
+
+  def transcript_lines(%{messages: [], agents: []} = state, width) do
+    [
+      [@bold, pad(" #{state.room.name} is empty.", width), @reset],
+      pad("", width),
+      [@dim, pad(" Bring someone in:", width), @reset],
+      [@cyan, pad("   /agent ada claude --role \"Implement what I ask for.\"", width), @reset],
+      pad("", width),
+      [@dim, pad(" Press ? for everything else.", width), @reset]
+    ]
+  end
+
   def transcript_lines(state, width) do
     messages =
       Enum.flat_map(state.messages, fn message ->
@@ -335,7 +441,7 @@ defmodule Roundtable.TUI.Render do
   defp status_line(state, cols) do
     left =
       state.status ||
-        "/help · ^P who · ^T changes · ^G lazygit · ^C quit"
+        "? help · ^P who · ^T changes · ^G lazygit · ^C quit"
 
     right = if state.connected, do: state.target, else: "disconnected"
 

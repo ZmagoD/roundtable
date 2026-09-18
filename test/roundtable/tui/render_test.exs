@@ -259,6 +259,53 @@ defmodule Roundtable.TUI.RenderTest do
     assert screen =~ "No participants yet"
   end
 
+  test "help lists every command and keeps the frame intact" do
+    state = state(help_visible: true)
+
+    for size <- [{24, 80}, {40, 120}, {8, 40}] do
+      {rows, cols} = size
+      lines = screen(%{state | size: size})
+      assert length(lines) == rows
+      for line <- lines, do: assert(String.length(line) == cols)
+    end
+
+    # At a tall terminal the whole thing is on screen at once.
+    screen = %{state | size: {44, 100}} |> screen() |> Enum.join("\n")
+
+    assert screen =~ "how to use Roundtable"
+
+    for command <- ~w(/who /agent /role /model /stop /reset /retry /approve /rooms /room
+                      /new-room /ask /delegate /changes /lazygit /quit) do
+      assert screen =~ command, "help does not mention #{command}"
+    end
+
+    for key <- ["Tab", "^P", "^T", "^G", "^L", "Esc", "^C"] do
+      assert screen =~ key, "help does not mention #{key}"
+    end
+  end
+
+  test "help scrolls when it does not fit, and says so" do
+    short = state(help_visible: true, size: {24, 80})
+    assert screen(short) |> Enum.join("\n") =~ "↑↓ for more"
+
+    scrolled = screen(%{short | scroll: 10}) |> Enum.join("\n")
+    refute scrolled =~ "Talking", "scrolling did not move the help"
+  end
+
+  test "help replaces the transcript and takes precedence over the roster" do
+    state = state(messages: [message(1, "you", "a message in the transcript")])
+
+    refute screen(%{state | help_visible: true}) |> Enum.join("\n") =~
+             "a message in the transcript"
+
+    both = %{state | help_visible: true, roster_visible: true}
+    assert screen(both) |> Enum.join("\n") =~ "how to use Roundtable"
+  end
+
+  test "counts the pane that is actually showing, for scroll clamping" do
+    assert Render.total_lines(state(help_visible: true)) > 20
+  end
+
   test "counts transcript lines for scroll clamping" do
     assert Render.total_lines(state(messages: [])) == 0
     assert Render.total_lines(state()) == 1

@@ -69,7 +69,36 @@ defmodule Roundtable.TUI.StateTest do
 
     {state, []} = State.handle_key(state, :enter)
     assert state.mode == :message
-    assert state.status =~ "/new-room"
+    assert state.help_visible
+  end
+
+  test "help opens from a command, from ? on an empty line, and closes with Esc" do
+    {from_command, []} = state() |> type("/help") |> State.handle_key(:enter)
+    assert from_command.help_visible
+
+    {from_key, []} = State.handle_key(state(), {:char, "?"})
+    assert from_key.help_visible
+
+    {closed, []} = State.handle_key(from_key, :escape)
+    refute closed.help_visible
+
+    {toggled, []} = State.handle_key(from_key, {:char, "?"})
+    refute toggled.help_visible
+  end
+
+  test "a question mark mid-sentence is just a question mark" do
+    state = state() |> type("does this work?")
+
+    assert state.input == "does this work?"
+    refute state.help_visible
+  end
+
+  test "Esc closes help before it clears the line" do
+    state = state() |> type("kept")
+    {state, []} = State.handle_key(%{state | help_visible: true}, :escape)
+
+    refute state.help_visible
+    assert state.input == "kept"
   end
 
   test "switching rooms by name, case, or id" do
