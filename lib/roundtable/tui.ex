@@ -13,6 +13,9 @@ defmodule Roundtable.TUI do
   alias Roundtable.TUI.{Keys, Render, State, Terminal}
 
   @tick 1_000
+  # Two ticks between git polls: fast enough to watch a turn edit files,
+  # slow enough that a large repository is not restatted every second.
+  @poll_ticks 2
 
   def run(%Client{} = client) do
     Terminal.configure_io()
@@ -23,7 +26,7 @@ defmodule Roundtable.TUI do
         Terminal.enter_screen()
 
         try do
-          start(client)
+          {:ok, start(client)}
         after
           Process.unlink(reader)
           Process.exit(reader, :kill)
@@ -62,8 +65,17 @@ defmodule Roundtable.TUI do
     room = client |> Client.rooms() |> first_room()
     {:ok, relay} = watch(client, room)
 
-    %{client: client, state: state, relay: relay, room_id: room && room.id, buffer: ""}
+    %{
+      client: client,
+      state: state,
+      relay: relay,
+      room_id: room && room.id,
+      buffer: "",
+      polling: false,
+      ticks: 0
+    }
     |> refresh()
+    |> poll_git()
     |> draw()
     |> loop()
   end
@@ -79,19 +91,34 @@ defmodule Roundtable.TUI do
             Enum.reduce(effects, %{acc | state: state}, &perform/2)
           end)
 
-        if context.state.quit, do: :ok, else: context |> draw() |> loop()
+        if context.state.quit, do: context.state, else: context |> draw() |> loop()
 
       message when message in [:room_updated, :rooms_updated] ->
-        context |> drain() |> refresh() |> draw() |> loop()
+        context |> drain() |> refresh() |> poll_git() |> draw() |> loop()
 
       :tick ->
         size = Terminal.size()
+        context = %{context | ticks: context.ticks + 1}
+
+        context =
+          if rem(context.ticks, @poll_ticks) == 0, do: poll_git(context), else: context
 
         if size == context.state.size do
           loop(context)
         else
           %{context | state: State.put_size(context.state, size)} |> draw() |> loop()
         end
+
+      {:changes, result} ->
+        changes =
+          case result do
+            {:ok, changes} -> changes
+            error -> error
+          end
+
+        %{context | polling: false, state: State.put_changes(context.state, changes)}
+        |> draw()
+        |> loop()
 
       {:nodedown, _} ->
         %{context | state: State.put_connected(context.state, false)} |> draw() |> loop()
@@ -118,6 +145,21 @@ defmodule Roundtable.TUI do
       message when message in [:room_updated, :rooms_updated] -> drain(context)
     after
       0 -> context
+    end
+  end
+
+  # Runs git off the event loop: a big repository must never stall a keystroke.
+  defp poll_git(%{polling: true} = context), do: context
+
+  defp poll_git(context) do
+    directory = State.watched_directory(context.state)
+
+    if context.state.changes_visible and directory do
+      parent = self()
+      spawn(fn -> send(parent, {:changes, Roundtable.Git.status(directory)}) end)
+      %{context | polling: true}
+    else
+      context
     end
   end
 
@@ -180,6 +222,28 @@ defmodule Roundtable.TUI do
   defp perform({action, id}, context) when action in [:stop, :reset, :retry] do
     apply(Client, action, [context.client, id])
     refresh(context) |> status("#{action} sent.")
+  end
+
+  defp perform(:git_ui, context) do
+    directory = State.watched_directory(context.state)
+
+    cond do
+      is_nil(directory) ->
+        status(context, "No room selected.")
+
+      path = System.get_env("ROUNDTABLE_TUI_HANDOFF") ->
+        # The BEAM starts children in their own session, so a spawned lazygit
+        # would have no terminal. The launcher owns it; hand the request back.
+        command = System.get_env("ROUNDTABLE_GIT_UI") || "lazygit"
+        handoff = %{path: path, directory: directory, command: command}
+        %{context | state: %{context.state | handoff: handoff, quit: true}}
+
+      true ->
+        status(
+          context,
+          "lazygit needs the launcher to hand over the terminal. Start with bin/roundtable tui."
+        )
+    end
   end
 
   defp perform(_, context), do: context

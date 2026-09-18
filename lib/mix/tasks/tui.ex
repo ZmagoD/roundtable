@@ -22,6 +22,10 @@ defmodule Mix.Tasks.Tui do
       elixir --erl "+Bc" -S mix tui
 
   or leave the room with `/quit` or Ctrl-D, which need no flag.
+
+  Ctrl-G hands the terminal to lazygit. That needs `bin/roundtable tui`, which
+  sets `ROUNDTABLE_TUI_HANDOFF` and restarts the client afterwards; set
+  `ROUNDTABLE_GIT_UI` to use something other than lazygit.
   """
   use Mix.Task
 
@@ -35,8 +39,17 @@ defmodule Mix.Tasks.Tui do
     case client(opts) do
       {:ok, client} ->
         case Roundtable.TUI.run(client) do
-          {:error, :no_terminal} -> abort("mix tui needs a terminal; it cannot be piped.")
-          _ -> :ok
+          {:ok, %{handoff: %{} = handoff}} ->
+            # The launcher reads this, runs the tool with the real terminal,
+            # and starts the client again. 64 is the agreed signal.
+            File.write!(handoff.path, "#{handoff.directory}\n#{handoff.command}\n")
+            exit({:shutdown, 64})
+
+          {:error, :no_terminal} ->
+            abort("mix tui needs a terminal; it cannot be piped.")
+
+          _ ->
+            :ok
         end
 
       {:error, message} ->

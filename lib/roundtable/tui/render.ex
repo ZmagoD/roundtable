@@ -23,8 +23,11 @@ defmodule Roundtable.TUI.Render do
   @doc "Full-screen frame, cursor parked at the end of the input line."
   def render(%State{size: {rows, cols}} = state) when rows >= 8 and cols >= 40 do
     body = rows - @chrome
+    width = cols - @sidebar - 3
     left = sidebar(state, body)
-    right = transcript(state, body, cols - @sidebar - 3)
+    # The changes pane takes from the transcript, never from the frame.
+    changes = changes_lines(state, width, div(body, 2))
+    right = transcript(state, body - length(changes), width) ++ changes
 
     [
       "\e[H\e[2J",
@@ -113,6 +116,89 @@ defmodule Roundtable.TUI.Render do
         end
 
     fit(rows, height, pad("", @sidebar), :top)
+  end
+
+  @doc false
+  def changes_lines(state, width, max_height) do
+    directory = State.watched_directory(state)
+
+    cond do
+      not state.changes_visible or is_nil(directory) ->
+        []
+
+      match?({:error, _}, state.changes) ->
+        {:error, reason} = state.changes
+        [heading("changes", width), [@dim, pad(" " <> cut(reason, width - 1), width), @reset]]
+
+      is_nil(state.changes) ->
+        []
+
+      state.changes.entries == [] ->
+        [
+          heading("changes · #{state.changes.branch}", width),
+          [@dim, pad(" working tree clean", width), @reset]
+        ]
+
+      true ->
+        summary =
+          " #{length(state.changes.entries)} #{plural(length(state.changes.entries))}, " <>
+            "+#{state.changes.added} -#{state.changes.removed}"
+
+        rows = max(max_height - 2, 1)
+        shown = Enum.take(state.changes.entries, rows)
+        hidden = length(state.changes.entries) - length(shown)
+
+        [heading("changes · #{state.changes.branch}", width)] ++
+          Enum.map(shown, &entry_line(&1, width)) ++
+          if hidden > 0 do
+            [[@dim, pad("  …and #{hidden} more", width), @reset]]
+          else
+            []
+          end ++
+          [[@bold, pad(summary, width), @reset]]
+    end
+  end
+
+  defp plural(1), do: "file"
+  defp plural(_), do: "files"
+
+  defp heading(text, width) do
+    label = cut(" " <> text <> " ", width)
+    [@dim, "─", label, String.duplicate("─", max(width - 1 - width(label), 0)), @reset]
+  end
+
+  defp entry_line(entry, width) do
+    counts =
+      if entry.added + entry.removed > 0,
+        do: "+#{entry.added} -#{entry.removed}",
+        else: ""
+
+    code = String.pad_leading(cut(entry.status, 2), 2)
+    path = cut_left(entry.path, max(width - 5 - String.length(counts), 1))
+    gap = max(width - 4 - width(path) - String.length(counts), 1)
+
+    [
+      entry_colour(entry.status),
+      pad(" #{code} #{path}#{String.duplicate(" ", gap)}#{counts}", width),
+      @reset
+    ]
+  end
+
+  defp entry_colour("??"), do: @dim
+  defp entry_colour("A" <> _), do: @green
+  defp entry_colour("D" <> _), do: @red
+  defp entry_colour("R" <> _), do: @cyan
+  defp entry_colour(_), do: @yellow
+
+  # Long paths are more useful from the tail: the file name beats the repo root.
+  defp cut_left(text, width) when width <= 1, do: cut(text, width)
+
+  defp cut_left(text, width) do
+    if String.length(text) <= width do
+      text
+    else
+      "…" <> String.slice(text, String.length(text) - width + 1, width - 1)
+    end
   end
 
   defp agent_dot("running"), do: {"●", @green}
@@ -208,7 +294,7 @@ defmodule Roundtable.TUI.Render do
   defp status_line(state, cols) do
     left =
       state.status ||
-        "/help · Tab recipient · ↑↓ scroll · ^L redraw · ^C quit"
+        "/help · Tab recipient · ^T changes · ^G lazygit · ^C quit"
 
     right = if state.connected, do: state.target, else: "disconnected"
 

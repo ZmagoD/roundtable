@@ -22,6 +22,10 @@ defmodule Roundtable.TUI.State do
             connected: true,
             target: "",
             mode: :message,
+            changes: nil,
+            changes_visible: true,
+            changes_target: nil,
+            handoff: nil,
             quit: false
 
   @providers ~w(codex claude opencode)
@@ -52,6 +56,21 @@ defmodule Roundtable.TUI.State do
     }
   end
 
+  @doc """
+  The directory whose changes the pane watches.
+
+  Agents can be given their own working directory (a separate worktree, say),
+  so `/changes <agent>` follows that agent instead of the room.
+  """
+  def watched_directory(%{room: nil}), do: nil
+
+  def watched_directory(state) do
+    agent = Enum.find(state.agents, &(&1.name == state.changes_target))
+    (agent && agent.directory) || state.room.directory
+  end
+
+  def put_changes(state, changes), do: %{state | changes: changes}
+
   def put_status(state, status), do: %{state | status: status}
   def clear_status(state), do: %{state | status: nil}
   def put_size(state, size), do: %{state | size: size}
@@ -64,6 +83,11 @@ defmodule Roundtable.TUI.State do
     do: {%{state | quit: true}, [:quit]}
 
   def handle_key(state, :ctrl_l), do: {clear_status(state), [:resize]}
+
+  def handle_key(state, :ctrl_t),
+    do: {%{clear_status(state) | changes_visible: not state.changes_visible}, []}
+
+  def handle_key(state, :ctrl_g), do: {clear_status(state), [:git_ui]}
 
   def handle_key(state, :enter), do: submit(clear_status(state))
 
@@ -175,7 +199,8 @@ defmodule Roundtable.TUI.State do
     {put_status(
        state,
        "/room <name> · /new-room <name> <dir> · /agent <name> <provider> [dir] · " <>
-         "/stop <agent> · /reset <agent> · /retry [run] · /approve accept|decline [n] · /quit"
+         "/stop <agent> · /reset <agent> · /retry [run] · /approve accept|decline [n] · " <>
+         "/changes [agent|room|off] · /lazygit · /quit"
      ), []}
   end
 
@@ -264,6 +289,21 @@ defmodule Roundtable.TUI.State do
         {put_status(state, "Usage: /approve accept|decline [number]"), []}
     end
   end
+
+  defp dispatch(state, "changes", "off"), do: {%{state | changes_visible: false}, []}
+  defp dispatch(state, "changes", ""), do: {%{state | changes_visible: true}, []}
+
+  defp dispatch(state, "changes", "room"),
+    do: {%{state | changes_visible: true, changes_target: nil}, []}
+
+  defp dispatch(state, "changes", name) do
+    case Enum.find(state.agents, &(&1.name == String.trim(name))) do
+      nil -> {put_status(state, "No agent called #{name}. Try /changes room."), []}
+      agent -> {%{state | changes_visible: true, changes_target: agent.name}, []}
+    end
+  end
+
+  defp dispatch(state, name, _) when name in ~w(lazygit git), do: {state, [:git_ui]}
 
   defp dispatch(state, "refresh", _), do: {state, [:refresh]}
 

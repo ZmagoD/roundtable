@@ -150,6 +150,49 @@ defmodule Roundtable.TUI.StateTest do
     assert state.status =~ "Unknown command /frobnicate"
   end
 
+  test "ctrl-t toggles the changes pane" do
+    {state, []} = State.handle_key(state(), :ctrl_t)
+    refute state.changes_visible
+
+    {state, []} = State.handle_key(state, :ctrl_t)
+    assert state.changes_visible
+  end
+
+  test "ctrl-g asks for the git UI" do
+    assert {_, [:git_ui]} = State.handle_key(state(), :ctrl_g)
+    {_, effects} = state() |> type("/lazygit") |> State.handle_key(:enter)
+    assert effects == [:git_ui]
+  end
+
+  test "/changes follows a room, an agent, or nothing" do
+    {state, []} = state() |> type("/changes off") |> State.handle_key(:enter)
+    refute state.changes_visible
+
+    {state, []} = state() |> type("/changes ada") |> State.handle_key(:enter)
+    assert state.changes_visible
+    assert state.changes_target == "ada"
+
+    {state, []} = state |> type("/changes room") |> State.handle_key(:enter)
+    assert state.changes_target == nil
+
+    {state, []} = state() |> type("/changes ghost") |> State.handle_key(:enter)
+    assert state.status =~ "No agent called ghost"
+  end
+
+  test "the watched directory follows the target agent" do
+    agents = [
+      %Agent{id: 7, name: "ada", directory: "/worktrees/ada"},
+      %Agent{id: 8, name: "tester", directory: nil}
+    ]
+
+    state = state(agents: agents)
+    assert State.watched_directory(state) == "/tmp"
+    assert State.watched_directory(%{state | changes_target: "ada"}) == "/worktrees/ada"
+    # An agent without its own directory falls back to the room's.
+    assert State.watched_directory(%{state | changes_target: "tester"}) == "/tmp"
+    assert State.watched_directory(%{state | room: nil}) == nil
+  end
+
   test "ctrl-c quits" do
     assert {%{quit: true}, [:quit]} = State.handle_key(state(), :ctrl_c)
   end

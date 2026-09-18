@@ -94,10 +94,37 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/stop <agent>`, `/reset <agent>` | stop a participant's queue, clear its session |
 | `/retry [run]` | retry the newest failed run, or one by id |
 | `/approve accept\|decline [n]` | answer a pending tool approval |
+| `/changes [agent\|room\|off]` | watch a different directory, or hide the pane |
+| `/lazygit` | hand the terminal to lazygit |
 | `/quit` | leave (Ctrl-C and Ctrl-D also work) |
 
 `↑`/`↓` and `PgUp`/`PgDn` scroll the transcript, `^L` redraws. Approvals and
 failed runs appear inline with the command that answers them.
+
+### Watching the work land
+
+A pane under the transcript polls `git status` in the room's directory, so you
+see files appear and line counts move while a turn is still running:
+
+```
+─ changes · main ───────────────────────────────
+  M lib/parser.ex                          +42 -7
+  A test/parser_test.exs                      +88
+ ?? scratch.md
+ 3 files, +130 -7
+```
+
+`^T` hides and shows it. When an agent has its own working directory — a
+separate worktree, say — `/changes <agent>` follows that one instead of the
+room's.
+
+`^G` hands the terminal to **lazygit** in whichever directory the pane is
+watching, and brings the client back when you quit it. Set `ROUNDTABLE_GIT_UI`
+to use something else (`ROUNDTABLE_GIT_UI=nvim`, for instance). This needs
+`bin/roundtable tui`: the client cannot spawn an interactive tool itself,
+because the BEAM starts every child process in its own session with no
+controlling terminal, so the launcher does it and restarts the client
+afterwards.
 
 Without the service running, `mix tui --local` starts a standalone client that
 owns the database itself. Use it only when the background service is stopped —

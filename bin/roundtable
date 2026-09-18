@@ -86,10 +86,37 @@ case "${1:-start}" in
     fi
     host="$(hostname -s 2>/dev/null || hostname)"
     node="${ROUNDTABLE_NODE:-roundtable@$host}"
-    # +Bc delivers ^C to the client as a keystroke instead of opening the
-    # emulator's break menu, so the client can restore the terminal on the way out.
-    exec elixir --erl "+Bc" --sname "roundtable_tui_$$" --cookie "$(cat "$cookie_file")" \
-      -S mix tui --node "$node"
+    # The client cannot spawn lazygit itself: the BEAM starts children in their
+    # own session, with no controlling terminal. It exits 64 instead and names
+    # the tool here, where the terminal actually lives.
+    handoff="$(mktemp -t roundtable-handoff.XXXXXX)"
+    export ROUNDTABLE_TUI_HANDOFF="$handoff"
+    trap 'rm -f "$handoff"' EXIT
+
+    while true; do
+      # +Bc delivers ^C to the client as a keystroke instead of opening the
+      # emulator's break menu, so the client can restore the terminal on the way out.
+      set +e
+      elixir --erl "+Bc" --sname "roundtable_tui_$$" --cookie "$(cat "$cookie_file")" \
+        -S mix tui --node "$node"
+      code=$?
+      set -e
+
+      if [[ $code -ne 64 || ! -s "$handoff" ]]; then
+        exit "$code"
+      fi
+
+      directory="$(sed -n 1p "$handoff")"
+      command="$(sed -n 2p "$handoff")"
+      : > "$handoff"
+
+      if ! command -v "$command" >/dev/null 2>&1; then
+        echo "$command is not installed. Install it, or set ROUNDTABLE_GIT_UI." >&2
+        read -r -p "Press enter to return to Roundtable. " _ < /dev/tty
+      else
+        (cd "$directory" && "$command") || true
+      fi
+    done
     ;;
   logs) tail -f "$STATE_DIR/server.log" ;;
   update)

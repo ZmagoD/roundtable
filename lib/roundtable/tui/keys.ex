@@ -42,7 +42,9 @@ defmodule Roundtable.TUI.Keys do
   defp decode(<<3, rest::binary>>, keys), do: decode(rest, [:ctrl_c | keys])
   defp decode(<<4, rest::binary>>, keys), do: decode(rest, [:ctrl_d | keys])
   defp decode(<<5, rest::binary>>, keys), do: decode(rest, [:end_key | keys])
+  defp decode(<<7, rest::binary>>, keys), do: decode(rest, [:ctrl_g | keys])
   defp decode(<<12, rest::binary>>, keys), do: decode(rest, [:ctrl_l | keys])
+  defp decode(<<20, rest::binary>>, keys), do: decode(rest, [:ctrl_t | keys])
   defp decode(<<21, rest::binary>>, keys), do: decode(rest, [:ctrl_u | keys])
   defp decode(<<23, rest::binary>>, keys), do: decode(rest, [:ctrl_w | keys])
 
