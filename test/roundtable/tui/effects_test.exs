@@ -121,6 +121,34 @@ defmodule Roundtable.TUI.EffectsTest do
     assert Chat.agent!(agent.id).model == "o3"
   end
 
+  test "renaming a participant, and refusing a name already in use", %{
+    context: context,
+    agent: agent,
+    room: room
+  } do
+    context = TUI.perform({:update_agent, agent.id, %{"name" => "ada-2"}}, context)
+    assert context.state.status =~ "@ada-2 updated"
+    assert Chat.agent!(agent.id).name == "ada-2"
+
+    {:ok, other} =
+      Chat.create_agent(room.id, %{
+        "name" => "grace",
+        "provider" => "opencode",
+        "directory" => File.cwd!()
+      })
+
+    context = TUI.perform({:update_agent, other.id, %{"name" => "ada-2"}}, context)
+    assert context.state.status =~ "already used in this room"
+    assert Chat.agent!(other.id).name == "grace"
+  end
+
+  test "an invalid name is refused", %{context: context, agent: agent} do
+    context = TUI.perform({:update_agent, agent.id, %{"name" => "Not Valid"}}, context)
+
+    assert context.state.status =~ "name"
+    assert Chat.agent!(agent.id).name == "ada"
+  end
+
   test "stop, reset and retry reach the coordinator", %{
     context: context,
     room: room,

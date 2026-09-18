@@ -37,6 +37,22 @@ defmodule Roundtable.Git do
     end
   end
 
+  @doc """
+  The patch for the working tree, staged and unstaged together.
+
+  Capped, because a turn that rewrites a vendored directory would otherwise
+  push a megabyte of diff through the socket to be rendered in a browser.
+  """
+  def diff(directory, limit \\ 200_000) when is_binary(directory) do
+    case run(directory, ["diff", "HEAD"]) do
+      {:ok, patch} when byte_size(patch) > limit ->
+        {:ok, binary_part(patch, 0, limit) <> "\n… diff truncated"}
+
+      other ->
+        other
+    end
+  end
+
   defp run(directory, args) do
     case System.cmd("git", ["--no-optional-locks", "-C", directory] ++ args,
            stderr_to_stdout: true

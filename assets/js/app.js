@@ -25,6 +25,32 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/roundtable"
 import topbar from "../vendor/topbar"
 
+// Theme is applied before the socket connects so the page never flashes the
+// wrong one. "system" is the absence of an override, not a third palette.
+const applyTheme = (choice) => {
+  const root = document.documentElement
+  if (choice === "light" || choice === "dark") {
+    root.setAttribute("data-theme", choice)
+  } else {
+    root.removeAttribute("data-theme")
+  }
+  document.querySelectorAll("[data-theme-choice]").forEach(button => {
+    button.setAttribute("aria-pressed", String(button.dataset.themeChoice === (choice || "system")))
+  })
+}
+
+let storedTheme = null
+try { storedTheme = localStorage.getItem("roundtable-theme") } catch (_) {}
+applyTheme(storedTheme)
+
+window.addEventListener("click", event => {
+  const button = event.target.closest("[data-theme-choice]")
+  if (!button) return
+  const choice = button.dataset.themeChoice
+  try { localStorage.setItem("roundtable-theme", choice) } catch (_) {}
+  applyTheme(choice)
+})
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,

@@ -210,6 +210,121 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert length(Chat.messages(hd(Chat.rooms()).id)) == before
     end
 
+    test "the room shows its branch and what has changed", %{conn: conn} do
+      # A room on this checkout, which is a git repository with real state.
+      {:ok, room} = Chat.create_room(%{"name" => "Repo", "directory" => File.cwd!()})
+      {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+
+      html = render(view)
+      assert html =~ "Changes on"
+      assert html =~ "branch-badge"
+      assert html =~ File.cwd!()
+    end
+
+    test "the diff is fetched only when asked for", %{conn: conn} do
+      {:ok, room} = Chat.create_room(%{"name" => "Repo", "directory" => File.cwd!()})
+      {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+
+      refute render(view) =~ "changes-diff"
+
+      opened = view |> element("[phx-click=toggle-diff]") |> render_click()
+      assert opened =~ "changes-diff"
+
+      closed = view |> element("[phx-click=toggle-diff]") |> render_click()
+      refute closed =~ "changes-diff"
+    end
+
+    test "a room outside a repository shows no branch rather than an error", %{conn: conn} do
+      directory = Path.join(System.tmp_dir!(), "rt-plain-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(directory)
+      on_exit(fn -> File.rm_rf!(directory) end)
+
+      {:ok, room} = Chat.create_room(%{"name" => "Plain", "directory" => directory})
+      {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+
+      html = render(view)
+      refute html =~ "Changes on"
+      assert html =~ "Plain"
+    end
+
+    test "the theme can be switched, and follows the system by default", %{view: view} do
+      html = render(view)
+
+      assert html =~ ~s(data-theme-choice="system")
+      assert html =~ ~s(data-theme-choice="light")
+      assert html =~ ~s(data-theme-choice="dark")
+    end
+
+    test "an agent can be renamed and re-roled from the browser", %{view: view, agent: agent} do
+      view |> element(".agent-edit[phx-value-id='#{agent.id}']") |> render_click()
+
+      assert has_element?(view, "#agent-form")
+      assert render(view) =~ "Save changes"
+
+      view
+      |> form("#agent-form",
+        agent: %{
+          name: "ada-2",
+          role: "Review diffs.",
+          model: "claude-sonnet-5",
+          cost_tier: "standard"
+        }
+      )
+      |> render_submit()
+
+      updated = Chat.agent!(agent.id)
+      assert updated.name == "ada-2"
+      assert updated.role == "Review diffs."
+      assert updated.model == "claude-sonnet-5"
+
+      html = render(view)
+      assert html =~ "ada-2"
+      assert html =~ "claude-sonnet-5"
+    end
+
+    test "editing keeps the provider and directory fixed", %{view: view, agent: agent} do
+      html =
+        view
+        |> element(".agent-edit[phx-value-id='#{agent.id}']")
+        |> render_click()
+
+      # A live session is built on the adapter and the working tree, so they are
+      # shown as facts rather than controls.
+      refute html =~ ~s(name="agent[provider]")
+      refute html =~ ~s(name="agent[directory]")
+      assert html =~ "fixed-field"
+      assert html =~ agent.provider
+    end
+
+    test "a rename to a name already in use is refused with a reason", %{
+      view: view,
+      agent: agent,
+      room: room
+    } do
+      {:ok, _} =
+        Chat.create_agent(room.id, %{
+          "name" => "grace",
+          "provider" => "opencode",
+          "directory" => File.cwd!()
+        })
+
+      view |> element(".agent-edit[phx-value-id='#{agent.id}']") |> render_click()
+
+      html =
+        view
+        |> form("#agent-form",
+          agent: %{name: "grace", role: "", model: "", cost_tier: "unknown"}
+        )
+        |> render_submit()
+
+      assert html =~ "already used in this room"
+      assert Chat.agent!(agent.id).name == "ada"
+    end
+
+    test "an agent without a role says so, and offers to set one", %{view: view} do
+      assert render(view) =~ "No role set"
+    end
+
     test "closing a panel leaves the room visible", %{view: view} do
       view |> element(".header-actions button") |> render_click()
       assert has_element?(view, "#agent-form")

@@ -27,6 +27,11 @@
     <div class="sidebar-bottom">
       <span class="online-dot"></span>
       Local workspace<small>Messages saved on this machine</small>
+      <div class="theme-toggle" role="group" aria-label="Colour theme">
+        <button type="button" data-theme-choice="system" aria-pressed="true">Auto</button>
+        <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+      </div>
     </div>
   </aside>
 
@@ -37,6 +42,9 @@
           <div class="eyebrow">SHARED ROOM</div><h1><span>#</span> {@room.name}</h1><p title={
             @room.directory
           }>
+            <span :if={@changes} class="branch-badge" title="Current branch">
+              {@changes.branch}
+            </span>
             {@room.directory}
           </p>
         </div>
@@ -242,8 +250,21 @@
               <div class={["avatar", agent.provider]}>{initials(agent.name)}</div><div>
                 <strong>{agent.name}</strong><small>{agent.provider}</small>
               </div><span class={["status-dot", status(agent, @runs)]}></span>
+              <button
+                class="icon-button agent-edit"
+                phx-click="edit-agent"
+                phx-value-id={agent.id}
+                title="Rename, re-role, or pin a model"
+                aria-label={"Edit #{agent.name}"}
+              >
+                <.icon name="hero-pencil-square" class="size-4" />
+              </button>
             </div>
             <p :if={agent.role && agent.role != ""}>{agent.role}</p>
+            <p :if={agent.role in [nil, ""]} class="agent-no-role">
+              No role set —
+              <button class="text-button" phx-click="edit-agent" phx-value-id={agent.id}>give it one</button>
+            </p>
             <div class="agent-model">
               <span title="Default model for new assignments">{agent.model || "Provider default"}</span><span class={[
                 "cost-tier",
@@ -272,6 +293,33 @@
           </div>
           <button class="add-agent-card" phx-click="panel" phx-value-name="agent"><span>+</span>
           Bring another agent in</button>
+          <section :if={@changes} class="changes-card">
+            <button class="changes-summary" phx-click="toggle-diff">
+              <span class="changes-title">Changes on <strong>{@changes.branch}</strong></span>
+              <span :if={@changes.entries == []} class="changes-clean">working tree clean</span>
+              <span :if={@changes.entries != []} class="changes-count">
+                {length(@changes.entries)} {if length(@changes.entries) == 1,
+                  do: "file",
+                  else: "files"}
+                <span class="added">+{@changes.added}</span>
+                <span class="removed">-{@changes.removed}</span>
+              </span>
+            </button>
+            <ul :if={@changes.entries != []} class="changes-list">
+              <li :for={entry <- Enum.take(@changes.entries, 12)}>
+                <code class="changes-status">{entry.status}</code>
+                <span class="changes-path" title={entry.path}>{entry.path}</span>
+                <span :if={entry.added + entry.removed > 0} class="changes-lines">
+                  <span class="added">+{entry.added}</span>
+                  <span class="removed">-{entry.removed}</span>
+                </span>
+              </li>
+              <li :if={length(@changes.entries) > 12} class="changes-more">
+                and {length(@changes.entries) - 12} more
+              </li>
+            </ul>
+            <pre :if={@diff} class="changes-diff"><code>{@diff}</code></pre>
+          </section>
           <div class="room-note">
             <span>✳</span><h3>A shared place to think.</h3><p>
               Agents receive unread room messages with their next assignment. Use @all to ask everyone.
@@ -311,21 +359,29 @@
         {case @panel do
           "room" -> "A NEW SPACE"
           "models" -> "CAPABILITY & COST"
-          _ -> "EXPAND YOUR TEAM"
+          _ -> if(@editing_agent, do: "CHANGE A PARTICIPANT", else: "EXPAND YOUR TEAM")
         end}
       </div>
       <h2 id="modal-title">
         {case @panel do
           "room" -> "Create a room"
           "models" -> "Model presets"
-          _ -> "Invite an agent"
+          _ -> if(@editing_agent, do: "Edit this agent", else: "Invite an agent")
         end}
       </h2>
       <p>
         {case @panel do
-          "room" -> "Give your project a place to come together."
-          "models" -> "Save your models once. Choose the right one for each task."
-          _ -> "A name, a role, and a fresh session."
+          "room" ->
+            "Give your project a place to come together."
+
+          "models" ->
+            "Save your models once. Choose the right one for each task."
+
+          _ ->
+            if(@editing_agent,
+              do: "Rename it, change what it is for, or pin a model.",
+              else: "A name, a role, and a fresh session."
+            )
         end}
       </p>
       <p :if={@form_error} class="form-error" role="alert">{@form_error}</p>
@@ -359,6 +415,7 @@
             required
             autofocus
           /><.input
+            :if={is_nil(@editing_agent)}
             field={@agent_form[:provider]}
             label="Agent"
             type="select"
@@ -369,6 +426,10 @@
               )
             }
           />
+          <div :if={@editing_agent} class="input-field">
+            <label>Agent</label>
+            <p class="fixed-field">{@agent_form[:provider].value}</p>
+          </div>
         </div>
         <.input
           field={@agent_form[:role]}
@@ -378,8 +439,22 @@
           rows="2"
           maxlength="4000"
         />
-        <.input field={@agent_form[:directory]} label="Working directory" required />
-        <p class="form-note">Use a separate Git worktree for concurrent edits.</p>
+        <.input
+          :if={is_nil(@editing_agent)}
+          field={@agent_form[:directory]}
+          label="Working directory"
+          required
+        />
+        <div :if={@editing_agent} class="input-field">
+          <label>Working directory</label>
+          <p class="fixed-field">{@agent_form[:directory].value}</p>
+        </div>
+        <p :if={is_nil(@editing_agent)} class="form-note">
+          Use a separate Git worktree for concurrent edits.
+        </p>
+        <p :if={@editing_agent} class="form-note">
+          The agent and its directory are what a live session is built on, so they stay as they are.
+        </p>
         <.input
           field={@agent_form[:preset_id]}
           label="Model preset"
@@ -400,8 +475,10 @@
         <p class="form-note">
           Uses your installed CLI and its existing login. Each agent has a separate session. OpenCode uses its configured tool permissions; interactive approvals are currently supported for Codex and Claude.
         </p>
-        <button class="button full" type="submit" phx-disable-with="Adding…">Add agent
-        <.icon name="hero-arrow-up-right" class="size-4" /></button>
+        <button class="button full" type="submit" phx-disable-with="Saving…">
+          {if @editing_agent, do: "Save changes", else: "Add agent"}
+          <.icon name="hero-arrow-up-right" class="size-4" />
+        </button>
       </.form>
       <div :if={@panel == "models"}>
         <div class="preset-list">

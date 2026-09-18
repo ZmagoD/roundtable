@@ -219,7 +219,7 @@ defmodule Roundtable.TUI.State do
        "/room <name> · /new-room <name> <dir> · /agent <name> <provider> [dir] · " <>
          "/stop <agent> · /reset <agent> · /retry [run] · /approve accept|decline [n] · " <>
          "/changes [agent|room|off] · /who · /role <agent> <text> · " <>
-         "/model <agent> <id> · /ask <room>/<agent> <q> · /delegate <room>/<agent> <task> · " <>
+         "/model <agent> <id> · /rename <agent> <new> · /ask <room>/<agent> <q> · /delegate <room>/<agent> <task> · " <>
          "/lazygit · /quit"
      ), []}
   end
@@ -300,6 +300,20 @@ defmodule Roundtable.TUI.State do
 
       _ ->
         {put_status(state, "Usage: /role <agent> <what they should do>"), []}
+    end
+  end
+
+  defp dispatch(state, "rename", args) do
+    case String.split(String.trim(args), " ", parts: 2) do
+      [name, new_name] when new_name != "" ->
+        with_agent(
+          state,
+          name,
+          &{state, [{:update_agent, &1.id, %{"name" => String.trim(new_name)}}]}
+        )
+
+      _ ->
+        {put_status(state, "Usage: /rename <agent> <new name>"), []}
     end
   end
 

@@ -4,7 +4,11 @@ defmodule RoundtableWeb.RoomLive do
 
   @impl true
   def mount(_, _, socket) do
-    if connected?(socket), do: Phoenix.PubSub.subscribe(Roundtable.PubSub, "rooms")
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Roundtable.PubSub, "rooms")
+      # Files move while a turn runs, and nothing broadcasts when they do.
+      :timer.send_interval(2_000, self(), :poll_git)
+    end
 
     {:ok,
      assign(socket,
@@ -15,6 +19,7 @@ defmodule RoundtableWeb.RoomLive do
        model_presets: Chat.model_presets(),
        preset_form: to_form(%{"cost_tier" => "unknown"}, as: :preset),
        editing_preset: nil,
+       editing_agent: nil,
        room_form: to_form(%{}, as: :room),
        agent_form: to_form(%{}, as: :agent),
        runs: [],
@@ -24,6 +29,8 @@ defmodule RoundtableWeb.RoomLive do
        form_error: nil,
        message_form: to_form(%{"body" => "", "to" => "room"}, as: :message),
        directory: System.get_env("ROUNDTABLE_WORKSPACE") || File.cwd!(),
+       changes: nil,
+       diff: nil,
        page_title: "Roundtable"
      )
      |> stream(:messages, [])}
@@ -44,13 +51,15 @@ defmodule RoundtableWeb.RoomLive do
 
     {:noreply,
      socket
-     |> assign(room: room, panel: nil, form_error: nil, last_message_id: 0)
+     |> assign(room: room, panel: nil, form_error: nil, last_message_id: 0, diff: nil)
      |> stream(:messages, [], reset: true)
-     |> refresh()}
+     |> refresh()
+     |> poll_git()}
   end
 
   @impl true
   def handle_event("panel", %{"name" => name}, socket) do
+    socket = assign(socket, editing_agent: nil)
     room_form = to_form(%{"directory" => socket.assigns.directory}, as: :room)
 
     agent_form =
@@ -74,12 +83,46 @@ defmodule RoundtableWeb.RoomLive do
          to_form(%{"provider" => List.first(Roundtable.Agents.ids()), "cost_tier" => "unknown"},
            as: :preset
          ),
-       editing_preset: nil
+       editing_preset: nil,
+       editing_agent: nil
      )}
   end
 
+  def handle_event("edit-agent", %{"id" => id}, socket) do
+    case Enum.find(socket.assigns.agents, &(to_string(&1.id) == id)) do
+      nil ->
+        {:noreply, socket}
+
+      agent ->
+        attrs = %{
+          "name" => agent.name,
+          "provider" => agent.provider,
+          "role" => agent.role,
+          "model" => agent.model,
+          "cost_tier" => agent.cost_tier,
+          "directory" => agent.directory
+        }
+
+        {:noreply,
+         assign(socket,
+           panel: "agent",
+           editing_agent: agent.id,
+           form_error: nil,
+           agent_form: to_form(attrs, as: :agent)
+         )}
+    end
+  end
+
+  def handle_event("toggle-diff", _, socket) do
+    if socket.assigns.diff do
+      {:noreply, assign(socket, diff: nil)}
+    else
+      {:noreply, assign(socket, diff: read_diff(socket))}
+    end
+  end
+
   def handle_event("close-panel", _, socket),
-    do: {:noreply, assign(socket, panel: nil, form_error: nil)}
+    do: {:noreply, assign(socket, panel: nil, form_error: nil, editing_agent: nil)}
 
   def handle_event("create-room", %{"room" => attrs}, socket) do
     case Chat.create_room(attrs) do
@@ -89,6 +132,18 @@ defmodule RoundtableWeb.RoomLive do
       {:error, changeset} ->
         {:noreply,
          assign(socket, form_error: errors(changeset), room_form: to_form(attrs, as: :room))}
+    end
+  end
+
+  def handle_event("create-agent", %{"agent" => attrs}, %{assigns: %{editing_agent: id}} = socket)
+      when not is_nil(id) do
+    case Chat.update_agent(id, attrs) do
+      {:ok, _} ->
+        {:noreply, socket |> assign(panel: nil, editing_agent: nil) |> refresh()}
+
+      {:error, changeset} ->
+        {:noreply,
+         assign(socket, form_error: errors(changeset), agent_form: to_form(attrs, as: :agent))}
     end
   end
 
@@ -144,6 +199,7 @@ defmodule RoundtableWeb.RoomLive do
          assign(socket,
            model_presets: Chat.model_presets(),
            editing_preset: nil,
+           editing_agent: nil,
            preset_form:
              to_form(%{"provider" => attrs["provider"], "cost_tier" => "unknown"}, as: :preset),
            form_error: nil
@@ -236,10 +292,32 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   @impl true
+  def handle_info(:poll_git, socket), do: {:noreply, poll_git(socket)}
+
   def handle_info(:room_updated, socket), do: {:noreply, refresh(socket)}
 
   def handle_info(:rooms_updated, socket),
     do: {:noreply, assign(socket, rooms: Chat.rooms(), model_presets: Chat.model_presets())}
+
+  # Git runs off the socket: a large repository must not hold up a render.
+  defp poll_git(%{assigns: %{room: nil}} = socket), do: socket
+
+  defp poll_git(socket) do
+    case Roundtable.Git.status(socket.assigns.room.directory) do
+      {:ok, changes} -> assign(socket, changes: changes)
+      {:error, _} -> assign(socket, changes: nil)
+    end
+  end
+
+  defp read_diff(%{assigns: %{room: nil}}), do: nil
+
+  defp read_diff(socket) do
+    case Roundtable.Git.diff(socket.assigns.room.directory) do
+      {:ok, ""} -> "No changes yet."
+      {:ok, patch} -> patch
+      {:error, reason} -> reason
+    end
+  end
 
   defp refresh(%{assigns: %{room: nil}} = socket), do: assign(socket, rooms: Chat.rooms())
 

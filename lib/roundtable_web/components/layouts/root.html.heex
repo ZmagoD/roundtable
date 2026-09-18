@@ -9,6 +9,16 @@
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
+    <script>
+      // Before first paint: a stored choice beats the system, and no choice
+      // means follow it.
+      try {
+        const choice = localStorage.getItem("roundtable-theme")
+        if (choice === "light" || choice === "dark") {
+          document.documentElement.setAttribute("data-theme", choice)
+        }
+      } catch (_) {}
+    </script>
   </head>
   <body>
     {@inner_content}

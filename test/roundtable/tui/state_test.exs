@@ -246,6 +246,14 @@ defmodule Roundtable.TUI.StateTest do
     assert [{:update_agent, 7, %{"model" => nil}}] = effects
   end
 
+  test "/rename changes what a participant is called" do
+    {_, effects} = state() |> type("/rename ada ada-2") |> State.handle_key(:enter)
+    assert effects == [{:update_agent, 7, %{"name" => "ada-2"}}]
+
+    {state, []} = state() |> type("/rename ada") |> State.handle_key(:enter)
+    assert state.status =~ "Usage: /rename"
+  end
+
   test "ctrl-p and /who toggle the roster, and Esc closes it" do
     {state, []} = State.handle_key(state(), :ctrl_p)
     assert state.roster_visible

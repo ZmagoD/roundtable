@@ -164,6 +164,7 @@ defmodule Roundtable.TUI.Render do
     {"  [--role text] [--tier t]", "what it is for; economy, standard, premium"},
     {"/role <agent> <text>", "change what a participant is for"},
     {"/model <agent> <id>", "pin a model, or 'default' to unpin"},
+    {"/rename <agent> <new>", "rename a participant"},
     {"/stop <agent>", "stop its queue"},
     {"/reset <agent>", "clear its session; history stays"},
     {"/retry [run]", "retry the newest failed run, or one by id"},

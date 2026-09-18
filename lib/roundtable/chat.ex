@@ -96,23 +96,20 @@ defmodule Roundtable.Chat do
   end
 
   @doc """
-  Changes a participant's briefing without disturbing its session.
+  Changes a participant: what it is called, what it is for, and what it runs on.
 
-  Only the fields that describe *how* an agent should work are editable. Its
-  name is how the room addresses it, its provider decides the adapter, and its
-  directory was validated when it was created; changing those underneath a
-  live session would invalidate the transcript that session is resuming from.
+  Provider and directory stay fixed. The adapter and the working tree are what
+  a live session is built on, and changing either underneath one would
+  invalidate the transcript it resumes from — deleting the participant and
+  adding another is the honest way to do that.
+
+  A rename is allowed. Mentions are resolved when a message is posted, so past
+  turns keep the agent they were assigned to; only the old name in the
+  transcript stops resolving, which is what a rename means.
   """
   def update_agent(agent_id, attrs) do
     Repo.get!(Agent, agent_id)
-    |> Ecto.Changeset.cast(attrs, [:role, :model, :cost_tier])
-    |> Ecto.Changeset.validate_length(:role, max: 4000)
-    |> Ecto.Changeset.validate_inclusion(:cost_tier, [
-      "economy",
-      "standard",
-      "premium",
-      "unknown"
-    ])
+    |> Agent.rename_changeset(attrs)
     |> Repo.update()
     |> tap(fn
       {:ok, agent} -> broadcast(agent.room_id)
