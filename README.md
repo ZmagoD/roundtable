@@ -3,7 +3,8 @@
 A local workspace where you and your coding agents share one conversation.
 Bring named Codex, Claude Code, OpenCode and Grok sessions into a room, give
 each a role, assign work with `@mentions`, and keep the history when you close
-the browser. Phoenix LiveView, OTP and SQLite; everything stays on your machine.
+the browser. Phoenix LiveView, OTP and SQLite; room history is stored locally.
+Provider CLIs connect to their configured services to run the models.
 
 ![A room with three agents working on a checkout service](docs/images/room-light.png)
 
@@ -16,13 +17,19 @@ the browser. Phoenix LiveView, OTP and SQLite; everything stays on your machine.
   a reply delegates, up to four hops from your message.
 - **You can watch and stop it.** Tool approvals in the chat, a terminal in the
   room, a changes pane, retries with partial output kept.
+- **Ask an agent to build your team.** **Build a team** creates a room and a
+  helper that can add participants, reuse profiles and configure schedules.
+- **Schedule standing instructions.** Wake an existing participant with a prompt
+  at chosen times of day, every day or on selected weekdays.
 - **Two clients, one core.** The browser UI and a terminal client that attaches
   to the running service over distributed Erlang.
 
 **Status:** early working prototype. A public network API is not implemented
 yet.
 
-New here? [Install](#install), then the [walkthrough](#a-walkthrough).
+New here? [Install](#install), then [build a team](#ask-for-a-room-instead-of-filling-the-form)
+or follow the [walkthrough](#a-walkthrough). For recurring work, see
+[standing instructions](#standing-instructions).
 Then: **[Guides](docs/GUIDES.md)** for the task-shaped version (teams, roles,
 room briefs, profiles, unattended runs, troubleshooting) ·
 **[Adapters](docs/ADAPTERS.md)** to add a provider ·
@@ -182,6 +189,9 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/rooms`, `/room <name>` | list rooms, switch to one |
 | `/new-room <name> <dir>` | create a room; `.` is the directory you started the client in |
 | `/context [text]` | show the room's shared brief, or set it |
+| `/schedules` | list this room's schedules and their ids |
+| `/schedule <agent> <times> <text> [--days 1,2,3,4,5]` | send a recurring prompt at selected times and weekdays |
+| `/unschedule <id>` | delete a schedule |
 | `/agent <name> <provider>` | add a participant; `--model`, `--role`, `--tier` |
 | `/role <agent> <text>` | set what a participant is for |
 | `/model <agent> <id\|default>` | pin a model, or hand the choice back |
@@ -278,9 +288,9 @@ OpenCode models, the filter is the point:
 /providers                  which CLIs are installed
 ```
 
-They are suggestions, not a menu: the field stays free text, so a model that
-appears tomorrow needs no release. Model presets in the sidebar save the ones
-you use with a cost tier attached.
+The terminal accepts explicit model IDs even when they are not in the listing.
+Model presets in the sidebar also accept explicit IDs and save the ones you
+use with a cost tier attached.
 
 ### Reaching other providers today
 
@@ -340,9 +350,10 @@ changed nothing. Give it bounded work and check the changes pane.
 
 ### Rooms as teams
 
-Rooms are sealed from each other. An agent sees only its own room's roster and
-history, and `@name` resolves only inside the room — two rooms can both have a
-`grace`. That makes a room a team rather than a channel.
+Each turn receives its own room's roster and history, and `@name` resolves
+only inside that room — two rooms can both have a `grace`. Room boundaries
+organize conversations; they are not an access-control boundary. Participants
+with Roundtable's management tools can inspect and configure other rooms.
 
 A room is addressed from another room by its name in lowercase with dashes, so
 `Design Team` is `design-team`:
@@ -562,8 +573,10 @@ log (`bin/roundtable logs`). The roster marks who is on it, and it stays off
 until you say otherwise. Turn it off again with *Ask me before each tool* or
 `/auto <agent> off`.
 
-For concurrent code changes, create separate Git worktrees and set each agent's
-working directory accordingly. Automatic worktree creation/merging is not built in.
+For isolated concurrent code changes, create separate Git worktrees and a room
+for each worktree. Every participant inherits its room's directory; it cannot
+choose a different working tree within that room. Automatic worktree creation
+and merging are not built in.
 All messages are public within their room. Agents process new messages at the
 next turn boundary; mid-turn steering is not implemented.
 
@@ -585,6 +598,21 @@ below to choose roles, reuse profiles and add teammates. You can continue the
 conversation with it as your needs change. It uses the provider's default model
 and keeps tool approvals enabled; the initial turn uses your provider account.
 
+For example, describe the work as:
+
+> Maintain the billing service. Add an implementer and a reviewer, with clear
+> roles. Have the reviewer check open changes every weekday at 09:00.
+
+After setup, address follow-up requests to `@team-builder` in that room, or
+choose it as the message recipient. It can ask for missing details and use the
+management tools below to make changes. It is instructed to assemble the team
+without starting the new participants' project work; you start that with a
+message to the participant you want. A schedule you ask it to create can start
+future turns when due.
+
+The helper lives in a room. A separate workspace-wide Assistant conversation
+and proposal cards with **Create team** / **Start work** controls are not
+implemented yet.
 
 Setting a team up is form-filling — a room, a directory, a brief, four
 participants — and you are usually already here, talking to an agent. So ask it
@@ -597,9 +625,10 @@ instead:
 A participant running on Claude Code or Codex is handed the rooms themselves as
 tools for the length of its turn. It can look at the rooms, profiles and
 providers here; make a room and set its brief; add participants from the library
-or from scratch; and change a role, a model or a cost tier. Each call stops for
-your approval like any other tool use — unless that participant approves its own
-— and whatever it changed is said out loud in the room where you asked for it:
+or from scratch; change a role, a model or a cost tier; create and edit saved
+profiles; and list, create, edit or disable schedules. Tool calls use the
+provider's normal approval flow. Whatever it changed is said out loud in the
+room where you asked for it:
 
 ```
 ada: added reviewer-api to room 4, Billing, running on codex.
@@ -608,7 +637,9 @@ ada: added reviewer-api to room 4, Billing, running on codex.
 Nothing there deletes. A room made from a misread instruction is one you remove
 yourself, which costs you a room you did not want rather than history you cannot
 get back. Nothing there posts, either: what an agent sets up is handed back to
-you rather than started.
+you rather than started. Scheduling is an exception to that timing: creating an
+enabled schedule arranges future agent turns. The tools cannot enable automatic
+approval; change that yourself in the UI or terminal if you want unattended work.
 
 The tools are wired in per turn, with a token that says which participant is
 calling, so the rooms only ever change on behalf of someone who is actually in
@@ -631,11 +662,37 @@ exactly as anything you type does, and it costs what that turn costs. Pair it
 with *Approve automatically* on that participant if it should run while nobody
 is watching.
 
+For example, ask the team builder:
+
+> @team-builder Every weekday at 09:00, have reviewer check open changes.
+
+Or use the terminal:
+
+```text
+/schedule reviewer 09:00 Review open changes --days 1,2,3,4,5
+/schedules
+```
+
+Weekdays are numbered 1 (Monday) through 7 (Sunday); omit `--days` for every day.
+A schedule accepts up to 12 times of day. In the browser, open **Schedules**
+inside a room to create, edit, switch off or delete one. An agent can create,
+edit or disable schedules through its tools, but cannot delete them.
+
+Roundtable must be running for schedules to fire; the browser can be closed.
+The scheduler checks every 30 seconds, so these are not exact-second timers.
+Each schedule addresses an existing participant in an existing room. It does
+not directly launch a shell command or instantiate a new room and team. A
+scheduled participant can use its normal tools during its turn, including room
+management when supported.
+
 Times are the machine's own. An occurrence missed by more than ten minutes — the
 laptop asleep, the service stopped — is skipped rather than delivered late,
 because nobody wants the morning's work starting at four in the afternoon.
 Switch a schedule off to stop it, or delete it; `/schedules` lists them with
-their ids and `/unschedule <id>` removes one.
+their ids and `/unschedule <id>` removes one. When several occurrences fall
+within the catch-up window, only the latest is delivered. A failed attempt to
+post a scheduled prompt is logged, not automatically replayed; once a turn is
+created, it uses the normal queue, approvals and explicit retry controls.
 
 ## Models and cost-aware assignments
 
@@ -678,8 +735,8 @@ parallel work, keep separate named agents for your regular model/role combinatio
 
 Adding one is a module, not a fork: adapters implement
 `Roundtable.Agents.Adapter` and are registered in application configuration, so
-a provider can live outside this repository entirely. The three here are 40-110
-lines each. What an adapter needs from a CLI is a non-interactive mode and
+a provider can live outside this repository entirely. Four adapters ship with
+Roundtable. What an adapter needs from a CLI is a non-interactive mode and
 machine-readable output — `claude -p --output-format stream-json`, `codex
 app-server`, `opencode run --format json`. A CLI without those cannot be
 driven by anything, including this.
@@ -697,8 +754,8 @@ Clients (LiveView, terminal) → Chat/Coordinator → supervised agent workers �
 provider CLIs. `Roundtable.Client` is the seam: it calls the coordination core
 directly in-node, or over distributed Erlang from a terminal, so a client never
 opens the database itself.
-SQLite stores rooms, participants, messages, native session IDs, and durable run
-records. Message insertion and delivery creation are transactional; PubSub
+SQLite stores rooms, participants, messages, native session IDs, durable run
+records, agent profiles, model presets and schedules. Message insertion and delivery creation are transactional; PubSub
 updates connected browsers. A coordinator serializes queue transitions.
 Its runtime supervisor restarts the workers, the coordinator and the scheduler
 that runs a room's standing instructions together if any of them fails. On startup, active runs become interrupted, so they
@@ -723,12 +780,17 @@ shell commands.
 
 ```sh
 mix test
+mix test --only pty
+mix test --cover
 mix format --check-formatted
 mix compile --warnings-as-errors
 mix credo --strict
 ```
 
-`mix precommit` runs all four. CI runs them on every push, plus `shellcheck`
+`mix precommit` compiles with warnings as errors, checks for unused dependencies,
+formats the code, runs strict Credo and runs the default test suite. Terminal
+tests and coverage are separate commands. CI runs the default suite, terminal
+tests, formatting checks, compilation and Credo on every push, plus `shellcheck`
 on `install.sh` and `bin/roundtable`, which reach users before any Elixir does.
 
 The adapters have contract tests because provider protocols change under us,
@@ -743,9 +805,13 @@ reader process, the redraw loop, restoring the screen) is covered by
 into the client and reads back what it drew. Those are excluded from the
 default run because they boot a second VM; CI runs them as their own step.
 
-Line coverage is around 80%. The gap is mostly code that runs in that second
-VM, which the coverage tool cannot see from the first — tested, but not
-counted. Coverage says which lines ran, not whether they were right.
+The latest local coverage run (2026-09-18) reports **81.30%** overall, below the
+90% default threshold, so `mix test --cover` currently exits unsuccessfully even
+when every test passes. Coverage reports are written to `cover/`. Some terminal
+paths run in a second VM that the parent coverage report cannot measure; other
+parts of the application also have uncovered paths. The team-builder change's
+30 new executable Elixir lines are covered, including provider selection,
+validation and dispatch. Coverage records execution, not proof of correctness.
 
 Tests use fake workers and synthetic protocol events, so they don't consume
 model tokens or depend on installed provider credentials. See `docs/TESTING.md`
@@ -754,7 +820,7 @@ for optional real-provider checks.
 ## Sharing
 
 Local data and secrets are ignored by Git: databases, `.local/`, and `.env`
-files never leave your machine. Roundtable stores no API keys; each agent uses
+files are not included in normal commits. Roundtable stores no API keys; each agent uses
 its own CLI's existing login.
 
 Released under the [MIT License](LICENSE). Bundled third-party code keeps its
