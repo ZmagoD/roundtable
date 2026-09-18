@@ -21,7 +21,12 @@ defmodule Roundtable.PortPicker do
         |> Keyword.put(:url, host: "localhost", port: port)
 
       Application.put_env(:roundtable, RoundtableWeb.Endpoint, config)
-      Logger.info("Roundtable: http://127.0.0.1:#{port}")
+      url = "http://127.0.0.1:#{port}"
+      Logger.info("Roundtable: #{url}")
+
+      # Say which port won somewhere a script can read it, so `roundtable open`
+      # and `roundtable status --json` do not have to grep it back out of the log.
+      if path = System.get_env("ROUNDTABLE_URL_FILE"), do: File.write!(path, url)
     end
   end
 
