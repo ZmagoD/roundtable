@@ -278,6 +278,24 @@ defmodule Roundtable.TUI.State do
     end
   end
 
+  # Removal takes the exact name rather than a prefix or an id: typing the
+  # thing out is the confirmation, and there is no undo.
+  defp dispatch(state, "remove", args) do
+    with_agent(state, args, &{state, [{:remove_agent, &1.id, &1.name}]})
+  end
+
+  defp dispatch(state, "remove-room", args) do
+    name = String.trim(args)
+
+    case Enum.find(state.rooms, &(&1.name == name)) do
+      nil ->
+        {put_status(state, "Type the room's name exactly to remove it: /remove-room <name>"), []}
+
+      room ->
+        {state, [{:remove_room, room.id, room.name}]}
+    end
+  end
+
   defp dispatch(state, "rename", args) do
     case String.split(String.trim(args), " ", parts: 2) do
       [name, new_name] when new_name != "" ->

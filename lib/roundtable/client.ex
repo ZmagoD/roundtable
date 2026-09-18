@@ -65,6 +65,11 @@ defmodule Roundtable.Client do
   def cross_room_request(c, kind, room_id, target, body),
     do: call(c, Chat, :request_from_room, [kind, room_id, target, body], @write_timeout)
 
+  def remove_agent(c, agent_id),
+    do: call(c, Coordinator, :remove_agent, [agent_id], @write_timeout)
+
+  def remove_room(c, room_id), do: call(c, Coordinator, :remove_room, [room_id], @write_timeout)
+
   def update_agent(c, agent_id, attrs),
     do: call(c, Chat, :update_agent, [agent_id, attrs], @write_timeout)
 

@@ -244,6 +244,26 @@ defmodule Roundtable.TUI.StateTest do
     assert [{:update_agent, 7, %{"model" => nil}}] = effects
   end
 
+  test "/remove takes an exact name, because there is no undo" do
+    {_, effects} = state() |> type("/remove ada") |> State.handle_key(:enter)
+    assert effects == [{:remove_agent, 7, "ada"}]
+
+    {state, []} = state() |> type("/remove ad") |> State.handle_key(:enter)
+    assert state.status =~ "No agent called ad"
+  end
+
+  test "/remove-room needs the room's name spelled out" do
+    {_, effects} = state() |> type("/remove-room Checkout") |> State.handle_key(:enter)
+    assert effects == [{:remove_room, 1, "Checkout"}]
+
+    # Not an id, not a prefix, not a different case: typing it is the confirmation.
+    for typed <- ["1", "check", "checkout"] do
+      {state, effects} = state() |> type("/remove-room #{typed}") |> State.handle_key(:enter)
+      assert effects == []
+      assert state.status =~ "Type the room's name exactly"
+    end
+  end
+
   test "/rename changes what a participant is called" do
     {_, effects} = state() |> type("/rename ada ada-2") |> State.handle_key(:enter)
     assert effects == [{:update_agent, 7, %{"name" => "ada-2"}}]

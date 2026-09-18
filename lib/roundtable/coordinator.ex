@@ -24,6 +24,12 @@ defmodule Roundtable.Coordinator do
   def reset(agent_id), do: GenServer.call(__MODULE__, {:reset, agent_id})
   def retry(run_id), do: GenServer.call(__MODULE__, {:retry, run_id})
 
+  @doc "Stops a participant's queue, then removes it."
+  def remove_agent(agent_id), do: GenServer.call(__MODULE__, {:remove_agent, agent_id})
+
+  @doc "Stops every participant in a room, then removes the room and its history."
+  def remove_room(room_id), do: GenServer.call(__MODULE__, {:remove_room, room_id})
+
   def approve(run_id, request_id, decision),
     do: GenServer.call(__MODULE__, {:approve, run_id, request_id, decision})
 
@@ -59,6 +65,21 @@ defmodule Roundtable.Coordinator do
     Chat.change(agent, session_id: nil, session_model: nil, last_seen_id: 0)
     Chat.broadcast(agent.room_id)
     {:reply, :ok, state}
+  end
+
+  def handle_call({:remove_agent, agent_id}, _, state) do
+    # Cancel before deleting: a worker mid-turn holds a row that is about to go.
+    state = cancel_agent(state, agent_id)
+    {:reply, Chat.delete_agent(agent_id), state}
+  end
+
+  def handle_call({:remove_room, room_id}, _, state) do
+    state =
+      room_id
+      |> Chat.agents()
+      |> Enum.reduce(state, &cancel_agent(&2, &1.id))
+
+    {:reply, Chat.delete_room(room_id), state}
   end
 
   def handle_call({:retry, run_id}, _, state) do

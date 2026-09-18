@@ -636,3 +636,6 @@ h1, h2, h3, p { margin: 0; }
 .terminal-bar code { font-size: 11px; }
 .terminal-host { flex: 1; min-height: 0; padding: 6px 4px 4px 10px; }
 .terminal-host .xterm { height: 100%; }
+
+.text-button.danger, .button.secondary.danger { color: var(--red-mid-1, #a5544a); }
+.button.secondary.danger { border-color: var(--red-mid-1, #a5544a); }

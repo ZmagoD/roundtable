@@ -56,6 +56,13 @@
             phx-value-name="agent"
           >+ Add agent</button>
           <button
+            id="remove-room-button"
+            class="button secondary danger"
+            phx-click="remove-room"
+            phx-value-id={@room.id}
+            data-confirm={"Delete #{@room.name}? Its participants, its whole history and any cross-room requests go with it. There is no undo and nothing is exported."}
+          >Delete room</button>
+          <button
             id="terminal-button"
             class="button secondary"
             phx-click={if @terminal, do: "close-terminal", else: "open-terminal"}
@@ -309,7 +316,12 @@
                   phx-click="reset"
                   phx-value-id={agent.id}
                   data-confirm="Start a fresh provider session? The room history stays available, and queued turns will be stopped."
-                >New session</button>
+                >New session</button><button
+                  class="text-button danger"
+                  phx-click="remove-agent"
+                  phx-value-id={agent.id}
+                  data-confirm={"Remove @#{agent.name}? Its queue stops and it leaves the room. What it already said stays in the transcript. This cannot be undone."}
+                >Remove</button>
               </div>
             </details>
           </div>

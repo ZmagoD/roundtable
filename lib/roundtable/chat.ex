@@ -136,6 +136,51 @@ defmodule Roundtable.Chat do
     end)
   end
 
+  @doc """
+  Removes a participant, leaving what it said behind.
+
+  Its runs go with it — those are execution records — but `messages.agent_id`
+  is nullified rather than cascaded, so the transcript still reads as it did.
+  A room's history is what happened; removing a participant should not rewrite
+  it into a conversation with fewer people in it.
+
+  Callers go through `Roundtable.Coordinator.remove_agent/1`, which stops the
+  queue first: deleting a participant mid-turn would leave a worker holding a
+  row that no longer exists.
+  """
+  def delete_agent(agent_id) do
+    agent = Repo.get!(Agent, agent_id)
+
+    case Repo.delete(agent) do
+      {:ok, agent} ->
+        broadcast(agent.room_id)
+        {:ok, agent}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  @doc """
+  Removes a room and everything in it: participants, history, and any
+  cross-room requests either side of it.
+
+  There is no undo, and nothing is exported first. The database file is the
+  only copy.
+  """
+  def delete_room(room_id) do
+    room = room!(room_id)
+
+    case Repo.delete(room) do
+      {:ok, room} ->
+        Phoenix.PubSub.broadcast(Roundtable.PubSub, "rooms", :rooms_updated)
+        {:ok, room}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
   @doc "Whether a participant can still be renamed: has it taken a turn yet?"
   def renamable?(%Agent{id: id}),
     do: not Repo.exists?(from r in Run, where: r.agent_id == ^id)

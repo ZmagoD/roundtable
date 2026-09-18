@@ -94,6 +94,47 @@ defmodule RoundtableWeb.RoomLive do
      )}
   end
 
+  def handle_event("remove-agent", %{"id" => id}, socket) do
+    case Enum.find(socket.assigns.agents, &(to_string(&1.id) == id)) do
+      nil ->
+        {:noreply, socket}
+
+      agent ->
+        case Coordinator.remove_agent(agent.id) do
+          {:ok, _} ->
+            {:noreply,
+             socket
+             |> assign(panel: nil, editing_agent: nil)
+             |> put_flash(:info, "@#{agent.name} removed. What it said stays in the room.")
+             |> refresh()}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Could not remove @#{agent.name}.")}
+        end
+    end
+  end
+
+  def handle_event("remove-room", %{"id" => id}, socket) do
+    case Enum.find(socket.assigns.rooms, &(to_string(&1.id) == id)) do
+      nil ->
+        {:noreply, socket}
+
+      room ->
+        case Coordinator.remove_room(room.id) do
+          {:ok, _} ->
+            {:noreply,
+             socket
+             |> close_terminal()
+             |> assign(panel: nil, editing_agent: nil)
+             |> put_flash(:info, "#{room.name} and everything in it is gone.")
+             |> push_patch(to: ~p"/")}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Could not remove #{room.name}.")}
+        end
+    end
+  end
+
   def handle_event("edit-agent", %{"id" => id}, socket) do
     case Enum.find(socket.assigns.agents, &(to_string(&1.id) == id)) do
       nil ->

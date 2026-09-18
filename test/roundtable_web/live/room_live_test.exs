@@ -438,6 +438,51 @@ defmodule RoundtableWeb.RoomLiveTest do
       refute has_element?(moved, ".terminal-panel")
     end
 
+    test "removing a participant from the browser keeps its messages", %{
+      view: view,
+      room: room,
+      agent: agent
+    } do
+      {:ok, _} =
+        Chat.post(room.id, "something ada said", sender: "ada", agent_id: agent.id, kind: "agent")
+
+      html = render(view)
+      assert html =~ "data-confirm"
+
+      view |> element("[phx-click=remove-agent][phx-value-id='#{agent.id}']") |> render_click()
+
+      assert Chat.agents(room.id) == []
+      assert Enum.any?(Chat.messages(room.id), &(&1.body == "something ada said"))
+      assert render(view) =~ "What it said stays"
+    end
+
+    test "removing a room takes you back to no room", %{view: view, room: room} do
+      {:ok, _} = Chat.post(room.id, "history that is about to go")
+
+      view |> element("#remove-room-button") |> render_click()
+
+      assert Chat.rooms() == []
+      assert Roundtable.Repo.aggregate(Roundtable.Chat.Message, :count) == 0
+    end
+
+    test "both removals ask first", %{view: view, agent: agent} do
+      html = render(view)
+
+      room_button = Regex.run(~r/<button[^>]*id="remove-room-button".*?>/s, html) |> List.first()
+      assert room_button =~ "data-confirm"
+      assert room_button =~ "no undo"
+
+      agent_button =
+        Regex.run(
+          ~r/<button[^>]*phx-click="remove-agent"[^>]*phx-value-id="#{agent.id}".*?>/s,
+          html
+        )
+        |> List.first()
+
+      assert agent_button =~ "data-confirm"
+      assert agent_button =~ "cannot be undone"
+    end
+
     test "closing a panel leaves the room visible", %{view: view} do
       view |> element("#add-agent-button") |> render_click()
       assert has_element?(view, "#agent-form")

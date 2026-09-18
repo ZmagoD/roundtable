@@ -230,6 +230,29 @@ defmodule Roundtable.TUI do
     end
   end
 
+  def perform({:remove_agent, agent_id, name}, context) do
+    case Client.remove_agent(context.client, agent_id) do
+      {:ok, _} -> refresh(context) |> status("@#{name} removed. What it said stays.")
+      {:error, reason} -> status(context, describe(reason))
+      other -> status(context, describe(other))
+    end
+  end
+
+  def perform({:remove_room, room_id, name}, context) do
+    case Client.remove_room(context.client, room_id) do
+      {:ok, _} ->
+        %{context | room_id: nil}
+        |> refresh()
+        |> status("#{name} and everything in it is gone.")
+
+      {:error, reason} ->
+        status(context, describe(reason))
+
+      other ->
+        status(context, describe(other))
+    end
+  end
+
   def perform({:update_agent, agent_id, attrs}, context) do
     case Client.update_agent(context.client, agent_id, attrs) do
       {:ok, agent} -> refresh(context) |> status("@#{agent.name} updated.")

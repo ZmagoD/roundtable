@@ -269,13 +269,14 @@ defmodule Roundtable.TUI.RenderTest do
       for line <- lines, do: assert(String.length(line) == cols)
     end
 
-    # At a tall terminal the whole thing is on screen at once.
-    screen = %{state | size: {44, 100}} |> screen() |> Enum.join("\n")
+    # Tall enough to hold every entry at once; scrolling is its own test.
+    screen = %{state | size: {60, 100}} |> screen() |> Enum.join("\n")
 
     assert screen =~ "how to use Roundtable"
 
-    for command <- ~w(/who /agent /role /model /rename /providers /models /stop /reset /retry
-                      /approve /rooms /room /new-room /ask /delegate /changes /lazygit /quit) do
+    for command <- ~w(/who /agent /role /model /rename /remove /remove-room /providers /models
+                      /stop /reset /retry /approve /rooms /room /new-room /ask /delegate
+                      /changes /lazygit /quit) do
       assert screen =~ command, "help does not mention #{command}"
     end
 
