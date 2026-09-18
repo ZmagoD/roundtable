@@ -189,6 +189,20 @@ defmodule Roundtable.TUI.StateTest do
     assert state.status =~ "No approval #9"
   end
 
+  test "context shows the room's brief and sets it" do
+    {state, []} = state() |> type("/context") |> State.handle_key(:enter)
+    assert state.status =~ "No shared brief yet"
+
+    with_brief =
+      state(room: %Room{id: 1, name: "Checkout", directory: "/tmp", context: "Ship it"})
+
+    {shown, []} = with_brief |> type("/context") |> State.handle_key(:enter)
+    assert shown.status =~ "Room brief: Ship it"
+
+    {_, effects} = state() |> type("/context Elixir and Phoenix") |> State.handle_key(:enter)
+    assert effects == [{:update_room, 1, %{"context" => "Elixir and Phoenix"}}]
+  end
+
   test "auto switches a participant's tool approvals, and says how when it cannot" do
     {_, effects} = state() |> type("/auto ada on") |> State.handle_key(:enter)
     assert effects == [{:update_agent, 7, %{"auto_approve" => true}}]

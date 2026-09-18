@@ -161,6 +161,7 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/help`, or `?` on an empty line | the full help screen |
 | `/rooms`, `/room <name>` | list rooms, switch to one |
 | `/new-room <name> <dir>` | create a room; `.` is the directory you started the client in |
+| `/context [text]` | show the room's shared brief, or set it |
 | `/agent <name> <provider>` | add a participant; `--model`, `--role`, `--tier` |
 | `/role <agent> <text>` | set what a participant is for |
 | `/model <agent> <id\|default>` | pin a model, or hand the choice back |
@@ -481,6 +482,17 @@ permissions remain subject to the provider's rules. Codex and Claude approval
 requests are presented in the chat; OpenCode's CLI adapter uses its configured
 permissions and cannot interactively grant a new approval. Errors are visible
 with partial output and a retry control. Each turn has a 30-minute timeout.
+
+### The room's brief
+
+A room carries what the team is working on and how, in one place: **Room brief**
+in the room header, or `/context <text>` in the terminal client. Every
+participant opens every turn with it, alongside its own role, so conventions
+that apply to everyone — "Elixir and Phoenix, tests with every change,
+`mix precommit` before anything is called done, never push" — belong there
+rather than being copied into each role, where the copies drift apart. Where the
+brief and a role both apply an agent follows both, and is told to say so rather
+than choose silently if they genuinely conflict.
 
 ### What a participant knows about itself
 

@@ -260,6 +260,13 @@ defmodule Roundtable.TUI do
     end
   end
 
+  def perform({:update_room, room_id, attrs}, context) do
+    case Client.update_room(context.client, room_id, attrs) do
+      {:ok, room} -> refresh(context) |> status("Brief set for #{room.name}.")
+      {:error, reason} -> status(context, describe(reason))
+    end
+  end
+
   def perform({:approve, run_id, request_id, decision}, context) do
     case Client.approve(context.client, run_id, request_id, decision) do
       :ok -> refresh(context) |> status("Approval #{decision}ed.")

@@ -91,6 +91,21 @@ defmodule Roundtable.Chat do
   end
 
   @doc """
+  Changes a room's name or its shared brief.
+
+  Not the directory: it is what every participant in the room works on, and
+  moving it under open sessions would point every transcript at another tree.
+  """
+  def update_room(room_id, attrs) do
+    room = room!(room_id)
+
+    room
+    |> Room.changeset(Map.put(normalise(attrs), "directory", room.directory))
+    |> Repo.update()
+    |> notify_rooms()
+  end
+
+  @doc """
   Adds a participant to a room, working in that room's directory.
 
   The directory is the room's, always. A room is a project: everyone in it
@@ -618,6 +633,7 @@ defmodule Roundtable.Chat do
   end
 
   def prompt(agent, run) do
+    room = room!(agent.room_id)
     history = messages(agent.room_id)
 
     until_id =
@@ -642,7 +658,12 @@ defmodule Roundtable.Chat do
     role above is the current one: where an earlier turn in this session was given a different role,
     that one no longer applies.#{role_change(agent)}
     You answer to @#{agent.name}; other participants address you by that name.
-    Working directory: #{agent.directory}
+
+    THIS ROOM
+    Room: #{room.name}. Working directory: #{agent.directory}
+    What this room is working on, and how: #{context(room)}
+    That is the shared brief for everyone here. Where it and your own role both apply, follow both;
+    where they genuinely conflict, say so rather than quietly picking one.
 
     THIS ASSIGNMENT
     Model for this assignment: #{run.model || agent.model || "provider default"}. Relative cost tier: #{run.cost_tier}.
@@ -679,6 +700,15 @@ defmodule Roundtable.Chat do
     do:
       "No role has been set for you. Do the assigned task, and say what you would need to be " <>
         "more useful in this room."
+
+  # A room without a brief says so: an agent inventing the team's goal is worse
+  # than an agent asking for it.
+  defp context(%{context: context}) when is_binary(context) and context != "", do: context
+
+  defp context(_room),
+    do:
+      "No shared brief has been set for this room. Work from the conversation, and say what " <>
+        "would help if the goal or the conventions here are unclear."
 
   # A provider session carries every earlier turn, each with the role it was
   # given then. Saying which brief has been replaced is what stops a session

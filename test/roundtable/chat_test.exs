@@ -94,6 +94,33 @@ defmodule Roundtable.ChatTest do
     assert :binary.match(prompt, identity) < :binary.match(prompt, assignment)
   end
 
+  test "the room's brief reaches every participant's turn", %{room: room, ada: ada} do
+    {:ok, _} =
+      Chat.update_room(room.id, %{
+        "context" => "Elixir and Phoenix. Tests with every change, mix precommit before done."
+      })
+
+    {:ok, assigned} = Chat.post(room.id, "@ada take a look")
+    run = Repo.get_by!(Run, agent_id: ada.id, message_id: assigned.id)
+    {prompt, _} = Chat.prompt(ada, run)
+
+    assert prompt =~ "THIS ROOM"
+    assert prompt =~ "Tests with every change, mix precommit before done."
+    assert prompt =~ "shared brief for everyone here"
+
+    # A room keeps its tree: the brief is not a way to move everyone elsewhere.
+    {:ok, _} = Chat.update_room(room.id, %{"directory" => "/tmp", "name" => "Build"})
+    assert Chat.room!(room.id).directory == room.directory
+  end
+
+  test "a room with no brief says so rather than leaving a blank", %{room: room, ada: ada} do
+    {:ok, assigned} = Chat.post(room.id, "@ada take a look")
+    run = Repo.get_by!(Run, agent_id: ada.id, message_id: assigned.id)
+    {prompt, _} = Chat.prompt(ada, run)
+
+    assert prompt =~ "No shared brief has been set for this room"
+  end
+
   test "a participant with no role is told that, not given an invented one", %{
     room: room,
     ada: ada

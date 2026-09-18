@@ -24,6 +24,7 @@ defmodule Roundtable.TUI.Commands do
     {"rooms", "", "list the rooms"},
     {"room", "<name>", "switch to one"},
     {"new-room", "<name> <dir>", "create one; . is where you started the client"},
+    {"context", "[text]", "show the room's shared brief, or set it"},
     {"remove-room", "<name>", "delete a room and everything in it"},
     {"ask", "<room>/<agent> <question>", "their answer is posted back here"},
     {"delegate", "<room>/<agent> <task>", "they report back when it is done"},

@@ -50,6 +50,11 @@
         </div>
         <div class="header-actions">
           <span class="live-badge"><span class="online-dot"></span> Live</span><button
+            id="edit-room-button"
+            class="button secondary"
+            phx-click="edit-room"
+            title="The brief everyone in this room works to"
+          >Room brief</button><button
             id="add-agent-button"
             class="button secondary"
             phx-click="panel"
@@ -403,14 +408,14 @@
       /></button>
       <div class="eyebrow">
         {case @panel do
-          "room" -> "A NEW SPACE"
+          "room" -> if(@editing_room, do: "WHAT THIS ROOM IS DOING", else: "A NEW SPACE")
           "models" -> "CAPABILITY & COST"
           _ -> if(@editing_agent, do: "CHANGE A PARTICIPANT", else: "EXPAND YOUR TEAM")
         end}
       </div>
       <h2 id="modal-title">
         {case @panel do
-          "room" -> "Create a room"
+          "room" -> if(@editing_room, do: "Edit this room", else: "Create a room")
           "models" -> "Model presets"
           _ -> if(@editing_agent, do: "Edit this agent", else: "Invite an agent")
         end}
@@ -418,7 +423,10 @@
       <p>
         {case @panel do
           "room" ->
-            "Give your project a place to come together."
+            if(@editing_room,
+              do: "Its name, and the brief everyone in it works to.",
+              else: "Give your project a place to come together."
+            )
 
           "models" ->
             "Save your models once. Choose the right one for each task."
@@ -453,12 +461,30 @@
           autofocus
         />
         <.input
+          field={@room_form[:context]}
+          label="What this room is working on, and how"
+          type="textarea"
+          placeholder="e.g. Elixir/Phoenix checkout service. Tests with every change, mix precommit before anything is called done, never push."
+          rows="4"
+          maxlength="4000"
+        />
+        <p class="form-note">
+          Every participant here opens each turn with this, alongside its own role,
+          so shared goals and conventions belong here rather than being repeated
+          in each role.
+        </p>
+        <div :if={@editing_room} class="input-field">
+          <label>Project directory</label>
+          <p class="fixed-field">{@room_form[:directory].value}</p>
+        </div>
+        <.input
+          :if={is_nil(@editing_room)}
           field={@room_form[:directory]}
           label="Project directory"
           required
           autocomplete="off"
         />
-        <ul :if={@directory_options != []} class="directory-picker">
+        <ul :if={@directory_options != [] and is_nil(@editing_room)} class="directory-picker">
           <li :for={path <- @directory_options}>
             <button type="button" phx-click="pick-directory" phx-value-path={path}>
               <span class="directory-name">{Path.basename(path)}</span>
@@ -467,11 +493,13 @@
             </button>
           </li>
         </ul>
-        <p class="form-note">
+        <p :if={is_nil(@editing_room)} class="form-note">
           Type to narrow, or click to go in. An existing absolute path on this machine.
         </p>
-        <button class="button full" type="submit" phx-disable-with="Creating…">Create room
-        <.icon name="hero-arrow-up-right" class="size-4" /></button>
+        <button class="button full" type="submit" phx-disable-with="Saving…">
+          {if @editing_room, do: "Save changes", else: "Create room"}
+          <.icon name="hero-arrow-up-right" class="size-4" />
+        </button>
       </.form>
       <.form
         :if={@panel == "agent" && @room}

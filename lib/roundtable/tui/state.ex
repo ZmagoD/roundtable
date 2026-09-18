@@ -400,6 +400,19 @@ defmodule Roundtable.TUI.State do
     end
   end
 
+  defp dispatch(state, "context", args) do
+    case {state.room, String.trim(args)} do
+      {nil, _} ->
+        {put_status(state, "Join a room first: /room <name>"), []}
+
+      {room, ""} ->
+        {put_status(state, room_context(room)), []}
+
+      {room, text} ->
+        {state, [{:update_room, room.id, %{"context" => unquote_value(text)}}]}
+    end
+  end
+
   defp dispatch(state, "auto", args) do
     case String.split(String.trim(args), " ", parts: 2) do
       [name, setting] when setting in ~w(on off) ->
@@ -491,6 +504,12 @@ defmodule Roundtable.TUI.State do
   defp put_given(attrs, _key, nil), do: attrs
   defp put_given(attrs, _key, ""), do: attrs
   defp put_given(attrs, key, value), do: Map.put(attrs, key, value)
+
+  defp room_context(%{context: context}) when is_binary(context) and context != "",
+    do: "Room brief: " <> context
+
+  defp room_context(_room),
+    do: "No shared brief yet. Set one with /context <what this room is working on, and how>"
 
   # "a b --model x --role do things" -> {"a b", %{"model" => "x", "role" => "do things"}}
   defp split_flags(args) do

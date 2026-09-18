@@ -187,6 +187,25 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert %{session_id: nil, last_seen_id: 0} = Chat.agent!(agent.id)
     end
 
+    test "the room brief is edited in place and shown back", %{view: view, room: room} do
+      view |> element("#edit-room-button") |> render_click()
+
+      html =
+        view
+        |> form("#room-form",
+          room: %{name: "Handlers", context: "Elixir and Phoenix. Tests first."}
+        )
+        |> render_submit()
+
+      assert Chat.room!(room.id).context == "Elixir and Phoenix. Tests first."
+      # The directory stays whatever the room was created on.
+      assert Chat.room!(room.id).directory == room.directory
+      assert html =~ "Handlers"
+
+      view |> element("#edit-room-button") |> render_click()
+      assert render(view) =~ "Elixir and Phoenix. Tests first."
+    end
+
     test "tool approvals are switched on from the participant's own form", %{
       view: view,
       agent: agent

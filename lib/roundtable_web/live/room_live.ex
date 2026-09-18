@@ -21,6 +21,7 @@ defmodule RoundtableWeb.RoomLive do
        editing_preset: nil,
        editing_agent: nil,
        editing_renamable: true,
+       editing_room: nil,
        room_form: to_form(%{}, as: :room),
        agent_form: to_form(%{}, as: :agent),
        runs: [],
@@ -64,7 +65,7 @@ defmodule RoundtableWeb.RoomLive do
 
   @impl true
   def handle_event("panel", %{"name" => name}, socket) do
-    socket = assign(socket, editing_agent: nil, editing_renamable: true)
+    socket = assign(socket, editing_agent: nil, editing_renamable: true, editing_room: nil)
     room_form = to_form(%{"directory" => socket.assigns.directory}, as: :room)
     socket = assign(socket, directory_options: Roundtable.Directories.suggest(""))
 
@@ -137,6 +138,22 @@ defmodule RoundtableWeb.RoomLive do
     end
   end
 
+  def handle_event("edit-room", _, %{assigns: %{room: room}} = socket) when not is_nil(room) do
+    attrs = %{"name" => room.name, "directory" => room.directory, "context" => room.context}
+
+    {:noreply,
+     assign(socket,
+       panel: "room",
+       editing_room: room.id,
+       editing_agent: nil,
+       form_error: nil,
+       directory_options: [],
+       room_form: to_form(attrs, as: :room)
+     )}
+  end
+
+  def handle_event("edit-room", _, socket), do: {:noreply, socket}
+
   def handle_event("edit-agent", %{"id" => id}, socket) do
     case Enum.find(socket.assigns.agents, &(to_string(&1.id) == id)) do
       nil ->
@@ -205,7 +222,21 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   def handle_event("close-panel", _, socket),
-    do: {:noreply, assign(socket, panel: nil, form_error: nil, editing_agent: nil)}
+    do:
+      {:noreply,
+       assign(socket, panel: nil, form_error: nil, editing_agent: nil, editing_room: nil)}
+
+  def handle_event("create-room", %{"room" => attrs}, %{assigns: %{editing_room: id}} = socket)
+      when not is_nil(id) do
+    case Chat.update_room(id, attrs) do
+      {:ok, _} ->
+        {:noreply, socket |> assign(panel: nil, editing_room: nil) |> reload_room()}
+
+      {:error, changeset} ->
+        {:noreply,
+         assign(socket, form_error: errors(changeset), room_form: to_form(attrs, as: :room))}
+    end
+  end
 
   def handle_event("create-room", %{"room" => attrs}, socket) do
     case Chat.create_room(attrs) do
@@ -461,6 +492,13 @@ defmodule RoundtableWeb.RoomLive do
       {:error, reason} -> reason
     end
   end
+
+  # The header and the brief are drawn from the room in the assigns, so a change
+  # to the room itself has to be read back rather than only its children.
+  defp reload_room(%{assigns: %{room: nil}} = socket), do: refresh(socket)
+
+  defp reload_room(socket),
+    do: socket |> assign(room: Chat.room!(socket.assigns.room.id)) |> refresh()
 
   defp refresh(%{assigns: %{room: nil}} = socket), do: assign(socket, rooms: Chat.rooms())
 
