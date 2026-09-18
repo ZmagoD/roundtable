@@ -27,7 +27,9 @@ The installer clones into `~/.local/share/roundtable`, builds an OTP release,
 and links `roundtable` into `~/.local/bin`. It never asks for sudo and touches
 nothing outside your home directory. Re-run it, or run `roundtable update`, to
 update in place; `install.sh --uninstall` removes the command and the code but
-keeps your rooms, and `--purge` deletes those too.
+keeps your rooms, and `--purge` deletes those too. `install.sh --help` lists
+the flags, and `ROUNDTABLE_PREFIX`, `ROUNDTABLE_BIN_DIR`, `ROUNDTABLE_REF` and
+`ROUNDTABLE_REPO` override where it installs from and to.
 
 You need Linux, Elixir 1.17+ with a compatible Erlang/OTP, Python 3, Git, and
 at least one supported agent CLI. Log in to each agent in its own terminal
@@ -96,10 +98,15 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/approve accept\|decline [n]` | answer a pending tool approval |
 | `/changes [agent\|room\|off]` | watch a different directory, or hide the pane |
 | `/lazygit` | hand the terminal to lazygit |
+| `/refresh` | re-read the room now, without waiting for an update |
 | `/quit` | leave (Ctrl-C and Ctrl-D also work) |
 
 `↑`/`↓` and `PgUp`/`PgDn` scroll the transcript, `^L` redraws. Approvals and
 failed runs appear inline with the command that answers them.
+
+The message line takes the usual editing keys: `Esc` clears it, `^U` deletes to
+the start, `^W` deletes the word behind the cursor, and `Home`/`End` jump to
+either end.
 
 ### Watching the work land
 
