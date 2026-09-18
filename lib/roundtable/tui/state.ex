@@ -6,7 +6,7 @@ defmodule Roundtable.TUI.State do
   the event loop to carry out against `Roundtable.Client`. Nothing here talks to
   the service or the terminal, so the whole interaction surface is testable.
   """
-  alias Roundtable.TUI.Render
+  alias Roundtable.TUI.{Commands, Render}
 
   defstruct rooms: [],
             room: nil,
@@ -27,6 +27,7 @@ defmodule Roundtable.TUI.State do
             changes_target: nil,
             roster_visible: false,
             help_visible: false,
+            palette: 0,
             handoff: nil,
             quit: false
 
@@ -127,8 +128,23 @@ defmodule Roundtable.TUI.State do
     {%{state | input: kept <> rest, cursor: String.length(kept)} |> retype(), []}
   end
 
-  def handle_key(state, :up), do: {scroll(state, 1), []}
-  def handle_key(state, :down), do: {scroll(state, -1), []}
+  def handle_key(state, :up) do
+    case palette(state) do
+      [] ->
+        {scroll(state, 1), []}
+
+      commands ->
+        {%{state | palette: rem(state.palette + length(commands) - 1, length(commands))}, []}
+    end
+  end
+
+  def handle_key(state, :down) do
+    case palette(state) do
+      [] -> {scroll(state, -1), []}
+      commands -> {%{state | palette: rem(state.palette + 1, length(commands))}, []}
+    end
+  end
+
   def handle_key(state, :page_up), do: {scroll(state, body_height(state)), []}
   def handle_key(state, :page_down), do: {scroll(state, -body_height(state)), []}
 
@@ -139,7 +155,14 @@ defmodule Roundtable.TUI.State do
     do: {%{state | roster_visible: false}, []}
 
   def handle_key(state, :escape), do: {%{state | input: "", cursor: 0} |> retype(), []}
-  def handle_key(state, :tab), do: {cycle_recipient(state), []}
+
+  def handle_key(state, :tab) do
+    case palette(state) do
+      [] -> {cycle_recipient(state), []}
+      commands -> {complete(state, commands), []}
+    end
+  end
+
   def handle_key(state, _), do: {state, []}
 
   defp split(state) do
@@ -147,8 +170,21 @@ defmodule Roundtable.TUI.State do
      String.slice(state.input, state.cursor..-1//1) || ""}
   end
 
-  defp retype(state),
-    do: %{state | mode: if(String.starts_with?(state.input, "/"), do: :command, else: :message)}
+  defp retype(state) do
+    mode = if String.starts_with?(state.input, "/"), do: :command, else: :message
+    %{state | mode: mode, palette: min(state.palette, max(length(palette(state)) - 1, 0))}
+  end
+
+  @doc "The commands the current line could still become."
+  def palette(%{input: input}), do: Commands.matching(input)
+
+  @doc "The one the palette has highlighted, if it is open."
+  def selected(state) do
+    case palette(state) do
+      [] -> nil
+      commands -> Enum.at(commands, min(state.palette, length(commands) - 1))
+    end
+  end
 
   defp scroll(state, by) do
     max_scroll = max(Render.total_lines(state) - body_height(state), 0)
@@ -156,6 +192,25 @@ defmodule Roundtable.TUI.State do
   end
 
   defp body_height(%{size: {rows, _}}), do: max(rows - 6, 1)
+
+  # One match completes to it and adds the space you were going to type; several
+  # complete as far as they agree, which is how a shell behaves.
+  defp complete(state, commands) do
+    typed = String.trim_leading(state.input, "/")
+
+    completion =
+      case commands do
+        [{name, _, _}] -> name <> " "
+        _ -> Commands.common_prefix(commands)
+      end
+
+    if completion == "" or completion == typed do
+      state
+    else
+      input = "/" <> completion
+      %{state | input: input, cursor: String.length(input), palette: 0} |> retype()
+    end
+  end
 
   defp cycle_recipient(%{agents: []} = state),
     do: put_status(state, "No agents in this room yet.")
@@ -182,6 +237,28 @@ defmodule Roundtable.TUI.State do
   # --- submitting -----------------------------------------------------------
 
   defp submit(state) do
+    case selected(state) do
+      nil -> run(state)
+      command -> accept_selection(state, command)
+    end
+  end
+
+  # Enter on a highlighted command takes it. One that needs arguments is filled
+  # in and left for you to finish; running it bare would only print its usage.
+  defp accept_selection(state, {name, arguments, _}) do
+    typed = String.trim_leading(state.input, "/")
+
+    cond do
+      typed == name -> run(state)
+      arguments == "" -> run(%{state | input: "/" <> name})
+      true -> {put_line(state, "/" <> name <> " "), []}
+    end
+  end
+
+  defp put_line(state, input),
+    do: %{state | input: input, cursor: String.length(input), palette: 0} |> retype()
+
+  defp run(state) do
     case String.trim(state.input) do
       "" -> {state, []}
       "/" <> command -> command(clear_input(state), command)
@@ -189,7 +266,8 @@ defmodule Roundtable.TUI.State do
     end
   end
 
-  defp clear_input(state), do: %{state | input: "", cursor: 0, mode: :message, scroll: 0}
+  defp clear_input(state),
+    do: %{state | input: "", cursor: 0, mode: :message, scroll: 0, palette: 0}
 
   defp command(state, command) do
     case String.split(String.trim(command), " ", parts: 2) do

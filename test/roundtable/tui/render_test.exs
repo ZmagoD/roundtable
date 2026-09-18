@@ -259,6 +259,28 @@ defmodule Roundtable.TUI.RenderTest do
     assert screen =~ "No participants yet"
   end
 
+  test "the palette is drawn above the input, and the frame survives it" do
+    state = state(input: "/re", mode: :command)
+
+    for size <- [{24, 80}, {40, 120}, {10, 44}] do
+      {rows, cols} = size
+      lines = screen(%{state | size: size})
+      assert length(lines) == rows
+      for line <- lines, do: assert(String.length(line) == cols)
+    end
+
+    # Wide enough that the description column is not elided.
+    drawn = %{state | size: {30, 120}} |> screen() |> Enum.join("\n")
+    assert drawn =~ "commands"
+    assert drawn =~ "/rename <agent> <new>"
+    assert drawn =~ "rename one, before its first turn"
+    assert drawn =~ "▸"
+  end
+
+  test "the palette is absent for an ordinary message" do
+    refute state(input: "hello there") |> screen() |> Enum.join("\n") =~ "─ commands"
+  end
+
   test "help lists every command and keeps the frame intact" do
     state = state(help_visible: true)
 

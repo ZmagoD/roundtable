@@ -167,8 +167,11 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/refresh` | re-read the room now, without waiting for an update |
 | `/quit` | leave (Ctrl-C and Ctrl-D also work) |
 
-Press `?` on an empty line for a help screen listing every command and key —
-the client is meant to be learnable from inside it, without this page.
+Type `/` and the commands appear as a palette, narrowing as you type: `↑`/`↓`
+choose, `Tab` completes as far as the matches agree, and `Enter` takes the
+highlighted one — filling in the line when it needs an argument rather than
+running it bare. Press `?` on an empty line for the full help screen. The
+client is meant to be learnable from inside it, without this page.
 
 `↑`/`↓` and `PgUp`/`PgDn` scroll the transcript, `^L` redraws. Approvals and
 failed runs appear inline with the command that answers them.

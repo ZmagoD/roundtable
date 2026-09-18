@@ -7,7 +7,7 @@ defmodule Roundtable.TUI.Render do
   added, because escape sequences occupy no columns and would otherwise throw
   the box drawing off.
   """
-  alias Roundtable.TUI.State
+  alias Roundtable.TUI.{Commands, State}
 
   @sidebar 20
   @chrome 6
@@ -28,9 +28,10 @@ defmodule Roundtable.TUI.Render do
     # The changes pane takes from the transcript, never from the frame.
     changes = changes_lines(state, width, div(body, 2))
 
-    upper = upper_pane(state, body - length(changes), width)
+    palette = palette_lines(state, width)
+    upper = upper_pane(state, body - length(changes) - length(palette), width)
 
-    right = upper ++ changes
+    right = upper ++ palette ++ changes
 
     [
       "\e[H\e[2J",
@@ -134,6 +135,37 @@ defmodule Roundtable.TUI.Render do
     fit(rows, height, pad("", @sidebar), :top)
   end
 
+  # The palette sits where a completion menu belongs: just above what you are
+  # typing, so the eye does not have to travel.
+  defp palette_lines(state, width) do
+    case State.palette(state) do
+      [] ->
+        []
+
+      commands ->
+        selected = State.selected(state)
+        shown = Enum.take(commands, 8)
+        hidden = length(commands) - length(shown)
+
+        [heading("commands", width)] ++
+          Enum.map(shown, &palette_line(&1, &1 == selected, width)) ++
+          if hidden > 0,
+            do: [[@dim, pad("   … and #{hidden} more", width), @reset]],
+            else: []
+    end
+  end
+
+  defp palette_line({name, arguments, description}, selected?, width) do
+    left = "/#{name}#{if arguments == "", do: "", else: " " <> arguments}"
+    column = min(34, max(div(width, 2), 14))
+    marker = if selected?, do: "▸ ", else: "  "
+    text = pad(marker <> cut(left, column - 3), column) <> pad(description, width - column)
+
+    if selected?,
+      do: [@bold, @green, text, @reset],
+      else: [@cyan, pad(marker, 2), @reset, @dim, String.slice(text, 2..-1//1), @reset]
+  end
+
   @doc false
   def help(state, height, width) do
     lines = help_lines(width)
@@ -151,49 +183,37 @@ defmodule Roundtable.TUI.Render do
     |> fit(height, pad("", width), :top)
   end
 
-  @help [
-    {:section, "Talking"},
-    {"<message>", "post to the room; everyone reads it next turn"},
-    {"@name <message>", "assign a turn to that participant"},
-    {"@all <message>", "assign to everyone in the room"},
-    {"Tab", "cycle which participant you are addressing"},
-    {:section, "Who is here"},
-    {"/who   ^P", "roster: provider, model, cost tier, role, status"},
-    {"/providers", "which agent CLIs are installed"},
-    {"/models <provider> [filter]", "model names that provider offers"},
-    {"/agent <name> <provider>", "add a participant"},
-    {"  [--model m] [--role text]", "a model to pin, and what it is for"},
-    {"  [--tier t]", "economy, standard or premium"},
-    {"/role <agent> <text>", "change what a participant is for"},
-    {"/model <agent> <id>", "pin a model, or 'default' to unpin"},
-    {"/rename <agent> <new>", "rename one, before its first turn"},
-    {"/remove <agent>", "remove a participant; its messages stay"},
-    {"/stop <agent>", "stop its queue"},
-    {"/reset <agent>", "clear its session; history stays"},
-    {"/retry [run]", "retry the newest failed run, or one by id"},
-    {"/approve accept|decline [n]", "answer a pending tool approval"},
-    {:section, "Rooms"},
-    {"/rooms", "list them"},
-    {"/room <name>", "switch to one"},
-    {"/new-room <name> <dir>", "create one on an existing absolute directory"},
-    {"/remove-room <name>", "delete a room and everything in it"},
-    {:section, "Other rooms"},
-    {"/ask <room>/<agent> <q>", "their answer is posted back here"},
-    {"/delegate <room>/<agent> <task>", "they report back when it is done"},
-    {"", "a room is addressed in lowercase with dashes"},
-    {:section, "Changes"},
-    {"^T   /changes [on|off]", "the git pane for this room's directory"},
-    {"^G   /lazygit", "hand the terminal over; quit it to come back"},
-    {:section, "Getting around"},
-    {"↑ ↓  PgUp PgDn", "scroll"},
-    {"^L", "redraw"},
-    {"Esc", "close a pane, or clear the line"},
-    {"^U  ^W  Home  End", "edit the line"},
-    {"^C   ^D   /quit", "leave; running turns carry on"}
+  @sections [
+    {"Talking",
+     [
+       {"<message>", "post to the room; everyone reads it next turn"},
+       {"@name <message>", "assign a turn to that participant"},
+       {"@all <message>", "assign to everyone in the room"},
+       {"Tab", "cycle the recipient, or complete a command"}
+     ]},
+    {"Getting around",
+     [
+       {"↑ ↓  PgUp PgDn", "scroll, or choose in the command palette"},
+       {"^P  ^T  ^G", "roster · changes pane · lazygit"},
+       {"^L", "redraw"},
+       {"Esc", "close a pane, or clear the line"},
+       {"^U  ^W  Home  End", "edit the line"},
+       {"^C   ^D", "leave; running turns carry on"}
+     ]}
   ]
 
   defp help_lines(width) do
-    Enum.map(@help, fn
+    {talking, rest} = Enum.split(@sections, 1)
+
+    entries =
+      Enum.flat_map(talking, &section/1) ++
+        [{:section, "Commands"}] ++
+        Enum.map(Commands.all(), fn {name, arguments, description} ->
+          {"/#{name}#{if arguments == "", do: "", else: " " <> arguments}", description}
+        end) ++
+        Enum.flat_map(rest, &section/1)
+
+    Enum.map(entries, fn
       {:section, title} ->
         [@bold, pad(" " <> title, width), @reset]
 
@@ -283,6 +303,8 @@ defmodule Roundtable.TUI.Render do
           [[@bold, pad(summary, width), @reset]]
     end
   end
+
+  defp section({title, entries}), do: [{:section, title} | entries]
 
   defp plural(1), do: "file"
   defp plural(_), do: "files"
