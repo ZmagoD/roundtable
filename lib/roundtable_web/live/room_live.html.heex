@@ -56,6 +56,12 @@
             phx-click="edit-room"
             title="The brief everyone in this room works to"
           >Room brief</button><button
+            id="schedules-button"
+            class="button secondary"
+            phx-click="panel"
+            phx-value-name="schedules"
+            title="Wake a participant at a time of day"
+          >Schedules</button><button
             id="add-agent-button"
             class="button secondary"
             phx-click="panel"
@@ -412,6 +418,7 @@
           "room" -> if(@editing_room, do: "WHAT THIS ROOM IS DOING", else: "A NEW SPACE")
           "models" -> "CAPABILITY & COST"
           "profiles" -> "YOUR PEOPLE"
+          "schedules" -> "STANDING INSTRUCTIONS"
           _ -> if(@editing_agent, do: "CHANGE A PARTICIPANT", else: "EXPAND YOUR TEAM")
         end}
       </div>
@@ -420,6 +427,7 @@
           "room" -> if(@editing_room, do: "Edit this room", else: "Create a room")
           "models" -> "Model presets"
           "profiles" -> "Agent profiles"
+          "schedules" -> "Schedules"
           _ -> if(@editing_agent, do: "Edit this agent", else: "Invite an agent")
         end}
       </h2>
@@ -436,6 +444,9 @@
 
           "profiles" ->
             "Define a participant once, then add it to any room."
+
+          "schedules" ->
+            "Say something to one participant at the same times every day."
 
           _ ->
             cond do
@@ -615,6 +626,94 @@
           <.icon name="hero-arrow-up-right" class="size-4" />
         </button>
       </.form>
+      <div :if={@panel == "schedules"}>
+        <div class="preset-list">
+          <div
+            :for={schedule <- @schedules}
+            class={["preset-row", "profile-row", !schedule.enabled && "off"]}
+            title={"Last run: #{last_run(schedule.last_run_at)}"}
+          >
+            <button class="profile-open" phx-click="edit-schedule" phx-value-id={schedule.id}>
+              <span><strong>{schedule_agent(@agents, schedule.agent_id)} · {schedule_when(
+                schedule
+              )}</strong><small>{schedule.prompt}</small></span>
+            </button>
+            <button class="text-button" phx-click="toggle-schedule" phx-value-id={schedule.id}>
+              {if schedule.enabled, do: "Switch off", else: "Switch on"}
+            </button>
+          </div>
+          <p :if={@schedules == []} class="form-note">
+            Nothing standing yet. A schedule says one thing to one participant at the times
+            you choose: a morning sweep of the bug board, a five o’clock look at what changed.
+          </p>
+        </div>
+        <p :if={@agents == []} class="form-note">
+          Nobody is in this room to wake. Add a participant first.
+        </p>
+        <.form
+          :if={@agents != []}
+          for={@schedule_form}
+          id="schedule-form"
+          phx-submit="save-schedule"
+        >
+          <.input
+            field={@schedule_form[:agent_id]}
+            label="Who to wake"
+            type="select"
+            options={Enum.map(@agents, &{&1.name, &1.id})}
+          />
+          <.input
+            field={@schedule_form[:prompt]}
+            label="What to say to it"
+            type="textarea"
+            rows="3"
+            placeholder="e.g. Sweep the bug board and say what is worth doing today"
+            required
+            maxlength="4000"
+          />
+          <.input
+            field={@schedule_form[:at]}
+            label="At — times of day, separated by commas"
+            placeholder="09:00 or 09:00,17:30"
+            required
+          />
+          <.input
+            field={@schedule_form[:days]}
+            label="On"
+            type="select"
+            options={day_options(@schedule_form[:days].value)}
+          />
+          <.input
+            field={@schedule_form[:enabled]}
+            label="Running"
+            type="select"
+            options={[{"Yes", "true"}, {"No", "false"}]}
+          />
+          <p class="form-note">
+            Times are this machine’s own. What it says arrives as an ordinary mention and starts
+            a turn, so it costs what a turn costs. One missed by more than ten minutes — the
+            machine asleep, the service stopped — is skipped rather than delivered late.
+          </p>
+          <button class="button full" type="submit" phx-disable-with="Saving…">
+            {if @editing_schedule, do: "Update schedule", else: "Save schedule"}
+          </button>
+          <button
+            :if={@editing_schedule}
+            class="text-button"
+            type="button"
+            phx-click="panel"
+            phx-value-name="schedules"
+          >Add another schedule</button>
+          <button
+            :if={@editing_schedule}
+            class="text-button danger"
+            type="button"
+            phx-click="delete-schedule"
+            phx-value-id={@editing_schedule}
+            data-confirm="Remove this schedule? Nothing else changes."
+          >Delete this schedule</button>
+        </.form>
+      </div>
       <div :if={@panel == "profiles"}>
         <div class="preset-list">
           <div :for={profile <- @agent_profiles} class="preset-row profile-row">

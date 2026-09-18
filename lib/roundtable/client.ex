@@ -86,6 +86,21 @@ defmodule Roundtable.Client do
   def add_profile_to_room(c, room_id, profile_id, name),
     do: call(c, Chat, :add_profile_to_room, [room_id, profile_id, name], @write_timeout)
 
+  def schedules(c, room_id) do
+    case call(c, Chat, :schedules, [room_id]) do
+      schedules when is_list(schedules) -> schedules
+      _ -> []
+    end
+  end
+
+  def create_schedule(c, room_id, attrs),
+    do: call(c, Chat, :create_schedule, [room_id, attrs], @write_timeout)
+
+  def update_schedule(c, id, attrs),
+    do: call(c, Chat, :update_schedule, [id, attrs], @write_timeout)
+
+  def delete_schedule(c, id), do: call(c, Chat, :delete_schedule, [id], @write_timeout)
+
   def post(c, room_id, body, opts \\ []),
     do: call(c, Coordinator, :post, [room_id, body, opts], @write_timeout)
 

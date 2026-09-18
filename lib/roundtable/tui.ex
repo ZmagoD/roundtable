@@ -9,6 +9,7 @@ defmodule Roundtable.TUI do
   The terminal is always restored, including on a crash, so a failure here
   never leaves a shell in raw mode.
   """
+  alias Roundtable.Chat.Schedule
   alias Roundtable.Client
   alias Roundtable.TUI.{Keys, Render, State, Terminal}
 
@@ -267,6 +268,35 @@ defmodule Roundtable.TUI do
     end
   end
 
+  def perform({:schedules, room_id}, context) do
+    case Client.schedules(context.client, room_id) do
+      [] ->
+        status(context, "Nothing standing here. /schedule <agent> <09:00> <what to say>")
+
+      schedules ->
+        status(context, Enum.map_join(schedules, " · ", &describe_schedule(&1, context)))
+    end
+  end
+
+  def perform({:create_schedule, room_id, attrs}, context) do
+    case Client.create_schedule(context.client, room_id, attrs) do
+      {:ok, schedule} ->
+        refresh(context)
+        |> status("Standing instruction ##{schedule.id}: #{Schedule.describe(schedule)}.")
+
+      {:error, reason} ->
+        status(context, describe(reason))
+    end
+  end
+
+  def perform({:delete_schedule, _room_id, id}, context) do
+    case Client.delete_schedule(context.client, id) do
+      {:ok, _} -> refresh(context) |> status("Schedule ##{id} stopped.")
+      {:error, reason} -> status(context, describe(reason))
+      other -> status(context, describe(other))
+    end
+  end
+
   def perform({:approve, run_id, request_id, decision}, context) do
     case Client.approve(context.client, run_id, request_id, decision) do
       :ok -> refresh(context) |> status("Approval #{decision}ed.")
@@ -435,6 +465,18 @@ defmodule Roundtable.TUI do
   defp draw(context) do
     Terminal.write(Render.render(context.state))
     context
+  end
+
+  # Ids are how the terminal refers back to one, so they lead.
+  defp describe_schedule(schedule, context) do
+    name =
+      case Enum.find(context.state.agents, &(&1.id == schedule.agent_id)) do
+        nil -> "someone who has left"
+        agent -> agent.name
+      end
+
+    off = if schedule.enabled, do: "", else: " (off)"
+    "##{schedule.id} #{name} #{Schedule.describe(schedule)}#{off}"
   end
 
   defp describe(%Ecto.Changeset{} = changeset) do

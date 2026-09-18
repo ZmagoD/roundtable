@@ -18,6 +18,7 @@ defmodule Roundtable.MCP do
   a log from being a standing key to the service.
   """
   alias Roundtable.{Agents, Chat, Coordinator}
+  alias Roundtable.Chat.Schedule
 
   @salt "roundtable mcp participant"
 
@@ -184,6 +185,52 @@ defmodule Roundtable.MCP do
           )
       },
       %{
+        name: "list_schedules",
+        description:
+          "The standing instructions in a room: who each one wakes, what it says, and when.",
+        inputSchema: object(%{"room" => room_property()})
+      },
+      %{
+        name: "create_schedule",
+        description:
+          "Wakes a participant at times of day with a message, every day or on chosen " <>
+            "weekdays. The message arrives in the room as an ordinary mention and starts a turn.",
+        inputSchema:
+          object(
+            %{
+              "participant" => string("Who to wake, by name or id. It must be in the room."),
+              "prompt" =>
+                string(
+                  "What to say to it. Written as an instruction for a turn that begins with " <>
+                    "no other context than the room."
+                ),
+              "at" => at_property(),
+              "days" => days_property(),
+              "room" => room_property(),
+              "enabled" => enabled_property()
+            },
+            ["participant", "prompt", "at"]
+          )
+      },
+      %{
+        name: "update_schedule",
+        description:
+          "Changes a standing instruction, or switches it off. Switching off is how a " <>
+            "schedule stops: they are never deleted from here.",
+        inputSchema:
+          object(
+            %{
+              "schedule" => string("Which schedule, by id. list_schedules shows them."),
+              "prompt" => string("What it says."),
+              "at" => at_property(),
+              "days" => days_property(),
+              "room" => room_property(),
+              "enabled" => enabled_property()
+            },
+            ["schedule"]
+          )
+      },
+      %{
         name: "update_profile",
         description:
           "Changes a saved profile. Participants already added from it are their own and stay " <>
@@ -293,6 +340,37 @@ defmodule Roundtable.MCP do
     end
   end
 
+  def call(agent, "list_schedules", args) do
+    with {:ok, room} <- room(agent, args),
+         do: {:ok, json(Enum.map(Chat.schedules(room.id), &schedule_view/1))}
+  end
+
+  def call(agent, "create_schedule", args) do
+    with {:ok, room} <- room(agent, args),
+         {:ok, target} <- participant_in(room, args["participant"]),
+         attrs = args |> take(schedule_fields()) |> Map.put("agent_id", target.id),
+         {:ok, saved} <- write(Chat.create_schedule(room.id, attrs)) do
+      done(
+        agent,
+        "will wake #{target.name} in room #{room.id}, #{room.name}, at " <>
+          "#{Schedule.describe(saved)}, saying: #{saved.prompt}"
+      )
+    end
+  end
+
+  def call(agent, "update_schedule", args) do
+    with {:ok, room} <- room(agent, args),
+         {:ok, existing} <- schedule_in(room, args["schedule"]),
+         attrs = take(args, schedule_fields()),
+         {:ok, updated} <- write(Chat.update_schedule(existing.id, attrs)) do
+      done(
+        agent,
+        "changed schedule #{updated.id} in room #{room.id}: #{changed(attrs)}. " <>
+          "It now runs at #{Schedule.describe(updated)}#{if updated.enabled, do: "", else: ", switched off"}."
+      )
+    end
+  end
+
   def call(_agent, name, _args),
     do: {:error, "There is no tool called #{name} here."}
 
@@ -306,6 +384,21 @@ defmodule Roundtable.MCP do
     }
 
   defp profile_fields, do: Map.put(participant_fields(), "provider", "provider")
+
+  defp schedule_fields,
+    do: %{"prompt" => "prompt", "at" => "at", "days" => "days", "enabled" => "enabled"}
+
+  defp schedule_in(room, reference) when is_binary(reference) or is_integer(reference) do
+    wanted = reference |> to_string() |> String.trim()
+
+    case Enum.find(Chat.schedules(room.id), &(to_string(&1.id) == wanted)) do
+      nil -> {:error, "#{room.name} has no schedule #{wanted}. list_schedules shows them."}
+      schedule -> {:ok, schedule}
+    end
+  end
+
+  defp schedule_in(room, _reference),
+    do: {:error, "Say which schedule in #{room.name} to change, by id."}
 
   defp add(room, %{"profile" => reference} = args) when is_binary(reference) do
     with {:ok, profile} <- profile(reference),
@@ -327,8 +420,7 @@ defmodule Roundtable.MCP do
   defp done(agent, text) do
     Coordinator.post(agent.room_id, String.replace("#{agent.name}: #{text}", "@", ""),
       sender: "system",
-      kind: "agent",
-      metadata: %{"tool" => "roundtable"}
+      kind: "agent"
     )
 
     {:ok, text}
@@ -416,6 +508,19 @@ defmodule Roundtable.MCP do
     }
   end
 
+  defp schedule_view(schedule) do
+    %{
+      id: schedule.id,
+      participant: Chat.agent!(schedule.agent_id).name,
+      prompt: schedule.prompt,
+      at: schedule.at,
+      days: schedule.days,
+      when: Schedule.describe(schedule),
+      enabled: schedule.enabled,
+      last_run_at: schedule.last_run_at
+    }
+  end
+
   defp profile_view(profile) do
     %{
       id: profile.id,
@@ -451,6 +556,23 @@ defmodule Roundtable.MCP do
         "What this team is doing and how it works. Every participant in the room is given it " <>
           "at the start of every turn."
       )
+
+  defp at_property,
+    do:
+      string(
+        "Times of day it runs at, as HH:MM, separated by commas: \"09:00\" or " <>
+          "\"09:00,17:30\". The machine's own local time."
+      )
+
+  defp days_property,
+    do:
+      string(
+        "Weekdays it runs on, 1 for Monday through 7 for Sunday: \"1,2,3,4,5\" for " <>
+          "weekdays. Leave it out for every day."
+      )
+
+  defp enabled_property,
+    do: %{type: "boolean", description: "Whether it runs at all. Switch it off to stop it."}
 
   defp role_property,
     do:

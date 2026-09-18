@@ -7,7 +7,18 @@ defmodule Roundtable.Chat do
   in one place rather than once per client.
   """
   import Ecto.Query
-  alias Roundtable.Chat.{Agent, AgentProfile, CrossRoomRequest, Message, ModelPreset, Room, Run}
+
+  alias Roundtable.Chat.{
+    Agent,
+    AgentProfile,
+    CrossRoomRequest,
+    Message,
+    ModelPreset,
+    Room,
+    Run,
+    Schedule
+  }
+
   alias Roundtable.Repo
 
   def model_presets, do: Repo.all(from p in ModelPreset, order_by: [p.provider, p.name])
@@ -60,6 +71,57 @@ defmodule Roundtable.Chat do
       "auto_approve" => profile.auto_approve
     })
   end
+
+  @doc "Every standing instruction in a room, oldest first."
+  def schedules(room_id),
+    do: Repo.all(from s in Schedule, where: s.room_id == ^room_id, order_by: [asc: s.id])
+
+  @doc "Every standing instruction there is, for the process that runs them."
+  def schedules, do: Repo.all(from s in Schedule, order_by: [asc: s.id])
+
+  def schedule!(id), do: Repo.get!(Schedule, id)
+
+  @doc """
+  Saves a standing instruction: what to say to a participant, and when.
+
+  The participant has to be in the room the schedule belongs to. A schedule
+  naming someone from another room would post a mention that nobody here
+  answers to, and quietly do nothing every morning.
+  """
+  def create_schedule(room_id, attrs) do
+    %Schedule{room_id: room_id}
+    |> Schedule.changeset(normalise(attrs))
+    |> in_room(room_id)
+    |> Repo.insert()
+    |> tap(&notify_room/1)
+  end
+
+  def update_schedule(id, attrs) do
+    schedule = schedule!(id)
+
+    schedule
+    |> Schedule.changeset(normalise(attrs))
+    |> in_room(schedule.room_id)
+    |> Repo.update()
+    |> tap(&notify_room/1)
+  end
+
+  def delete_schedule(id), do: id |> schedule!() |> Repo.delete() |> tap(&notify_room/1)
+
+  @doc "Records that a schedule has woken someone, so the next tick does not."
+  def schedule_ran(schedule, at), do: change(schedule, last_run_at: at)
+
+  defp in_room(changeset, room_id) do
+    agent_id = Ecto.Changeset.get_field(changeset, :agent_id)
+
+    if is_nil(agent_id) or
+         Repo.exists?(from a in Agent, where: a.id == ^agent_id and a.room_id == ^room_id),
+       do: changeset,
+       else: Ecto.Changeset.add_error(changeset, :agent_id, "is not a participant in this room")
+  end
+
+  defp notify_room({:ok, %{room_id: room_id}}), do: broadcast(room_id)
+  defp notify_room(_result), do: :ok
 
   @purposes ["general", "planning", "implementation", "verification"]
 
@@ -742,9 +804,10 @@ defmodule Roundtable.Chat do
 
       THE ROOMS THEMSELVES
       You have tools for the rooms here. Use them to see who is where, and — when the human asks for
-      it — to make a room, give it its brief, and add participants to it from the saved profiles or
-      from scratch. Only when asked: never to give yourself help, and never to start the work in a
-      room you have just made. Setting one up is the whole job; hand it back.\
+      it — to make a room, give it its brief, add participants to it from the saved profiles or from
+      scratch, and set standing instructions that wake a participant at a time of day. Only when
+      asked: never to give yourself help, and never to start the work in a room you have just made.
+      Setting one up is the whole job; hand it back.\
       """
     else
       ""

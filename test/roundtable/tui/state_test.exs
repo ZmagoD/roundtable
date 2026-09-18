@@ -203,6 +203,38 @@ defmodule Roundtable.TUI.StateTest do
     assert effects == [:profiles]
   end
 
+  test "schedule turns a line into a standing instruction" do
+    {_, effects} =
+      state() |> type("/schedule ada 09:00 sweep the bug board") |> State.handle_key(:enter)
+
+    assert [{:create_schedule, 1, attrs}] = effects
+    assert attrs["at"] == "09:00"
+    assert attrs["prompt"] == "sweep the bug board"
+    refute Map.has_key?(attrs, "days")
+
+    {_, effects} =
+      state()
+      |> type("/schedule ada 09:00,17:30 sweep it --days 1,2,3,4,5")
+      |> State.handle_key(:enter)
+
+    assert [{:create_schedule, 1, %{"days" => "1,2,3,4,5", "prompt" => "sweep it"}}] = effects
+
+    {state, []} = state() |> type("/schedule ada") |> State.handle_key(:enter)
+    assert state.status =~ "Usage: /schedule"
+
+    {state, []} = state() |> type("/schedule nobody 09:00 sweep") |> State.handle_key(:enter)
+    assert state.status =~ "No agent called nobody"
+
+    {_, effects} = state() |> type("/schedules") |> State.handle_key(:enter)
+    assert effects == [{:schedules, 1}]
+
+    {_, effects} = state() |> type("/unschedule 3") |> State.handle_key(:enter)
+    assert effects == [{:delete_schedule, 1, 3}]
+
+    {state, []} = state() |> type("/unschedule") |> State.handle_key(:enter)
+    assert state.status =~ "Usage: /unschedule"
+  end
+
   test "context shows the room's brief and sets it" do
     {state, []} = state() |> type("/context") |> State.handle_key(:enter)
     assert state.status =~ "No shared brief yet"

@@ -594,6 +594,8 @@ h1, h2, h3, p { margin: 0; }
 .profile-open { flex: 1; display: flex; justify-content: space-between; align-items: center; text-align: left; background: none; border: none; padding: 0; }
 .preset-row strong { font-size: 11px; font-weight: 500; }
 .preset-row small { display: block; color: var(--green-mid-25); font-size: 9px; margin-top: 5px; }
+/* A schedule that is switched off still says what it would do, quietly. */
+.preset-row.off { opacity: 0.55; }
 @media (max-width: 600px) { .assignment-controls { flex-wrap: wrap; gap: 6px; } .assignment-controls select { max-width: 145px; } }
 
 /* The changes panel: branch, what moved, and the patch on demand. */

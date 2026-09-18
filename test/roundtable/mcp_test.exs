@@ -251,6 +251,86 @@ defmodule Roundtable.MCPTest do
     end
   end
 
+  describe "standing instructions" do
+    test "a participant can be put on a schedule", %{room: room, ada: ada} do
+      assert {:ok, text} =
+               MCP.call(ada, "create_schedule", %{
+                 "participant" => "ada",
+                 "prompt" => "sweep the bug board",
+                 "at" => "9,17:30",
+                 "days" => "1,2,3,4,5"
+               })
+
+      assert text =~ "09:00, 17:30 on weekdays"
+      assert [schedule] = Chat.schedules(room.id)
+      assert schedule.agent_id == ada.id
+      assert schedule.at == "09:00,17:30"
+      assert schedule.enabled
+    end
+
+    test "but only somebody who is in the room", %{room: room, ada: ada} do
+      {:ok, _} = MCP.call(ada, "create_room", %{"name" => "Docs"})
+
+      assert {:error, message} =
+               MCP.call(ada, "create_schedule", %{
+                 "room" => "docs",
+                 "participant" => "ada",
+                 "prompt" => "sweep",
+                 "at" => "09:00"
+               })
+
+      assert message =~ "ada"
+      assert Chat.schedules(room.id) == []
+    end
+
+    test "a time that is not a time is refused", %{ada: ada} do
+      assert {:error, message} =
+               MCP.call(ada, "create_schedule", %{
+                 "participant" => "ada",
+                 "prompt" => "sweep",
+                 "at" => "whenever"
+               })
+
+      assert message =~ "time of day"
+    end
+
+    test "switching one off is how it stops", %{room: room, ada: ada} do
+      {:ok, _} =
+        MCP.call(ada, "create_schedule", %{
+          "participant" => "ada",
+          "prompt" => "sweep",
+          "at" => "09:00"
+        })
+
+      [schedule] = Chat.schedules(room.id)
+
+      assert {:ok, text} =
+               MCP.call(ada, "update_schedule", %{
+                 "schedule" => to_string(schedule.id),
+                 "enabled" => false
+               })
+
+      assert text =~ "switched off"
+      refute Chat.schedule!(schedule.id).enabled
+    end
+
+    test "they come back readable", %{ada: ada} do
+      {:ok, _} =
+        MCP.call(ada, "create_schedule", %{
+          "participant" => "ada",
+          "prompt" => "sweep the bug board",
+          "at" => "09:00"
+        })
+
+      assert {:ok, json} = MCP.call(ada, "list_schedules", %{})
+      assert [listed] = Jason.decode!(json)
+
+      assert listed["participant"] == "ada"
+      assert listed["when"] == "09:00 every day"
+      assert listed["last_run_at"] == nil
+    end
+  end
+
   describe "wiring into a provider" do
     alias Roundtable.Agents.Protocol
 

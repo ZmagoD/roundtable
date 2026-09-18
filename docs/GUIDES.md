@@ -102,6 +102,26 @@ participant approves its own, and each change is written into the room as it
 happens. OpenCode and Grok participants do not get the tools: they have no
 approval channel, so there would be nowhere to say no.
 
+## Have a room start its own morning
+
+**Schedules** in the room header wakes one participant at the times you choose.
+In the terminal client:
+
+```
+/schedule ada 09:00 Sweep the bug board and say what is worth doing today
+/schedule ada 09:00,17:30 Summarise what changed since last time --days 1,2,3,4,5
+```
+
+What it says lands in the room as an ordinary mention, so it starts a turn and
+costs what a turn costs. For one that should run while you are asleep, set that
+participant to approve its own tools as well; otherwise it will be waiting at
+the first one when you come back.
+
+Times are this machine's own local time. A schedule missed by more than ten
+minutes is skipped rather than run late. `/schedules` lists them with their ids,
+`/unschedule <id>` stops one, and in the browser a schedule can be switched off
+and left there for next time.
+
 ## Let an orchestrator run unattended
 
 Codex and Claude Code stop and ask before each tool use. That is right for a

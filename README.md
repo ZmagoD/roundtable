@@ -609,6 +609,25 @@ room, and a tool that rearranges rooms with nowhere to say no is not one worth
 having. The service answers them at `/mcp` on its own loopback port; turn them
 off for everyone with `config :roundtable, :mcp_url, false`.
 
+### Standing instructions
+
+A room can wake one of its participants at the same times every day: **Schedules**
+in the room header, `/schedule ada 09:00 Sweep the bug board` in the terminal
+client, or by asking an agent that has the tools for it.
+
+A schedule is one message to one participant, at times of day you choose —
+`09:00`, or `09:00,17:30` — every day, on weekdays, or on the days you pick.
+What it says arrives in the room as an ordinary mention, so it starts a turn
+exactly as anything you type does, and it costs what that turn costs. Pair it
+with *Approve automatically* on that participant if it should run while nobody
+is watching.
+
+Times are the machine's own. An occurrence missed by more than ten minutes — the
+laptop asleep, the service stopped — is skipped rather than delivered late,
+because nobody wants the morning's work starting at four in the afternoon.
+Switch a schedule off to stop it, or delete it; `/schedules` lists them with
+their ids and `/unschedule <id>` removes one.
+
 ## Models and cost-aware assignments
 
 Open **Model presets** in the sidebar to save model IDs/aliases accepted by your
@@ -672,8 +691,8 @@ opens the database itself.
 SQLite stores rooms, participants, messages, native session IDs, and durable run
 records. Message insertion and delivery creation are transactional; PubSub
 updates connected browsers. A coordinator serializes queue transitions.
-Its runtime supervisor restarts workers and coordinator together if either
-supervisor component fails. On startup, active runs become interrupted, so they
+Its runtime supervisor restarts the workers, the coordinator and the scheduler
+that runs a room's standing instructions together if any of them fails. On startup, active runs become interrupted, so they
 are not silently repeated. Queued runs are eligible to resume.
 
 The app binds **only to loopback** and is designed for a single local user.
@@ -684,7 +703,10 @@ loopback host, so a remote page cannot read a room by pointing its own domain
 at 127.0.0.1. If a proxy needs to serve another name, allow it with
 `config :roundtable, :allowed_hosts`. The service state directory (`.local/`),
 which holds the database and logs, is created private to the user running it.
-Adapters are trusted code with the same OS access as the service. Prompt text
+The tool server at `/mcp` answers only a bearer token minted for a participant's
+turn, and 403s anything else rather than 401ing it into an authorization dance
+with a server that does not exist. Adapters are trusted code with the same OS
+access as the service. Prompt text
 and working directories are passed as arguments/data, not interpolated into
 shell commands.
 

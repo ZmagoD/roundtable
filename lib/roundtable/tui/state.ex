@@ -413,6 +413,50 @@ defmodule Roundtable.TUI.State do
     end
   end
 
+  defp dispatch(state, "schedules", _args) do
+    case state.room do
+      nil -> {put_status(state, "Join a room first: /room <name>"), []}
+      room -> {state, [{:schedules, room.id}]}
+    end
+  end
+
+  defp dispatch(state, "schedule", args) do
+    {positional, flags} = split_flags(args)
+
+    case {state.room, String.split(String.trim(positional), " ", parts: 3)} do
+      {nil, _} ->
+        {put_status(state, "Join a room first: /room <name>"), []}
+
+      {room, [name, at, text]} ->
+        with_agent(state, name, fn agent ->
+          attrs =
+            %{"agent_id" => agent.id, "at" => at, "prompt" => unquote_value(text)}
+            |> put_given("days", flags["days"])
+
+          {state, [{:create_schedule, room.id, attrs}]}
+        end)
+
+      _ ->
+        {put_status(
+           state,
+           "Usage: /schedule <agent> <09:00[,17:30]> <what to say> [--days 1,2,3,4,5]"
+         ), []}
+    end
+  end
+
+  defp dispatch(state, "unschedule", args) do
+    case {state.room, Integer.parse(String.trim(args))} do
+      {nil, _} ->
+        {put_status(state, "Join a room first: /room <name>"), []}
+
+      {room, {id, ""}} ->
+        {state, [{:delete_schedule, room.id, id}]}
+
+      _ ->
+        {put_status(state, "Usage: /unschedule <id>. /schedules lists them."), []}
+    end
+  end
+
   defp dispatch(state, "auto", args) do
     case String.split(String.trim(args), " ", parts: 2) do
       [name, setting] when setting in ~w(on off) ->

@@ -201,6 +201,45 @@ defmodule Roundtable.TUI.EffectsTest do
     assert Chat.agent!(agent.id).session_id == nil
   end
 
+  test "a standing instruction is saved, listed and stopped", %{
+    context: context,
+    room: room,
+    agent: agent
+  } do
+    context =
+      TUI.perform(
+        {:create_schedule, room.id,
+         %{"agent_id" => agent.id, "at" => "9,17:30", "prompt" => "sweep the board"}},
+        context
+      )
+
+    assert context.state.status =~ "09:00, 17:30 every day"
+    assert [schedule] = Chat.schedules(room.id)
+
+    context = TUI.perform({:schedules, room.id}, context)
+    assert context.state.status =~ "##{schedule.id} ada 09:00, 17:30 every day"
+
+    context = TUI.perform({:delete_schedule, room.id, schedule.id}, context)
+    assert context.state.status =~ "stopped"
+    assert Chat.schedules(room.id) == []
+  end
+
+  test "a schedule the service refuses is reported, not swallowed", %{
+    context: context,
+    room: room,
+    agent: agent
+  } do
+    context =
+      TUI.perform(
+        {:create_schedule, room.id,
+         %{"agent_id" => agent.id, "at" => "elevenish", "prompt" => "sweep"}},
+        context
+      )
+
+    assert context.state.status =~ "time of day"
+    assert Chat.schedules(room.id) == []
+  end
+
   test "an approval that is no longer pending is reported", %{context: context} do
     context = TUI.perform({:approve, -1, "missing", "accept"}, context)
     assert context.state.status =~ "no longer pending"

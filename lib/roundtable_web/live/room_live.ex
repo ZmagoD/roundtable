@@ -1,6 +1,7 @@
 defmodule RoundtableWeb.RoomLive do
   use RoundtableWeb, :live_view
   alias Roundtable.{Chat, Coordinator}
+  alias Roundtable.Chat.Schedule
 
   @impl true
   def mount(_, _, socket) do
@@ -25,6 +26,9 @@ defmodule RoundtableWeb.RoomLive do
        editing_agent: nil,
        editing_renamable: true,
        editing_room: nil,
+       schedules: [],
+       schedule_form: to_form(%{"days" => "", "at" => "09:00"}, as: :schedule),
+       editing_schedule: nil,
        room_form: to_form(%{}, as: :room),
        agent_form: to_form(%{}, as: :agent),
        runs: [],
@@ -96,6 +100,8 @@ defmodule RoundtableWeb.RoomLive do
          ),
        editing_preset: nil,
        editing_profile: nil,
+       editing_schedule: nil,
+       schedule_form: schedule_form(socket.assigns.agents),
        profile_form:
          to_form(
            %{
@@ -108,6 +114,72 @@ defmodule RoundtableWeb.RoomLive do
        editing_agent: nil,
        editing_renamable: true
      )}
+  end
+
+  def handle_event("edit-schedule", %{"id" => id}, socket) do
+    schedule = Chat.schedule!(String.to_integer(id))
+
+    attrs = %{
+      "agent_id" => to_string(schedule.agent_id),
+      "prompt" => schedule.prompt,
+      "at" => schedule.at,
+      "days" => schedule.days,
+      "enabled" => to_string(schedule.enabled)
+    }
+
+    {:noreply,
+     assign(socket,
+       panel: "schedules",
+       editing_schedule: schedule.id,
+       form_error: nil,
+       schedule_form: to_form(attrs, as: :schedule)
+     )}
+  end
+
+  def handle_event("save-schedule", %{"schedule" => attrs}, %{assigns: %{room: room}} = socket)
+      when not is_nil(room) do
+    saved =
+      case socket.assigns.editing_schedule do
+        nil -> Chat.create_schedule(room.id, attrs)
+        id -> Chat.update_schedule(id, attrs)
+      end
+
+    case saved do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> assign(
+           editing_schedule: nil,
+           form_error: nil,
+           schedule_form: schedule_form(socket.assigns.agents)
+         )
+         |> refresh()}
+
+      {:error, changeset} ->
+        {:noreply,
+         assign(socket,
+           form_error: errors(changeset),
+           schedule_form: to_form(attrs, as: :schedule)
+         )}
+    end
+  end
+
+  def handle_event("save-schedule", _attrs, socket), do: {:noreply, socket}
+
+  def handle_event("toggle-schedule", %{"id" => id}, socket) do
+    schedule = Chat.schedule!(String.to_integer(id))
+    {:ok, _} = Chat.update_schedule(schedule.id, %{"enabled" => !schedule.enabled})
+    {:noreply, refresh(socket)}
+  end
+
+  def handle_event("delete-schedule", %{"id" => id}, socket) do
+    Chat.delete_schedule(String.to_integer(id))
+
+    {:noreply,
+     socket
+     |> assign(editing_schedule: nil, schedule_form: schedule_form(socket.assigns.agents))
+     |> put_flash(:info, "Schedule removed. Nothing else changes.")
+     |> refresh()}
   end
 
   def handle_event("edit-profile", %{"id" => id}, socket) do
@@ -607,6 +679,7 @@ defmodule RoundtableWeb.RoomLive do
       last_message_id: last_id,
       rooms: Chat.rooms(),
       agents: Chat.agents(id),
+      schedules: Chat.schedules(id),
       runs: Chat.runs(id),
       approvals: Coordinator.approvals() |> Map.values() |> Enum.filter(&(&1.room_id == id))
     )
@@ -620,6 +693,40 @@ defmodule RoundtableWeb.RoomLive do
     end)
     |> Enum.map_join(" · ", fn {key, val} -> "#{key}: #{Enum.join(val, ", ")}" end)
   end
+
+  # A new schedule starts on whoever is already here, at an hour somebody might
+  # actually want: the morning, every day.
+  defp schedule_form(agents) do
+    to_form(
+      %{
+        "agent_id" => agents |> List.first() |> then(&if(&1, do: to_string(&1.id), else: "")),
+        "at" => "09:00",
+        "days" => "",
+        "enabled" => "true"
+      },
+      as: :schedule
+    )
+  end
+
+  defp schedule_when(schedule), do: Schedule.describe(schedule)
+
+  defp day_options(days) do
+    known = [{"Every day", ""}, {"Weekdays", "1,2,3,4,5"}, {"Weekends", "6,7"}]
+
+    if is_binary(days) and days != "" and days not in Enum.map(known, &elem(&1, 1)),
+      do: known ++ [{"Days chosen earlier", days}],
+      else: known
+  end
+
+  defp schedule_agent(agents, agent_id) do
+    case Enum.find(agents, &(&1.id == agent_id)) do
+      nil -> "someone who has left"
+      agent -> agent.name
+    end
+  end
+
+  defp last_run(nil), do: "not yet"
+  defp last_run(at), do: Calendar.strftime(at, "%d %b %H:%M UTC")
 
   defp status(agent, runs) do
     own = Enum.filter(runs, &(&1.agent_id == agent.id))

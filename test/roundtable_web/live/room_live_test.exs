@@ -676,6 +676,64 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert agent_button =~ "cannot be undone"
     end
 
+    test "a schedule is saved from the room and read back as a sentence", %{
+      view: view,
+      room: room,
+      agent: agent
+    } do
+      view |> element("#schedules-button") |> render_click()
+
+      view
+      |> form("#schedule-form",
+        schedule: %{
+          agent_id: agent.id,
+          prompt: "Sweep the bug board",
+          at: "9, 17:30",
+          days: "1,2,3,4,5",
+          enabled: "true"
+        }
+      )
+      |> render_submit()
+
+      assert has_element?(view, ".preset-row strong", "ada · 09:00, 17:30 on weekdays")
+      assert [%{at: "09:00,17:30", agent_id: id}] = Chat.schedules(room.id)
+      assert id == agent.id
+    end
+
+    test "and switched off without being deleted", %{view: view, room: room, agent: agent} do
+      {:ok, schedule} =
+        Chat.create_schedule(room.id, %{
+          "agent_id" => agent.id,
+          "prompt" => "Sweep the bug board",
+          "at" => "09:00"
+        })
+
+      view |> element("#schedules-button") |> render_click()
+      view |> element("[phx-click=toggle-schedule]") |> render_click()
+
+      refute Chat.schedule!(schedule.id).enabled
+      assert has_element?(view, ".preset-row.off")
+      assert has_element?(view, "[phx-click=toggle-schedule]", "Switch on")
+    end
+
+    test "a time nobody can read is refused with a reason", %{
+      view: view,
+      room: room,
+      agent: agent
+    } do
+      view |> element("#schedules-button") |> render_click()
+
+      html =
+        view
+        |> form("#schedule-form",
+          schedule: %{agent_id: agent.id, prompt: "Sweep", at: "half nine"}
+        )
+        |> render_submit()
+
+      assert html =~ "time of day"
+      assert Chat.schedules(room.id) == []
+    end
+
     test "closing a panel leaves the room visible", %{view: view} do
       view |> element("#add-agent-button") |> render_click()
       assert has_element?(view, "#agent-form")
