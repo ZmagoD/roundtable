@@ -100,6 +100,7 @@ defmodule RoundtableWeb.SchedulesLive do
     to_form(
       %{
         "agent_id" => to_string(hd(agents).id),
+        "name" => "Daily check-in",
         "at" => "09:00",
         "days" => "",
         "enabled" => "true"
@@ -111,6 +112,7 @@ defmodule RoundtableWeb.SchedulesLive do
   defp schedule_attrs(schedule) do
     %{
       "agent_id" => to_string(schedule.agent_id),
+      "name" => schedule.name,
       "prompt" => schedule.prompt,
       "at" => schedule.at,
       "days" => schedule.days,
@@ -138,4 +140,7 @@ defmodule RoundtableWeb.SchedulesLive do
 
   def room_name(rooms, id),
     do: (Enum.find(rooms, &(&1.id == id)) || %{name: "Unknown room"}).name
+
+  def last_run(nil), do: "never"
+  def last_run(value), do: Calendar.strftime(value, "%d %b %Y at %H:%M")
 end

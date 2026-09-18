@@ -196,6 +196,7 @@ defmodule Roundtable.MCP do
           object(
             %{
               "participant" => string("Who to wake, by name or id. It must be in the room."),
+              "name" => string("A short name for this standing instruction."),
               "prompt" =>
                 string(
                   "What to say to it. Written as an instruction for a turn that begins with " <>
@@ -206,7 +207,7 @@ defmodule Roundtable.MCP do
               "room" => room_property(),
               "enabled" => enabled_property()
             },
-            ["participant", "prompt", "at"]
+            ["participant", "name", "prompt", "at"]
           )
       },
       %{
@@ -218,6 +219,7 @@ defmodule Roundtable.MCP do
           object(
             %{
               "schedule" => string("Which schedule, by id. list_schedules shows them."),
+              "name" => string("A short name for this standing instruction."),
               "prompt" => string("What it says."),
               "at" => at_property(),
               "days" => days_property(),
@@ -393,7 +395,13 @@ defmodule Roundtable.MCP do
   defp profile_fields, do: Map.put(participant_fields(), "provider", "provider")
 
   defp schedule_fields,
-    do: %{"prompt" => "prompt", "at" => "at", "days" => "days", "enabled" => "enabled"}
+    do: %{
+      "name" => "name",
+      "prompt" => "prompt",
+      "at" => "at",
+      "days" => "days",
+      "enabled" => "enabled"
+    }
 
   defp schedule_in(room, reference) when is_binary(reference) or is_integer(reference) do
     wanted = reference |> to_string() |> String.trim()
@@ -518,6 +526,7 @@ defmodule Roundtable.MCP do
   defp schedule_view(schedule) do
     %{
       id: schedule.id,
+      name: schedule.name,
       participant: Chat.agent!(schedule.agent_id).name,
       prompt: schedule.prompt,
       at: schedule.at,

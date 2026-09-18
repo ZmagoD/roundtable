@@ -718,6 +718,13 @@
             options={Enum.map(@agents, &{&1.name, &1.id})}
           />
           <.input
+            field={@schedule_form[:name]}
+            label="Name"
+            placeholder="e.g. Morning review"
+            required
+            maxlength="120"
+          />
+          <.input
             field={@schedule_form[:prompt]}
             label="What to say to it"
             type="textarea"

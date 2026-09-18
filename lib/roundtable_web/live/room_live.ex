@@ -130,6 +130,7 @@ defmodule RoundtableWeb.RoomLive do
 
     attrs = %{
       "agent_id" => to_string(schedule.agent_id),
+      "name" => schedule.name,
       "prompt" => schedule.prompt,
       "at" => schedule.at,
       "days" => schedule.days,
@@ -723,6 +724,7 @@ defmodule RoundtableWeb.RoomLive do
     to_form(
       %{
         "agent_id" => agents |> List.first() |> then(&if(&1, do: to_string(&1.id), else: "")),
+        "name" => "Daily check-in",
         "at" => "09:00",
         "days" => "",
         "enabled" => "true"

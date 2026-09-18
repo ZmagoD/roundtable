@@ -667,14 +667,16 @@ A room can wake one of its participants at the same times every day: **Schedules
 in the room header, `/schedule ada 09:00 Sweep the bug board` in the terminal
 client, or by asking an agent that has the tools for it.
 
-A schedule is one message to one participant, at times of day you choose —
+A schedule has a name and sends one message to one participant at times of day you choose —
 `09:00`, or `09:00,17:30` — every day, on weekdays, or on the days you pick.
 What it says arrives in the room as an ordinary mention, so it starts a turn
 exactly as anything you type does, and it costs what that turn costs. Pair it
 with *Approve automatically* on that participant if it should run while nobody
 is watching.
 
-For example, ask the team builder:
+Give it a name such as `Morning review` or `Release watch` so the workspace
+schedule page remains readable when several rooms have automation. For example,
+ask the team builder:
 
 > @team-builder Every weekday at 09:00, have reviewer check open changes.
 

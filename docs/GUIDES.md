@@ -105,6 +105,8 @@ approval channel, so there would be nowhere to say no.
 ## Have a room start its own morning
 
 **Schedules** in the room header wakes one participant at the times you choose.
+Give each instruction a short name such as `Morning review` so it is easy to
+recognize later.
 The **Schedules** link in the sidebar opens `/schedules`, where you can audit
 and manage instructions across every room.
 In the terminal client:

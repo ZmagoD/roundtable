@@ -19,6 +19,7 @@ defmodule RoundtableWeb.SchedulesLiveTest do
   } do
     {:ok, schedule} =
       Chat.create_schedule(room.id, %{
+        name: "Morning review",
         agent_id: agent.id,
         prompt: "Review open changes",
         at: "09:00"
@@ -27,6 +28,7 @@ defmodule RoundtableWeb.SchedulesLiveTest do
     {:ok, view, _html} = live(conn, "/schedules")
     assert has_element?(view, ".schedule-card", "Billing")
     assert has_element?(view, ".schedule-card", "Review open changes")
+    assert has_element?(view, ".schedule-card", "Morning review")
 
     view
     |> element("button[phx-click=edit-schedule][phx-value-id='#{schedule.id}']")
@@ -34,11 +36,17 @@ defmodule RoundtableWeb.SchedulesLiveTest do
 
     view
     |> form("#workspace-schedule-form",
-      schedule: %{prompt: "Review and report", at: "10:30", days: "1,2,3,4,5"}
+      schedule: %{
+        name: "Weekday review",
+        prompt: "Review and report",
+        at: "10:30",
+        days: "1,2,3,4,5"
+      }
     )
     |> render_submit()
 
     assert has_element?(view, ".schedule-card", "Review and report")
+    assert has_element?(view, ".schedule-card", "Weekday review")
     assert Chat.schedule!(schedule.id).at == "10:30"
     assert Chat.schedule!(schedule.id).days == "1,2,3,4,5"
   end
@@ -48,7 +56,7 @@ defmodule RoundtableWeb.SchedulesLiveTest do
 
     view
     |> form("#workspace-schedule-form",
-      schedule: %{agent_id: agent.id, prompt: "Check the board", at: "08:00"}
+      schedule: %{agent_id: agent.id, name: "Board check", prompt: "Check the board", at: "08:00"}
     )
     |> render_submit()
 

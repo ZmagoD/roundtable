@@ -31,10 +31,16 @@
 
     <section class="management-content">
       <div class="management-intro">
-        <h2>Keep work moving while you are away</h2>
-        <p>
-          Schedules use this machine's local time and wake an existing participant with an ordinary room message.
-        </p>
+        <div>
+          <div class="eyebrow">AUTOMATION</div><h2>Your standing instructions</h2><p>
+            Name each one so the team knows what it is for at a glance.
+          </p>
+        </div>
+        <div class="schedule-stats">
+          <strong>{length(@schedules)}</strong><span>{if length(@schedules) == 1,
+            do: "instruction",
+            else: "instructions"}</span>
+        </div>
       </div>
       <div :if={@schedules == []} class="empty-state">
         <strong>No schedules yet</strong><p>Create one here or from a room's Schedules panel.</p>
@@ -46,12 +52,20 @@
           role="listitem"
         >
           <div class="schedule-card-main">
-            <div class="eyebrow">#{schedule.room.name}</div>
-            <h3>{schedule.agent.name} · {schedule.at}</h3>
+            <div class="schedule-card-kicker">
+              <span class="eyebrow">#{schedule.room.name}</span><span class={[
+                "schedule-status",
+                schedule.enabled && "active"
+              ]}>{if schedule.enabled, do: "Running", else: "Off"}</span>
+            </div>
+            <h3>{schedule.name}</h3>
+            <div class="schedule-target">
+              {schedule.agent.name} · {schedule.at} · {if schedule.days == "",
+                do: "Every day",
+                else: "Days " <> schedule.days}
+            </div>
             <p>{schedule.prompt}</p>
-            <small>{(schedule.days == "" && "Every day") || "Days: " <> schedule.days} · {if schedule.enabled,
-              do: "Running",
-              else: "Off"}</small>
+            <small>{schedule.room.directory} · Last run: {last_run(schedule.last_run_at)}</small>
           </div>
           <div class="schedule-card-actions">
             <button class="text-button" phx-click="edit-schedule" phx-value-id={schedule.id}>Edit</button>
@@ -91,6 +105,13 @@
             }
           />
           <.input
+            field={@schedule_form[:name]}
+            label="Name"
+            placeholder="e.g. Morning review"
+            required
+            maxlength="120"
+          />
+          <.input
             field={@schedule_form[:prompt]}
             label="What to say"
             type="textarea"
@@ -118,6 +139,12 @@
             options={[{"Yes", "true"}, {"No", "false"}]}
           />
           <button class="button full" type="submit" phx-disable-with="Saving…">Save schedule</button>
+          <button
+            :if={@editing_id}
+            class="text-button schedule-cancel"
+            type="button"
+            phx-click="new-schedule"
+          >Cancel editing</button>
         </.form>
       </div>
     </section>

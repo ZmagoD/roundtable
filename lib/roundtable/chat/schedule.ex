@@ -18,6 +18,7 @@ defmodule Roundtable.Chat.Schedule do
   schema "schedules" do
     belongs_to :room, Roundtable.Chat.Room
     belongs_to :agent, Roundtable.Chat.Agent
+    field :name, :string, default: "Untitled schedule"
     field :prompt, :string
     field :at, :string
     field :days, :string, default: ""
@@ -31,10 +32,12 @@ defmodule Roundtable.Chat.Schedule do
 
   def changeset(schedule, attrs) do
     schedule
-    |> cast(attrs, [:agent_id, :prompt, :at, :days, :enabled])
+    |> cast(attrs, [:agent_id, :name, :prompt, :at, :days, :enabled])
+    |> update_change(:name, &String.trim/1)
     |> update_change(:at, &normalise_times/1)
     |> update_change(:days, &normalise_days/1)
-    |> validate_required([:room_id, :agent_id, :prompt, :at])
+    |> validate_required([:room_id, :agent_id, :name, :prompt, :at])
+    |> validate_length(:name, max: 120)
     |> validate_length(:prompt, max: 4000)
     |> validate_times()
     |> foreign_key_constraint(:agent_id)
