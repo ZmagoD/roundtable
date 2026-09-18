@@ -214,8 +214,21 @@ Claude Code has no listing command, so the aliases its own `--help` documents
 are offered (`fable`, `opus`, `sonnet`); it takes full names too. Codex has
 neither, so nothing is suggested rather than a list invented here.
 
+In the browser the model is a list you pick from, not a box you type into —
+except for a provider that cannot name its models, which gets a free text
+field and says why. The form opens on a provider that *can* list, so there is
+something to choose on the first screen. A model an agent already has is kept
+as an option even if the CLI has stopped listing it, rather than being dropped
+without telling you.
+
 `/models <provider> [filter]` does the same from the terminal — with 400-odd
-OpenCode models, the filter is the point.
+OpenCode models, the filter is the point:
+
+```
+/models claude              claude: fable, opus, sonnet
+/models opencode mistral    filters 405 down to the ones you meant
+/providers                  which CLIs are installed
+```
 
 They are suggestions, not a menu: the field stays free text, so a model that
 appears tomorrow needs no release. Model presets in the sidebar save the ones

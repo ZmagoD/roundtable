@@ -246,14 +246,12 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert html =~ "Plain"
     end
 
-    test "the model field offers what the CLI reports", %{view: view} do
+    test "the model field is a list you can actually pick from", %{view: view} do
       html = view |> element("#add-agent-button") |> render_click()
 
-      assert html =~ ~s(id="agent-model-options")
-      assert html =~ ~s(list="agent-model-options")
-
-      # codex cannot list its models, so the field says so rather than lying.
-      assert html =~ "does not list its models"
+      # It opens on a provider that can name its models, not one that cannot.
+      assert html =~ ~s(name="agent[model]")
+      assert html =~ "Provider default"
 
       html =
         view
@@ -265,7 +263,28 @@ defmodule RoundtableWeb.RoomLiveTest do
         assert html =~ ~s(value="#{alias_name}")
       end
 
-      assert html =~ "suggestions. Any name the CLI accepts works."
+      assert html =~ "the CLI reports"
+    end
+
+    test "a provider that cannot list its models still takes a typed name", %{view: view} do
+      view |> element("#add-agent-button") |> render_click()
+
+      html =
+        view
+        |> form("#agent-form", agent: %{name: "x", provider: "codex"})
+        |> render_change()
+
+      assert html =~ "does not list its models"
+      assert html =~ ~s(name="agent[model]")
+    end
+
+    test "editing keeps a model the CLI no longer lists", %{view: view, agent: agent} do
+      {:ok, _} = Chat.update_agent(agent.id, %{"model" => "some-retired-model"})
+
+      html = view |> element(".agent-edit[phx-value-id='#{agent.id}']") |> render_click()
+
+      # Dropping it silently would change the agent behind the user's back.
+      assert html =~ "some-retired-model"
     end
 
     test "the agent form shows the room's directory rather than asking for one", %{

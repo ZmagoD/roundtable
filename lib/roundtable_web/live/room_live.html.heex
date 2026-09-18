@@ -486,17 +486,20 @@
           options={preset_options(@model_presets, @agent_form[:provider].value)}
         />
         <.input
+          :if={@model_options != []}
+          field={@agent_form[:model]}
+          label="Model"
+          type="select"
+          options={model_options(@model_options, @agent_form[:model].value)}
+        />
+        <.input
+          :if={@model_options == []}
           field={@agent_form[:model]}
           label="Model (optional)"
           placeholder="Use the provider’s default model"
-          list="agent-model-options"
-          autocomplete="off"
         />
-        <datalist id="agent-model-options">
-          <option :for={model <- @model_options} value={model}></option>
-        </datalist>
         <p :if={@model_options != []} class="form-note">
-          {length(@model_options)} suggestions. Any name the CLI accepts works.
+          {length(@model_options)} the CLI reports. Not listed? Put it in a model preset.
         </p>
         <p :if={@model_options == []} class="form-note">
           This CLI does not list its models. Type any name it accepts.

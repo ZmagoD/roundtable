@@ -71,7 +71,7 @@ defmodule RoundtableWeb.RoomLive do
         %{
           "directory" =>
             (socket.assigns.room && socket.assigns.room.directory) || socket.assigns.directory,
-          "provider" => List.first(Roundtable.Agents.ids()),
+          "provider" => default_provider(),
           "cost_tier" => "unknown"
         },
         as: :agent
@@ -418,6 +418,17 @@ defmodule RoundtableWeb.RoomLive do
     if active, do: active.status, else: "idle"
   end
 
+  # A visible list beats a datalist nobody discovers. Whatever the agent already
+  # has is kept as an option, so editing does not silently drop a model this
+  # CLI no longer lists.
+  defp model_options(models, current) do
+    known = [{"Provider default", ""} | Enum.map(models, &{&1, &1})]
+
+    if is_binary(current) and current != "" and current not in models,
+      do: known ++ [{current <> " (set earlier)", current}],
+      else: known
+  end
+
   defp preset_options(presets, provider) do
     [
       {"Agent default", ""}
@@ -431,6 +442,18 @@ defmodule RoundtableWeb.RoomLive do
       nil -> nil
       agent -> agent.provider
     end
+  end
+
+  # The first provider that is installed and can name its models, so the form
+  # opens on something with a list rather than an empty one.
+  defp default_provider do
+    providers = Roundtable.Agents.providers()
+
+    listed =
+      Enum.find(providers, &(&1.installed and Roundtable.Agents.models(&1.id) != []))
+
+    installed = Enum.find(providers, & &1.installed)
+    (listed || installed || List.first(providers)).id
   end
 
   defp cost_options,
