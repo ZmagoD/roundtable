@@ -1,7 +1,6 @@
 defmodule RoundtableWeb.RoomLive do
   use RoundtableWeb, :live_view
   alias Roundtable.{Chat, Coordinator}
-  alias Roundtable.Chat.Schedule
 
   @impl true
   def mount(_, _, socket) do
@@ -733,8 +732,6 @@ defmodule RoundtableWeb.RoomLive do
     )
   end
 
-  defp schedule_when(schedule), do: Schedule.describe(schedule)
-
   defp day_options(days) do
     known = [{"Every day", ""}, {"Weekdays", "1,2,3,4,5"}, {"Weekends", "6,7"}]
 
@@ -742,16 +739,6 @@ defmodule RoundtableWeb.RoomLive do
       do: known ++ [{"Days chosen earlier", days}],
       else: known
   end
-
-  defp schedule_agent(agents, agent_id) do
-    case Enum.find(agents, &(&1.id == agent_id)) do
-      nil -> "someone who has left"
-      agent -> agent.name
-    end
-  end
-
-  defp last_run(nil), do: "not yet"
-  defp last_run(at), do: Calendar.strftime(at, "%d %b %H:%M UTC")
 
   defp status(agent, runs) do
     own = Enum.filter(runs, &(&1.agent_id == agent.id))

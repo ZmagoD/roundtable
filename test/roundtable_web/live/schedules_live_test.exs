@@ -51,6 +51,17 @@ defmodule RoundtableWeb.SchedulesLiveTest do
     assert Chat.schedule!(schedule.id).days == "1,2,3,4,5"
   end
 
+  test "new schedule opens the shared modal", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/schedules")
+
+    refute has_element?(view, "#schedule-modal")
+
+    view |> element("header button[phx-click=new-schedule]") |> render_click()
+
+    assert has_element?(view, "#schedule-modal")
+    assert has_element?(view, "#workspace-schedule-form")
+  end
+
   test "creates, disables and deletes a schedule", %{conn: conn, room: room, agent: agent} do
     {:ok, view, _html} = live(conn, "/schedules")
 

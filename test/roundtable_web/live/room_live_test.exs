@@ -848,25 +848,17 @@ defmodule RoundtableWeb.RoomLiveTest do
       )
       |> render_submit()
 
-      assert has_element?(view, ".preset-row strong", "ada · 09:00, 17:30 on weekdays")
+      refute has_element?(view, ".preset-row")
+      assert has_element?(view, "#schedule-form")
       assert [%{at: "09:00,17:30", agent_id: id}] = Chat.schedules(room.id)
       assert id == agent.id
     end
 
-    test "and switched off without being deleted", %{view: view, room: room, agent: agent} do
-      {:ok, schedule} =
-        Chat.create_schedule(room.id, %{
-          "agent_id" => agent.id,
-          "prompt" => "Sweep the bug board",
-          "at" => "09:00"
-        })
-
+    test "the room schedule panel leaves schedule management to the schedules page", %{view: view} do
       view |> element("#schedules-button") |> render_click()
-      view |> element("[phx-click=toggle-schedule]") |> render_click()
 
-      refute Chat.schedule!(schedule.id).enabled
-      assert has_element?(view, ".preset-row.off")
-      assert has_element?(view, "[phx-click=toggle-schedule]", "Switch on")
+      refute has_element?(view, ".preset-row")
+      assert has_element?(view, "#schedule-form")
     end
 
     test "a time nobody can read is refused with a reason", %{

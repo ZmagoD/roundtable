@@ -682,26 +682,6 @@
         </button>
       </.form>
       <div :if={@panel == "schedules"}>
-        <div class="preset-list">
-          <div
-            :for={schedule <- @schedules}
-            class={["preset-row", "profile-row", !schedule.enabled && "off"]}
-            title={"Last run: #{last_run(schedule.last_run_at)}"}
-          >
-            <button class="profile-open" phx-click="edit-schedule" phx-value-id={schedule.id}>
-              <span><strong>{schedule_agent(@agents, schedule.agent_id)} · {schedule_when(
-                schedule
-              )}</strong><small>{schedule.prompt}</small></span>
-            </button>
-            <button class="text-button" phx-click="toggle-schedule" phx-value-id={schedule.id}>
-              {if schedule.enabled, do: "Switch off", else: "Switch on"}
-            </button>
-          </div>
-          <p :if={@schedules == []} class="form-note">
-            Nothing standing yet. A schedule says one thing to one participant at the times
-            you choose: a morning sweep of the bug board, a five o’clock look at what changed.
-          </p>
-        </div>
         <p :if={@agents == []} class="form-note">
           Nobody is in this room to wake. Add a participant first.
         </p>
