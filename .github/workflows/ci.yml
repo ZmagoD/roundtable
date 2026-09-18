@@ -22,6 +22,9 @@ jobs:
       - run: mix compile --warnings-as-errors
       - run: mix credo --strict
       - run: mix test
+      # The terminal client can only be exercised on a real terminal: it asks
+      # the runtime for raw mode and refuses to start without one.
+      - run: mix test --only pty
 
   scripts:
     runs-on: ubuntu-latest

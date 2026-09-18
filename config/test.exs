@@ -5,8 +5,11 @@ import Config
 # The MIX_TEST_PARTITION environment variable can be used
 # to provide built-in test partitioning in CI environment.
 # Run `mix help test` for more information.
+# DATABASE_PATH is honoured here too, so a test can start a second instance of
+# the app in its own database instead of writing into the suite's, outside the
+# sandbox, where no rollback can reach it.
 config :roundtable, Roundtable.Repo,
-  database: Path.expand("../roundtable_test.db", __DIR__),
+  database: System.get_env("DATABASE_PATH") || Path.expand("../roundtable_test.db", __DIR__),
   pool_size: 5,
   pool: Ecto.Adapters.SQL.Sandbox
 

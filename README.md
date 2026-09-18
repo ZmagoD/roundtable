@@ -286,10 +286,19 @@ on `install.sh` and `bin/roundtable`, which reach users before any Elixir does.
 
 The adapters have contract tests because provider protocols change under us,
 and a wrong clause there does not crash — it silently drops a turn's output or
-leaves a turn that never finishes. The terminal client's pure layers (key
-decoding, state transitions, rendering) are tested directly; its event loop,
-terminal control and `mix tui` are exercised by hand against a real pty, not by
-the suite.
+leaves a turn that never finishes.
+
+The terminal client is tested in two halves. Its pure layers — key decoding,
+state transitions, rendering — and every effect a keystroke asks for run in the
+normal suite. What only exists because there is a terminal (raw mode, the
+reader process, the redraw loop, restoring the screen) is covered by
+`mix test --only pty`, which allocates a real pty, types a scripted session
+into the client and reads back what it drew. Those are excluded from the
+default run because they boot a second VM; CI runs them as their own step.
+
+Line coverage is around 80%. The gap is mostly code that runs in that second
+VM, which the coverage tool cannot see from the first — tested, but not
+counted. Coverage says which lines ran, not whether they were right.
 
 Tests use fake workers and synthetic protocol events, so they don't consume
 model tokens or depend on installed provider credentials. See `docs/TESTING.md`
