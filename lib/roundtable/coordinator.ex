@@ -63,7 +63,7 @@ defmodule Roundtable.Coordinator do
   def handle_call({:reset, agent_id}, _, state) do
     state = cancel_agent(state, agent_id)
     agent = Chat.agent!(agent_id)
-    Chat.change(agent, session_id: nil, session_model: nil, last_seen_id: 0)
+    Chat.change(agent, session_id: nil, session_model: nil, session_role: nil, last_seen_id: 0)
     Chat.broadcast(agent.room_id)
     {:reply, :ok, state}
   end
@@ -124,7 +124,7 @@ defmodule Roundtable.Coordinator do
   end
 
   defp apply_event(state, run, agent, {:session, session}) do
-    Chat.change(agent, session_id: session, session_model: run.model)
+    Chat.change(agent, session_id: session, session_model: run.model, session_role: agent.role)
     state
   end
 
@@ -281,7 +281,8 @@ defmodule Roundtable.Coordinator do
   defp reset_stale_session(%{session_model: model} = agent, %{model: model}), do: agent
 
   defp reset_stale_session(agent, _run),
-    do: Chat.change(agent, session_id: nil, session_model: nil, last_seen_id: 0)
+    do:
+      Chat.change(agent, session_id: nil, session_model: nil, session_role: nil, last_seen_id: 0)
 
   defp cancel_agent(state, agent_id) do
     state =

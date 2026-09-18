@@ -465,8 +465,8 @@ The **Terminal** button opens a shell in the room's directory, in the page.
 
 1. Create a room and choose an existing project directory.
 2. Add agents with unique names such as `ada`, `reviewer`, or `tester`.
-   Multiple participants can use the same provider. Optionally choose a model
-   and give each participant a role or a separate working directory.
+   Multiple participants can use the same provider. Optionally choose a model,
+   and give each participant a role.
 3. Write a message or select a recipient. `@ada` starts Ada's turn;
    `@all` schedules everyone. Unaddressed messages are saved as shared context.
 4. Agents receive unread room messages before their next assignment. Their final
@@ -481,6 +481,26 @@ permissions remain subject to the provider's rules. Codex and Claude approval
 requests are presented in the chat; OpenCode's CLI adapter uses its configured
 permissions and cannot interactively grant a new approval. Errors are visible
 with partial output and a retry control. Each turn has a 30-minute timeout.
+
+### What a participant knows about itself
+
+Every turn opens the same way: who it is, and the role it works to. The role is
+a standing brief — what this participant is for *and how it should behave* — so
+"Review changes and say what is wrong; never write them yourself" belongs there,
+not only "reviewer". Each turn also carries the working directory, the model and
+cost tier for that assignment, and the roster of everyone else with their roles,
+which is what delegation is decided from.
+
+The role is read fresh for every turn, so changing it takes effect on the next
+one; no reset is needed. Because the provider session still holds the earlier
+turns, and each of those was given the role of its day, a turn whose brief has
+changed is told so explicitly and told which one it is replacing. If you would
+rather it had no memory of the old brief at all, use **New session** on its card
+(or `/reset <agent>`), which starts the provider session again with room history
+behind it.
+
+A participant with no role is told it has none and asked what it would need,
+rather than being handed an invented one.
 
 ### Letting a participant approve its own tools
 

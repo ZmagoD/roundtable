@@ -74,6 +74,63 @@ defmodule Roundtable.ChatTest do
     assert prompt =~ assigned.body
   end
 
+  test "a turn opens with who the participant is and the brief it works to", %{
+    room: room,
+    ada: ada
+  } do
+    ada = Chat.change(ada, role: "Review changes, never write them")
+    {:ok, assigned} = Chat.post(room.id, "@ada take a look")
+    run = Repo.get_by!(Run, agent_id: ada.id, message_id: assigned.id)
+    {prompt, _} = Chat.prompt(ada, run)
+
+    assert String.starts_with?(prompt, "You are @ada in Roundtable")
+    assert prompt =~ "Your role: Review changes, never write them"
+    assert prompt =~ "governs every turn you take here"
+
+    # Identity and brief come before the details of this one assignment.
+    [_, identity, assignment] =
+      Regex.run(~r/(WHO YOU ARE AND HOW YOU WORK).*(THIS ASSIGNMENT)/s, prompt)
+
+    assert :binary.match(prompt, identity) < :binary.match(prompt, assignment)
+  end
+
+  test "a participant with no role is told that, not given an invented one", %{
+    room: room,
+    ada: ada
+  } do
+    {:ok, assigned} = Chat.post(room.id, "@ada take a look")
+    run = Repo.get_by!(Run, agent_id: ada.id, message_id: assigned.id)
+    {prompt, _} = Chat.prompt(ada, run)
+
+    assert prompt =~ "No role has been set for you"
+    assert prompt =~ "what you would need to be more useful"
+  end
+
+  test "a session given one brief is told when it has been replaced", %{room: room, ada: ada} do
+    {:ok, assigned} = Chat.post(room.id, "@ada take a look")
+    run = Repo.get_by!(Run, agent_id: ada.id, message_id: assigned.id)
+
+    changed =
+      Chat.change(ada,
+        session_id: "native",
+        session_role: "Write the API",
+        role: "Review changes only"
+      )
+
+    {prompt, _} = Chat.prompt(changed, run)
+    assert prompt =~ "Your role changed since your last turn. It used to be: Write the API"
+
+    # Nothing to announce while the brief is the one the session was given.
+    same = Chat.change(changed, session_role: "Review changes only")
+    {prompt, _} = Chat.prompt(same, run)
+    refute prompt =~ "Your role changed"
+
+    # Nor on a fresh session, which hears the current role and nothing else.
+    fresh = Chat.change(changed, session_id: nil)
+    {prompt, _} = Chat.prompt(fresh, run)
+    refute prompt =~ "Your role changed"
+  end
+
   test "invalid directories and duplicate names are rejected", %{room: room} do
     assert {:error, _} =
              Chat.create_room(%{"name" => "Invalid", "directory" => "/does-not-exist-roundtable"})

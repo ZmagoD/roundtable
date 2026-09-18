@@ -512,12 +512,18 @@
         </div>
         <.input
           field={@agent_form[:role]}
-          label="Role"
+          label="Role — what it is for and how it should work"
           type="textarea"
-          placeholder="e.g. Build the API and coordinate with the reviewer"
-          rows="2"
+          placeholder="e.g. Review changes and say what is wrong; never write them yourself"
+          rows="3"
           maxlength="4000"
         />
+        <p class="form-note">
+          This is the standing brief every turn opens with, so it is where
+          behaviour belongs, not only the subject. Change it whenever you like:
+          the next turn works to the new one and is told the old one no longer
+          applies.
+        </p>
         <div class="input-field">
           <label>Working directory</label>
           <p class="fixed-field">{@room && @room.directory}</p>

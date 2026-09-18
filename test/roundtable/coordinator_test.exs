@@ -132,12 +132,35 @@ defmodule Roundtable.CoordinatorTest do
   end
 
   test "reset removes the native session while keeping room history", %{room: room, ada: ada} do
-    Chat.change(ada, session_id: "native", last_seen_id: 42)
+    Chat.change(ada, session_id: "native", session_role: "old brief", last_seen_id: 42)
     Coordinator.post(room.id, "A note without a mention")
     Coordinator.reset(ada.id)
     assert Chat.agent!(ada.id).session_id == nil
+    assert Chat.agent!(ada.id).session_role == nil
     assert Chat.agent!(ada.id).last_seen_id == 0
     assert length(Chat.messages(room.id)) == 1
+  end
+
+  test "a session remembers the brief it was started under", %{room: room, ada: ada} do
+    Chat.change(ada, role: "Review changes, never write them")
+    Coordinator.post(room.id, "@ada take a look")
+    assert_receive {:agent_started, pid, _, _, prompt}, 1000
+    assert prompt =~ "Your role: Review changes, never write them"
+
+    ref = Process.monitor(pid)
+    GenServer.cast(pid, {:finish, "Looked."})
+    assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 1000
+    _ = :sys.get_state(Coordinator)
+
+    assert Chat.agent!(ada.id).session_role == "Review changes, never write them"
+
+    # The next turn on that session says which brief it is replacing.
+    Chat.change(Chat.agent!(ada.id), role: "Write the API after all")
+    Coordinator.post(room.id, "@ada carry on")
+    assert_receive {:agent_started, _pid, _, _, prompt}, 1000
+    assert prompt =~ "Your role: Write the API after all"
+    assert prompt =~ "It used to be: Review changes, never write them"
+    Coordinator.stop(ada.id)
   end
 
   test "returning to default after a premium assignment does not retain the expensive model", %{

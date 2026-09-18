@@ -13,6 +13,9 @@ defmodule Roundtable.Chat.Agent do
     field :directory, :string
     field :session_id, :string
     field :session_model, :string
+    # The role the provider session was started under, so a turn can tell the
+    # participant when its brief has changed underneath an open session.
+    field :session_role, :string
     field :last_seen_id, :integer, default: 0
     timestamps(type: :utc_datetime)
   end
