@@ -108,7 +108,7 @@
                       message.metadata["cost_tier"]
                     ]}>{message.metadata["cost_tier"]}</span><span>{message.metadata["purpose"]}</span>
                   </div>
-                  <div class="message-text">{message.body}</div><small
+                  <.message body={message.body} /><small
                     :if={message.depth >= 4}
                     class="muted"
                   >Handoff limit reached. Mention an agent to start another round.</small>
@@ -128,7 +128,7 @@
                     "cost-tier",
                     run.cost_tier
                   ]}>{run.cost_tier}</span><span>{run.purpose}</span>
-                </div><div :if={run.output != ""} class="message-text">{run.output}</div><p
+                </div><.message :if={run.output != ""} body={run.output} /><p
                   :if={run.output == ""}
                   class="muted"
                 >

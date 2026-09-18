@@ -381,6 +381,7 @@ that to decide who to hand work to:
                      ○ @reviewer  claude · sonnet · standard                                      
                        Review diffs for correctness and tests.                                    
                                                                                                   
+                                                                                                  
 ──────────────────────────────────────────────────────────────────────────────────────────────────
  ▌ /quit                                                                                          
  ?  help    ^P  who    ^T  changes    ^G  lazygit    ^C  quit                          in-process 
@@ -398,29 +399,31 @@ Architect plans, then hands the implementation over by mentioning `@builder`
 in its reply, which starts builder's turn. Delegation stops after four hops, so
 a chain ends on its own.
 
-**Watch the work land.** The pane under the transcript is `git status` in the
-room's directory, updating while a turn runs. `^T` hides it; `^G` hands the
-terminal to lazygit and takes it back when you quit:
+**Watch the work land.** Replies are rendered rather than shown as markup —
+headings, bullets and code, wrapped on words — and the pane underneath is
+`git status` in the room's directory, updating while a turn runs:
 
 ```
  roundtable                                                Checkout · main · /tmp/rt-demo-project 
 ──────────────────────────────────────────────────────────────────────────────────────────────────
- ROOMS                                                                                            
+ ROOMS                               implementation.                                              
  ▌ Checkout                                                                                       
-                                                                                                  
- AGENTS                                                                                           
+                    14:09 builder    Added Cart.discount/2 with a test for 10% off 100. @reviewer 
+ AGENTS                              over to you.                                                 
  ○ architect                                                                                      
- ○ builder                                                                                        
- ○ reviewer                                                                                       
+ ○ builder          14:09 reviewer   The rounding is right, but the test does not cover the case  
+ ○ reviewer                          that made you ask.                                           
                                                                                                   
+                                     What I checked                                               
                                                                                                   
-                    13:52 you        @architect we need a percentage discount on the cart total.  
+                                     • round/1 rounds half away from zero, so 105 at 10% gives 95 
+                                     • the only test is an exact division, which never rounds     
                                                                                                   
-                    13:52 architect  Two pieces: Cart.discount/2 rounding to whole units, and a te
-                                     st for the boundary cases. @builder take the implementation. 
+                                     ▏ test "rounds half away from zero" do                       
+                                     ▏   assert Checkout.Cart.discount(105, 10) == 95             
+                                     ▏ end                                                        
                                                                                                   
-                    13:52 builder    Added Cart.discount/2 with a test for 10% off 100. @reviewer 
-                                     over to you.                                                 
+                                     @builder add that one, plus 0% and 100%.                     
                     changes · main ────────────────────────────────────────────────────────────── 
                       M lib/cart.ex                                                          +2 -0
                       M test/cart_test.exs                                                   +4 -0
@@ -479,7 +482,8 @@ working directory accordingly. Automatic worktree creation/merging is not built 
 All messages are public within their room. Agents process new messages at the
 next turn boundary; mid-turn steering is not implemented.
 
-The UI currently renders plain text (including code and Markdown source).
+Both clients render a reply's Markdown — headings, bullets and fenced code —
+rather than showing its markup.
 Room history is loaded in full; very large rooms will need pagination and
 context compaction. Session reset clears the participant's current native
 session pointer, but leaves the room conversation intact. Old native transcripts

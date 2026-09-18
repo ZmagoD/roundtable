@@ -7,7 +7,8 @@ defmodule Roundtable.TUI.Render do
   added, because escape sequences occupy no columns and would otherwise throw
   the box drawing off.
   """
-  alias Roundtable.TUI.{Commands, Markdown, State}
+  alias Roundtable.Markdown
+  alias Roundtable.TUI.{Commands, State}
 
   @sidebar 18
   @gutter 2

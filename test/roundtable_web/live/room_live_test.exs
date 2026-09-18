@@ -343,6 +343,36 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert html =~ "directory-repo"
     end
 
+    test "a reply is rendered as markdown here too, not shown as markup", %{
+      view: view,
+      room: room
+    } do
+      body = "## What I checked\n\n- one thing\n\n```elixir\nCart.discount(105, 10)\n```"
+      {:ok, _} = Chat.post(room.id, body, sender: "ada", kind: "agent")
+
+      html = render(view)
+
+      assert html =~ "<h4>What I checked</h4>"
+      assert html =~ "message-bullet"
+      assert html =~ "<pre><code>Cart.discount(105, 10)</code></pre>"
+      refute html =~ "## What I checked"
+      refute html =~ "```"
+    end
+
+    test "an agent cannot inject markup through a reply", %{view: view, room: room} do
+      {:ok, _} =
+        Chat.post(room.id, "<script>alert(1)</script> and <b>bold</b>",
+          sender: "ada",
+          kind: "agent"
+        )
+
+      html = render(view)
+
+      # A room is full of other people's output; it is text, not markup.
+      refute html =~ "<script>alert(1)</script>"
+      assert html =~ "&lt;script&gt;"
+    end
+
     test "the theme can be switched, and follows the system by default", %{view: view} do
       html = render(view)
 

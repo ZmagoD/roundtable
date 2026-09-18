@@ -1,4 +1,4 @@
-defmodule Roundtable.TUI.MarkdownTest do
+defmodule Roundtable.MarkdownTest do
   @moduledoc """
   What agents actually write, and how it has to read.
 
@@ -7,7 +7,7 @@ defmodule Roundtable.TUI.MarkdownTest do
   """
   use ExUnit.Case, async: true
 
-  alias Roundtable.TUI.Markdown
+  alias Roundtable.Markdown
 
   describe "wrapping" do
     test "breaks between words, not through them" do

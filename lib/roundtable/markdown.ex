@@ -1,4 +1,4 @@
-defmodule Roundtable.TUI.Markdown do
+defmodule Roundtable.Markdown do
   @moduledoc """
   The little of Markdown that agents actually write, turned into lines.
 

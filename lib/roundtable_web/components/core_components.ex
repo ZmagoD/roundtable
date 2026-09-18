@@ -53,4 +53,35 @@ defmodule RoundtableWeb.CoreComponents do
     <span class={[@name, @class]} aria-hidden="true" />
     """
   end
+
+  attr :body, :string, required: true
+
+  @doc """
+  A message body, rendered as the Markdown agents actually write.
+
+  Same parser the terminal client uses, so a reply reads the same in both. The
+  text is interpolated rather than injected as HTML: an agent's output is not
+  trusted markup, and a room is full of other people's output.
+  """
+  def message(assigns) do
+    assigns = assign(assigns, :blocks, Roundtable.Markdown.blocks(assigns.body))
+
+    ~H"""
+    <div class="message-text">
+      <%= for block <- @blocks do %>
+        <%= case block do %>
+          <% {:heading, text} -> %>
+            <h4>{Roundtable.Markdown.plain(text)}</h4>
+          <% {:bullet, text} -> %>
+            <p class="message-bullet">{Roundtable.Markdown.plain(text)}</p>
+          <% {:code, _language, lines} -> %>
+            <pre><code>{Enum.join(lines, "\n")}</code></pre>
+          <% {:text, text} -> %>
+            <p>{Roundtable.Markdown.plain(text)}</p>
+          <% :blank -> %>
+        <% end %>
+      <% end %>
+    </div>
+    """
+  end
 end
