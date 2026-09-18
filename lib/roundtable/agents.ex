@@ -6,12 +6,15 @@ defmodule Roundtable.Agents do
   without touching the coordinator or either client.
   """
   def adapters do
-    Application.get_env(:roundtable, :adapters, [
-      Roundtable.Agents.Codex,
-      Roundtable.Agents.Claude,
-      Roundtable.Agents.Grok,
-      Roundtable.Agents.OpenCode
-    ])
+    # `|| default` rather than a get_env default: the key can be present and
+    # nil, and nil is an atom, which fails much later and far from here.
+    Application.get_env(:roundtable, :adapters) ||
+      [
+        Roundtable.Agents.Codex,
+        Roundtable.Agents.Claude,
+        Roundtable.Agents.Grok,
+        Roundtable.Agents.OpenCode
+      ]
   end
 
   def ids, do: Enum.map(adapters(), & &1.id())

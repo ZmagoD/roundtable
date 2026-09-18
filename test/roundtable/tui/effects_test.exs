@@ -305,10 +305,17 @@ defmodule Roundtable.TUI.EffectsTest do
     original = Application.get_env(:roundtable, :adapters)
 
     Application.put_env(:roundtable, :adapters, [
-      Roundtable.FixtureMissingAdapter | original || []
+      Roundtable.FixtureMissingAdapter | original || Roundtable.Agents.adapters()
     ])
 
-    on_exit(fn -> Application.put_env(:roundtable, :adapters, original) end)
+    # Putting `nil` back would leave the key present and empty rather than
+    # absent, which every later test then tries to enumerate.
+    on_exit(fn ->
+      case original do
+        nil -> Application.delete_env(:roundtable, :adapters)
+        adapters -> Application.put_env(:roundtable, :adapters, adapters)
+      end
+    end)
 
     context = TUI.perform({:create_agent, %{"name" => "ghost", "provider" => "missing"}}, context)
 
