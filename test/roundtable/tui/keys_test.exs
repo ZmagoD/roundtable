@@ -37,4 +37,73 @@ defmodule Roundtable.TUI.KeysTest do
   test "consumes unbound escape sequences instead of typing them" do
     assert {[:unknown, {:char, "x"}], ""} = Keys.decode("\e[200~x")
   end
+
+  test "decodes every bound control key" do
+    bindings = [
+      {1, :home},
+      {3, :ctrl_c},
+      {4, :ctrl_d},
+      {5, :end_key},
+      {7, :ctrl_g},
+      {8, :backspace},
+      {9, :tab},
+      {12, :ctrl_l},
+      {16, :ctrl_p},
+      {20, :ctrl_t},
+      {21, :ctrl_u},
+      {23, :ctrl_w},
+      {127, :backspace}
+    ]
+
+    for {byte, key} <- bindings do
+      assert {[^key], ""} = Keys.decode(<<byte>>), "byte #{byte} should decode to #{key}"
+    end
+  end
+
+  test "decodes the application-cursor form of home and end" do
+    assert {[:home, :end_key], ""} = Keys.decode("\eOH\eOF")
+  end
+
+  test "an unbound SS3 sequence is consumed, not typed" do
+    assert {[{:char, "x"}], ""} = Keys.decode("\eOP" <> "x")
+    assert {[], "\eO"} = Keys.decode("\eO")
+  end
+
+  test "decodes modified and numbered sequences by their final byte" do
+    # Terminals prefix parameters: shift-up is "\e[1;2A".
+    assert {[:up], ""} = Keys.decode("\e[1;2A")
+    assert {[:home, :end_key], ""} = Keys.decode("\e[1~\e[4~")
+    assert {[:back_tab], ""} = Keys.decode("\e[Z")
+    assert {[], "\e[1;2"} = Keys.decode("\e[1;2")
+  end
+
+  test "control bytes with no binding are dropped rather than typed" do
+    assert {[{:char, "a"}], ""} = Keys.decode(<<0>> <> "a" <> <<2>>)
+  end
+
+  test "carriage return and newline are the same key" do
+    assert {[:enter, :enter], ""} = Keys.decode("\r\n")
+  end
+
+  test "a three-byte character needs all three bytes" do
+    <<a, b, c>> = "€"
+    assert {[], <<a, b>>} = Keys.decode(<<a, b>>)
+    assert {[{:char, "€"}], ""} = Keys.decode(<<a, b, c>>)
+  end
+
+  test "a stream is decoded the same whether it arrives whole or in pieces" do
+    stream = "hi\e[Athere\e[5~\r🙂"
+    {whole, ""} = Keys.decode(stream)
+
+    {piecemeal, rest} =
+      stream
+      |> :binary.bin_to_list()
+      |> Enum.reduce({[], ""}, fn byte, {keys, buffer} ->
+        {new_keys, rest} = Keys.decode(buffer <> <<byte>>)
+        {keys ++ new_keys, rest}
+      end)
+
+    assert rest == ""
+    assert piecemeal == whole
+  end
 end

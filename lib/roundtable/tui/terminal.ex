@@ -47,9 +47,14 @@ defmodule Roundtable.TUI.Terminal do
   def leave_screen, do: write("\e[?1049l\e[?25h\e[0m")
   def write(data), do: IO.binwrite(:stdio, data)
 
-  @doc "Reads one byte from the terminal, or `:eof`."
-  def read_byte do
-    case IO.binread(:stdio, 1) do
+  @doc """
+  Reads one byte from the terminal, or `:eof`.
+
+  The device is a parameter so the decoder can be driven from a string in
+  tests; nothing but a test passes anything other than `:stdio`.
+  """
+  def read_byte(device \\ :stdio) do
+    case IO.binread(device, 1) do
       byte when is_binary(byte) -> byte
       _ -> :eof
     end

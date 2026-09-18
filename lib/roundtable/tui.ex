@@ -163,18 +163,23 @@ defmodule Roundtable.TUI do
     end
   end
 
-  # --- effects --------------------------------------------------------------
+  # --- effects ---------------------------------------------------------------
 
-  defp perform(:quit, context), do: context
-  defp perform(:refresh, context), do: refresh(context)
+  # Public only so the suite can drive an effect without owning a terminal:
+  # everything below talks to the client and the state, never to the screen.
+  @doc false
+  def perform(effect, context)
 
-  defp perform(:resize, context),
+  def perform(:quit, context), do: context
+  def perform(:refresh, context), do: refresh(context)
+
+  def perform(:resize, context),
     do: %{context | state: State.put_size(context.state, Terminal.size())}
 
-  defp perform({:post, _body}, %{state: %{room: nil}} = context),
+  def perform({:post, _body}, %{state: %{room: nil}} = context),
     do: status(context, "Create a room first: /new-room <name> <directory>")
 
-  defp perform({:post, body}, context) do
+  def perform({:post, body}, context) do
     case Client.post(context.client, context.state.room.id, body) do
       {:ok, _} -> refresh(context)
       {:error, reason} -> status(context, describe(reason))
@@ -182,12 +187,12 @@ defmodule Roundtable.TUI do
     end
   end
 
-  defp perform({:switch_room, room_id}, context) do
+  def perform({:switch_room, room_id}, context) do
     Client.rewatch(context.client, context.relay, context.room_id, room_id)
     %{context | room_id: room_id} |> refresh() |> status(nil)
   end
 
-  defp perform({:create_room, name, directory}, context) do
+  def perform({:create_room, name, directory}, context) do
     case Client.create_room(context.client, %{"name" => name, "directory" => directory}) do
       {:ok, room} ->
         Client.rewatch(context.client, context.relay, context.room_id, room.id)
@@ -198,10 +203,10 @@ defmodule Roundtable.TUI do
     end
   end
 
-  defp perform({:create_agent, _}, %{state: %{room: nil}} = context),
+  def perform({:create_agent, _}, %{state: %{room: nil}} = context),
     do: status(context, "Create a room first: /new-room <name> <directory>")
 
-  defp perform({:create_agent, attrs}, context) do
+  def perform({:create_agent, attrs}, context) do
     attrs = Map.put_new_lazy(attrs, "directory", fn -> context.state.room.directory end)
     attrs = Map.update!(attrs, "directory", &(&1 || context.state.room.directory))
 
@@ -211,10 +216,10 @@ defmodule Roundtable.TUI do
     end
   end
 
-  defp perform({:cross_room, _kind, _target, _body}, %{state: %{room: nil}} = context),
+  def perform({:cross_room, _kind, _target, _body}, %{state: %{room: nil}} = context),
     do: status(context, "Open a room first.")
 
-  defp perform({:cross_room, kind, target, body}, context) do
+  def perform({:cross_room, kind, target, body}, context) do
     case Client.cross_room_request(context.client, kind, context.state.room.id, target, body) do
       {:ok, request} ->
         refresh(context)
@@ -225,14 +230,14 @@ defmodule Roundtable.TUI do
     end
   end
 
-  defp perform({:update_agent, agent_id, attrs}, context) do
+  def perform({:update_agent, agent_id, attrs}, context) do
     case Client.update_agent(context.client, agent_id, attrs) do
       {:ok, agent} -> refresh(context) |> status("@#{agent.name} updated.")
       {:error, reason} -> status(context, describe(reason))
     end
   end
 
-  defp perform({:approve, run_id, request_id, decision}, context) do
+  def perform({:approve, run_id, request_id, decision}, context) do
     case Client.approve(context.client, run_id, request_id, decision) do
       :ok -> refresh(context) |> status("Approval #{decision}ed.")
       {:error, reason} -> status(context, describe(reason))
@@ -240,12 +245,12 @@ defmodule Roundtable.TUI do
     end
   end
 
-  defp perform({action, id}, context) when action in [:stop, :reset, :retry] do
+  def perform({action, id}, context) when action in [:stop, :reset, :retry] do
     apply(Client, action, [context.client, id])
     refresh(context) |> status("#{action} sent.")
   end
 
-  defp perform(:git_ui, context) do
+  def perform(:git_ui, context) do
     directory = State.watched_directory(context.state)
 
     cond do
@@ -267,7 +272,7 @@ defmodule Roundtable.TUI do
     end
   end
 
-  defp perform(_, context), do: context
+  def perform(_, context), do: context
 
   # --- data -----------------------------------------------------------------
 

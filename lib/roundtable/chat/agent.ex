@@ -26,7 +26,12 @@ defmodule Roundtable.Chat.Agent do
     |> validate_inclusion(:provider, Roundtable.Agents.ids())
     |> validate_length(:role, max: 4000)
     |> validate_inclusion(:cost_tier, ["economy", "standard", "premium", "unknown"])
-    |> unique_constraint([:room_id, :name])
+    # Reported against :name, not the index's first column: "room_id has
+    # already been taken" means nothing to someone naming a participant.
+    |> unique_constraint(:name,
+      name: :agents_room_id_name_index,
+      message: "is already used in this room"
+    )
     |> foreign_key_constraint(:room_id)
   end
 end
