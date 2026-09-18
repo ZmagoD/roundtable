@@ -225,6 +225,124 @@ The four-hop cap spans rooms: a cross-room request inherits the asking
 message's depth, so Platform → Design → Platform terminates like any other
 chain rather than resetting each time it crosses a boundary.
 
+## A walkthrough
+
+Say you want a discount added to a checkout. Start the service and open a
+terminal on the project:
+
+```sh
+cd ~/code/checkout
+roundtable start
+roundtable tui
+```
+
+**Make a room on the project.** `.` is the directory you are standing in:
+
+```
+/new-room Checkout .
+```
+
+**Build a team.** Give each participant a model, a cost tier and — most
+importantly — a role, because every agent is told about the others and uses
+that to decide who to hand work to:
+
+```
+/agent architect claude --model claude-opus-5 --tier premium --role "Plan and assign. Never write code yourself."
+/agent builder codex --tier economy --role "Implement exactly what architect specifies."
+/agent reviewer claude --model claude-sonnet-5 --tier standard --role "Review diffs for correctness and tests."
+```
+
+`^P` shows who is in the room, what they run on, and what each is for:
+
+```
+┌─ rooms ────────────┬─ Checkout · /tmp/rt-demo-project ───────────────────────────────────────────┐
+│▸ Checkout          │─ participants · 3 ──────────────────────────────────────────────────────────│
+│                    │ ○ @architect  claude · claude-opus-5 · premium                              │
+│ agents             │   Plan and assign. Never write code yourself.                               │
+│ ○ archite… idle    │                                                                             │
+│ ○ builder  idle    │ ○ @builder  codex · provider default · economy                              │
+│ ○ reviewer idle    │   Implement exactly what architect specifies.                               │
+│                    │                                                                             │
+│                    │ ○ @reviewer  claude · claude-sonnet-5 · standard                            │
+│                    │   Review diffs for correctness and tests.                                   │
+│                    │                                                                             │
+│ : /quit                                                                                          │
+├──────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ? help · ^P who · ^T changes · ^G lazygit · ^C quit                                   in-process │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Give the work to someone.** A message with an `@name` starts that
+participant's turn; a message without one is shared context everyone reads
+next turn:
+
+```
+@architect we need a percentage discount on the cart total.
+```
+
+Architect plans, then hands the implementation over by mentioning `@builder`
+in its reply, which starts builder's turn. Delegation stops after four hops, so
+a chain ends on its own.
+
+**Watch the work land.** The pane under the transcript is `git status` in the
+room's directory, updating while a turn runs. `^T` hides it; `^G` hands the
+terminal to lazygit and takes it back when you quit:
+
+```
+┌─ rooms ────────────┬─ Checkout · /tmp/rt-demo-project ───────────────────────────────────────────┐
+│▸ Checkout          │               .                                                             │
+│                    │12:45 you      @reviewer does the rounding look right?                       │
+│ agents             │12:45 reviewer The rounding math itself checks out — `round(total * (100 - pe│
+│ ○ archite… idle    │               rcent) / 100)` uses Elixir's `round/1`, which rounds half away│
+│ ○ builder  idle    │                from zero, so 105 at 10% off is 94.5 → 95, matching builder's│
+│ ○ reviewer idle    │                claim.                                                       │
+│                    │                                                                             │
+│                    │               The gap is coverage, not correctness: the only test added is `│
+│                    │               discount(100, 10) == 90`, which is an exact division with noth│
+│                    │               ing to round — it doesn't touch the boundary case builder just│
+│                    │                described in chat. Architect asked for "a test for the bounda│
+│                    │               ry cases" (plural), and right now the actual half-unit roundin│
+│                    │               g behavior (e.g. 105/10%) is unverified by the suite, along wi│
+│                    │               th edges like 0% and 100%.                                    │
+│                    │                                                                             │
+│                    │               @builder please add test cases to `test/cart_test.exs` for: `d│
+│                    │               iscount(105, 10) == 95` (the .5 rounding case), `discount(100,│
+│                    │                0) == 100`, and `discount(100, 100) == 0`. No implementation │
+│                    │               change needed — just closing the test gap before this lands.  │
+│                    │─ changes · main ────────────────────────────────────────────────────────────│
+│                    │  M lib/cart.ex                                                         +4 -0│
+│                    │  M test/cart_test.exs                                                  +4 -0│
+│                    │ ?? NOTES.md                                                                 │
+│                    │ 3 files, +8 -0                                                              │
+├────────────────────┴─────────────────────────────────────────────────────────────────────────────┤
+│ >                                                                                                │
+├──────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Connected to in-process. /help for commands.                                          in-process │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Answer for the tools.** When an agent asks to run something, the request
+appears inline with the command that answers it — `/approve accept 1` or
+`/approve decline 1`. Codex and Claude Code ask; OpenCode uses its own
+configured permissions.
+
+**Press `?` for everything else.** The client is meant to be learnable from
+inside it.
+
+### The same room in a browser
+
+`roundtable open` gives the same room a window. The header carries the branch
+and the directory, the right-hand column is the roster and what has changed,
+and the theme follows your system.
+
+![The Checkout room in the browser](docs/images/room-light.png)
+
+Dark is the same palette with its lightness inverted, not a second design:
+
+![The same room in dark mode](docs/images/room-dark.png)
+
+The **Terminal** button opens a shell in the room's directory, in the page.
+
 ## Working together
 
 1. Create a room and choose an existing project directory.
