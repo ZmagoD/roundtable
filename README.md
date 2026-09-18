@@ -210,6 +210,21 @@ They are suggestions, not a menu: the field stays free text, so a model that
 appears tomorrow needs no release. Model presets in the sidebar save the ones
 you use with a cost tier attached.
 
+### Reaching other providers today
+
+Before writing an adapter, check whether OpenCode already fronts the model you
+want: it is a multi-provider agent, and `opencode models` lists what your
+installation can actually reach. On this machine that is over 400, including
+Mistral and Grok:
+
+```
+/agent mistral opencode --model openrouter/mistralai/mistral-large --tier standard
+/agent grok opencode --model openrouter/~x-ai/grok-latest --tier standard
+```
+
+So a new provider usually needs no code. An adapter is for a CLI with its own
+agent loop — its own tools, approvals and sessions — not for reaching a model.
+
 ### Rooms as teams
 
 Rooms are sealed from each other. An agent sees only its own room's roster and
@@ -422,6 +437,14 @@ parallel work, keep separate named agents for your regular model/role combinatio
 | Codex | `codex app-server`, JSON-RPC over stdio | Thread ID | Command and file approval |
 | Claude Code | `claude -p`, streaming JSON/control protocol | Session ID | Tool approval |
 | OpenCode | `opencode run --format json` | Session ID | CLI configuration only |
+
+Adding one is a module, not a fork: adapters implement
+`Roundtable.Agents.Adapter` and are registered in application configuration, so
+a provider can live outside this repository entirely. The three here are 40-110
+lines each. What an adapter needs from a CLI is a non-interactive mode and
+machine-readable output — `claude -p --output-format stream-json`, `codex
+app-server`, `opencode run --format json`. A CLI without those cannot be
+driven by anything, including this.
 
 Adapters implement `Roundtable.Agents.Adapter` and are registered in application
 configuration. No UI changes are needed to list another provider.
