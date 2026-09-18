@@ -676,3 +676,10 @@ select {
 .message-text pre { margin: 9px 0; padding: 10px 12px; border-left: 2px solid var(--green-soft-10); border-radius: 0 6px 6px 0; background: var(--green-surface-2); overflow-x: auto; }
 .message-text pre { white-space: pre; }
 .message-text pre code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.55; white-space: pre; }
+
+/* Mention menu: the people in this room, offered as you type "@". */
+.composer { position: relative; }
+.mention-menu { position: absolute; left: 12px; bottom: calc(100% - 8px); z-index: 5; list-style: none; margin: 0; padding: 4px; min-width: 190px; max-height: 210px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--neutral-surface-1); box-shadow: 0 6px 18px var(--green-ink-1); }
+.mention-menu[hidden] { display: none; }
+.mention-menu li { padding: 6px 9px; border-radius: 5px; font-size: 12px; cursor: pointer; }
+.mention-menu li.selected, .mention-menu li:hover { background: var(--green-soft-3); color: var(--green); font-weight: 600; }

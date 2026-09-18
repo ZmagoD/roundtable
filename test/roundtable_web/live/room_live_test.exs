@@ -373,6 +373,39 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert html =~ "&lt;script&gt;"
     end
 
+    test "the composer carries who can be mentioned", %{view: view, room: room} do
+      {:ok, _} =
+        Chat.create_agent(room.id, %{"name" => "grace", "provider" => "opencode"})
+
+      html = render(view)
+
+      assert html =~ "data-mentions"
+      # Everyone in the room, plus @all, which is a mention too.
+      assert html =~ "ada"
+      assert html =~ "grace"
+      assert html =~ "all"
+    end
+
+    test "the composer says Enter sends", %{view: view} do
+      html = render(view)
+
+      assert html =~ "Enter to send"
+      refute html =~ "Ctrl + Enter to send"
+    end
+
+    test "the mention list follows who is in the room", %{view: view, agent: agent} do
+      assert render(view) =~ "ada"
+
+      view |> element(".agent-edit[phx-value-id='#{agent.id}']") |> render_click()
+
+      view
+      |> form("#agent-form", agent: %{name: "ada-2", role: "", model: "", cost_tier: "unknown"})
+      |> render_submit()
+
+      html = render(view)
+      assert html =~ "ada-2"
+    end
+
     test "the theme can be switched, and follows the system by default", %{view: view} do
       html = render(view)
 

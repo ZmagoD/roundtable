@@ -199,6 +199,7 @@
               phx-change="draft"
               class="composer"
               phx-hook="Composer"
+              data-mentions={Jason.encode!(["all" | Enum.map(@agents, & &1.name)])}
             >
               <.input
                 field={@message_form[:body]}
@@ -256,7 +257,7 @@
               </div>
             </.form>
             <p class="composer-hint">
-              <span>Everyone shares context. Mentions start a turn.</span><span>Ctrl + Enter to send</span>
+              <span>Everyone shares context. Mentions start a turn.</span><span>Enter to send · Shift + Enter for a new line</span>
             </p>
           </div>
         </section>

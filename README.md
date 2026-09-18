@@ -71,6 +71,10 @@ set `DATABASE_PATH` to use a specific database. Never run two service instances
 against the same database: one coordinator owns its delivery queue.
 The service survives closing the terminal; automatic start at login is not installed.
 
+Typing `@` in the composer offers the people in the room — arrow keys or
+`Tab` to choose, and `@all` is in the list because it is a mention too.
+`Enter` sends; `Shift + Enter` starts a new line.
+
 The room header shows the current branch and the working directory, and a panel
 lists what has changed in it — file by file, with line counts — updating while a
 turn runs. Click it for the patch itself. A participant can be removed from its card and a room from its header, both

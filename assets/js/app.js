@@ -109,10 +109,89 @@ const liveSocket = new LiveSocket("/live", Socket, {
       mounted() { this.el.scrollTop = this.el.scrollHeight; this.follow = true; this.el.addEventListener("scroll", () => { this.follow = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 100 }) },
       updated() { if (this.follow) this.el.scrollTop = this.el.scrollHeight }
     },
+    // Enter sends, Shift+Enter makes a newline, and "@" offers the people in
+    // the room. Mentions are what start a turn, so they should not have to be
+    // typed from memory.
     Composer: {
       mounted() {
-        this.el.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); this.el.requestSubmit() } });
-        this.handleEvent("sent", () => { const input = this.el.querySelector("textarea"); input.value = ""; input.focus() });
+        this.input = this.el.querySelector("textarea")
+        this.menu = document.createElement("ul")
+        this.menu.className = "mention-menu"
+        this.menu.hidden = true
+        this.el.appendChild(this.menu)
+        this.matches = []
+        this.selected = 0
+
+        this.input.addEventListener("keydown", e => this.onKeyDown(e))
+        this.input.addEventListener("input", () => this.refresh())
+        this.input.addEventListener("blur", () => setTimeout(() => this.close(), 120))
+        this.menu.addEventListener("mousedown", e => {
+          const item = e.target.closest("li")
+          if (item) { e.preventDefault(); this.accept(item.dataset.name) }
+        })
+
+        this.handleEvent("sent", () => { this.close(); this.input.value = ""; this.input.focus() })
+      },
+
+      names() {
+        try { return JSON.parse(this.el.dataset.mentions || "[]") } catch (_) { return [] }
+      },
+
+      // The "@word" the caret is sitting in, if any.
+      token() {
+        const upto = this.input.value.slice(0, this.input.selectionStart)
+        const match = upto.match(/(^|\s)@([a-z0-9_-]*)$/i)
+        return match ? match[2] : null
+      },
+
+      refresh() {
+        const typed = this.token()
+        if (typed === null) return this.close()
+
+        this.matches = this.names().filter(n => n.startsWith(typed.toLowerCase()))
+        if (this.matches.length === 0) return this.close()
+
+        this.selected = Math.min(this.selected, this.matches.length - 1)
+        this.menu.innerHTML = this.matches
+          .map((n, i) => `<li data-name="${n}"${i === this.selected ? ' class="selected"' : ""}>@${n}</li>`)
+          .join("")
+        this.menu.hidden = false
+      },
+
+      close() { this.menu.hidden = true; this.matches = []; this.selected = 0 },
+
+      accept(name) {
+        const caret = this.input.selectionStart
+        const before = this.input.value.slice(0, caret).replace(/@([a-z0-9_-]*)$/i, `@${name} `)
+        this.input.value = before + this.input.value.slice(caret)
+        this.input.selectionStart = this.input.selectionEnd = before.length
+        this.close()
+        // LiveView tracks the field, so tell it what changed.
+        this.input.dispatchEvent(new Event("input", {bubbles: true}))
+        this.input.focus()
+      },
+
+      onKeyDown(e) {
+        const open = !this.menu.hidden && this.matches.length > 0
+
+        if (open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+          e.preventDefault()
+          const step = e.key === "ArrowDown" ? 1 : this.matches.length - 1
+          this.selected = (this.selected + step) % this.matches.length
+          return this.refresh()
+        }
+
+        if (open && (e.key === "Enter" || e.key === "Tab")) {
+          e.preventDefault()
+          return this.accept(this.matches[this.selected])
+        }
+
+        if (e.key === "Escape") return this.close()
+
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault()
+          this.el.requestSubmit()
+        }
       }
     }
   },
