@@ -221,12 +221,24 @@
               phx-hook="Composer"
               data-mentions={Jason.encode!(["all" | Enum.map(@agents, & &1.name)])}
             >
+              <div id="mention-menu-container" phx-update="ignore">
+                <ul
+                  id="mention-menu"
+                  class="mention-menu"
+                  role="listbox"
+                  aria-label="Agents in this room"
+                  hidden
+                >
+                </ul>
+              </div>
               <.input
                 field={@message_form[:body]}
                 type="textarea"
                 id="message-body"
                 placeholder="Share an idea, ask a question, or @mention an agent…"
                 aria-label="Message"
+                aria-autocomplete="list"
+                aria-controls="mention-menu"
                 rows="3"
                 required
                 maxlength="64000"
@@ -277,7 +289,7 @@
               </div>
             </.form>
             <p class="composer-hint">
-              <span>Everyone shares context. Mentions start a turn.</span><span>Enter to send · Shift + Enter for a new line</span>
+              <span>Everyone shares context. Mentions start a turn.</span><span>@ to mention · Tab to complete · Enter to send · Shift + Enter for a new line</span>
             </p>
           </div>
         </section>

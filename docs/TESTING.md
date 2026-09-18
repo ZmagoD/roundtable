@@ -60,3 +60,22 @@ available port above it; both 3000 and 4000 are explicitly reserved.
 
 These results describe this machine's installed providers; they do not guarantee
 compatibility with every CLI release or authentication setup.
+
+## Mention autocomplete in a browser
+
+`test/browser/mentions.cjs` checks the actual dropdown in Chromium: hit testing
+catches clipping that a DOM visibility assertion misses. It also checks prefix
+filtering, keyboard and mouse completion, caret replacement, LiveView updates,
+Escape, multiline input and mobile layout. It never submits a message.
+
+Run it against an isolated test instance with a temporary database, real agent
+execution disabled (`MIX_ENV=test`), and an empty room containing `manager`,
+`maintainer` and `reviewer`. Build assets with `mix assets.deploy` so compressed
+bundles match the source. With Playwright available:
+
+```sh
+ROUNDTABLE_TEST_URL=http://127.0.0.1:4437 node test/browser/mentions.cjs
+```
+
+Set `PLAYWRIGHT_MODULE` to an existing Playwright module path if it is not on
+Node's lookup path, and `CHROMIUM` to override `/usr/bin/chromium`.

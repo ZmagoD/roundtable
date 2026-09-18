@@ -115,15 +115,16 @@ const liveSocket = new LiveSocket("/live", Socket, {
     Composer: {
       mounted() {
         this.input = this.el.querySelector("textarea")
-        this.menu = document.createElement("ul")
-        this.menu.className = "mention-menu"
-        this.menu.hidden = true
-        this.el.appendChild(this.menu)
+        this.menu = this.el.querySelector("#mention-menu")
         this.matches = []
         this.selected = 0
 
         this.input.addEventListener("keydown", e => this.onKeyDown(e))
         this.input.addEventListener("input", () => this.refresh())
+        this.input.addEventListener("click", () => this.refresh())
+        this.input.addEventListener("keyup", e => {
+          if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) this.refresh()
+        })
         this.input.addEventListener("blur", () => setTimeout(() => this.close(), 120))
         this.menu.addEventListener("mousedown", e => {
           const item = e.target.closest("li")
@@ -133,12 +134,18 @@ const liveSocket = new LiveSocket("/live", Socket, {
         this.handleEvent("sent", () => { this.close(); this.input.value = ""; this.input.focus() })
       },
 
+      updated() {
+        if (document.activeElement === this.input) this.refresh()
+        else this.close()
+      },
+
       names() {
         try { return JSON.parse(this.el.dataset.mentions || "[]") } catch (_) { return [] }
       },
 
       // The "@word" the caret is sitting in, if any.
       token() {
+        if (this.input.selectionStart !== this.input.selectionEnd) return null
         const upto = this.input.value.slice(0, this.input.selectionStart)
         const match = upto.match(/(^|\s)@([a-z0-9_-]*)$/i)
         return match ? match[2] : null
@@ -152,18 +159,33 @@ const liveSocket = new LiveSocket("/live", Socket, {
         if (this.matches.length === 0) return this.close()
 
         this.selected = Math.min(this.selected, this.matches.length - 1)
-        this.menu.innerHTML = this.matches
-          .map((n, i) => `<li data-name="${n}"${i === this.selected ? ' class="selected"' : ""}>@${n}</li>`)
-          .join("")
+        this.menu.replaceChildren(...this.matches.map((name, index) => {
+          const item = document.createElement("li")
+          item.id = `mention-option-${index}`
+          item.dataset.name = name
+          item.textContent = `@${name}`
+          item.setAttribute("role", "option")
+          item.setAttribute("aria-selected", String(index === this.selected))
+          if (index === this.selected) item.className = "selected"
+          return item
+        }))
         this.menu.hidden = false
+        this.input.setAttribute("aria-activedescendant", `mention-option-${this.selected}`)
+        this.menu.children[this.selected].scrollIntoView({block: "nearest"})
       },
 
-      close() { this.menu.hidden = true; this.matches = []; this.selected = 0 },
+      close() {
+        this.menu.hidden = true
+        this.matches = []
+        this.selected = 0
+        this.input.removeAttribute("aria-activedescendant")
+      },
 
       accept(name) {
         const caret = this.input.selectionStart
         const before = this.input.value.slice(0, caret).replace(/@([a-z0-9_-]*)$/i, `@${name} `)
-        this.input.value = before + this.input.value.slice(caret)
+        const after = this.input.value.slice(caret).replace(/^[a-z0-9_-]*/i, "")
+        this.input.value = before + after
         this.input.selectionStart = this.input.selectionEnd = before.length
         this.close()
         // LiveView tracks the field, so tell it what changed.
@@ -172,6 +194,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
       },
 
       onKeyDown(e) {
+        if (e.isComposing) return
         const open = !this.menu.hidden && this.matches.length > 0
 
         if (open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
@@ -181,7 +204,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
           return this.refresh()
         }
 
-        if (open && (e.key === "Enter" || e.key === "Tab")) {
+        if (open && !e.shiftKey && (e.key === "Enter" || e.key === "Tab")) {
           e.preventDefault()
           return this.accept(this.matches[this.selected])
         }

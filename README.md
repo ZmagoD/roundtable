@@ -82,14 +82,25 @@ availability check and the web server binding it.
 
 ```sh
 roundtable start
-roundtable open    # the browser UI in its own window
-roundtable status  # includes the URL and recent logs
+roundtable open           # the browser UI in its own window
+roundtable status         # includes the URL and recent logs
+roundtable status --json  # the same for a script or a desktop widget
 roundtable logs
 roundtable stop
 ```
 
 From a source checkout the same commands live at `bin/roundtable`, and
 `bin/roundtable setup` builds the assets and the OTP release.
+
+`status --json` answers `{"running", "pid", "url", "status"}`, where `status`
+is what the service itself says — its rooms, and how many turns in each are
+queued, running, or stopped waiting for an approval — or `null` when the
+service is up but did not answer. The service serves the same object at
+`GET /status.json`, behind the loopback host check that guards every other
+response. It is counts and room names: nothing said in a room is in it. That
+is what the [Omarchy bar widget](https://github.com/ZmagoD/roundtable-omarchy-plugin)
+polls, so you can see that someone is waiting on you without keeping the room
+on screen.
 
 The production release migrates its SQLite database on startup. The launcher
 keeps its database, generated cookie-signing secret, PID and logs in `.local/`.
@@ -99,7 +110,8 @@ against the same database: one coordinator owns its delivery queue.
 The service survives closing the terminal; automatic start at login is not installed.
 
 Typing `@` in the composer offers the people in the room — arrow keys or
-`Tab` to choose, and `@all` is in the list because it is a mention too.
+`Tab` or `Enter` to complete the selected name, or click a suggestion. The list
+filters as you type, and includes `@all` to address everyone in the room.
 `Enter` sends; `Shift + Enter` starts a new line.
 
 The room header shows the current branch and the working directory, and a panel

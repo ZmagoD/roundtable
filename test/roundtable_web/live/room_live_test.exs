@@ -605,6 +605,25 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert html =~ "all"
     end
 
+    test "the mention menu survives patches and excludes other rooms", %{view: view} do
+      {:ok, other} = Chat.create_room(%{name: "Other", directory: File.cwd!()})
+      {:ok, _} = Chat.create_agent(other.id, %{name: "outsider", provider: "codex"})
+
+      assert has_element?(
+               view,
+               "#mention-menu-container[phx-update=ignore] #mention-menu[role=listbox]"
+             )
+
+      assert has_element?(
+               view,
+               "#message-body[aria-controls=mention-menu][aria-autocomplete=list]"
+             )
+
+      assert has_element?(view, "#message-form[data-mentions='[\"all\",\"ada\"]']")
+      view |> form("#message-form", message: %{body: "@ad"}) |> render_change()
+      assert has_element?(view, "#mention-menu-container[phx-update=ignore] #mention-menu")
+    end
+
     test "the composer says Enter sends", %{view: view} do
       html = render(view)
 
