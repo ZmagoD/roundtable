@@ -72,6 +72,33 @@ defmodule Roundtable.TUI.RenderTest do
     for line <- screen(state), do: assert(String.length(line) == 80)
   end
 
+  test "a reply is rendered as markdown, not shown as markup" do
+    body = "## Heading\n\n- a bullet\n\n```elixir\ncode()\n```\n\ntail"
+
+    drawn =
+      state(messages: [message(1, "ada", body, "agent")], size: {30, 110})
+      |> screen()
+      |> Enum.join("\n")
+
+    assert drawn =~ "Heading"
+    refute drawn =~ "## Heading"
+
+    assert drawn =~ "• a bullet"
+    refute drawn =~ "- a bullet"
+
+    assert drawn =~ "code()"
+    refute drawn =~ "```"
+  end
+
+  test "a message never breaks a word in half" do
+    body = "the rounding is fine but the test does not cover the boundary case"
+    lines = state(messages: [message(1, "ada", body, "agent")], size: {30, 90}) |> screen()
+
+    text = lines |> Enum.map(&String.trim/1) |> Enum.join("\n")
+    refute text =~ ~r/\bbounda\n/
+    assert text =~ "boundary"
+  end
+
   test "wraps a message across lines instead of truncating it" do
     body = String.duplicate("abcde ", 30)
 

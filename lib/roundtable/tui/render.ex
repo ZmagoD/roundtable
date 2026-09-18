@@ -7,7 +7,7 @@ defmodule Roundtable.TUI.Render do
   added, because escape sequences occupy no columns and would otherwise throw
   the box drawing off.
   """
-  alias Roundtable.TUI.{Commands, State}
+  alias Roundtable.TUI.{Commands, Markdown, State}
 
   @sidebar 18
   @gutter 2
@@ -245,7 +245,7 @@ defmodule Roundtable.TUI.Render do
           case agent.role do
             nil -> ["   no role set — /role #{agent.name} <what they should do>"]
             "" -> ["   no role set — /role #{agent.name} <what they should do>"]
-            text -> text |> wrap(width - 4) |> Enum.map(&("   " <> &1))
+            text -> text |> Markdown.wrap(width - 4) |> Enum.map(&("   " <> &1))
           end
 
         [[colour, pad(headline, width), @reset]] ++
@@ -408,28 +408,11 @@ defmodule Roundtable.TUI.Render do
         # room is mostly other people's paragraphs.
         spacer = if index == 0, do: [], else: [pad("", width)]
 
-        spacer ++
-          (message.body
-           |> wrap(body)
-           |> Enum.with_index()
-           |> Enum.map(fn
-             {text, 0} ->
-               [
-                 @dim,
-                 stamp,
-                 @reset,
-                 " ",
-                 colour,
-                 @bold,
-                 pad(sender, @sender),
-                 @reset,
-                 " ",
-                 pad(text, body)
-               ]
+        [first | continued] = message_lines(message.body, body)
 
-             {text, _} ->
-               [indent, pad(text, body)]
-           end))
+        spacer ++
+          [[@dim, stamp, @reset, " ", colour, @bold, pad(sender, @sender), @reset, " ", first]] ++
+          Enum.map(continued, &[indent, &1])
       end)
 
     messages ++ approval_lines(state, width) ++ failure_lines(state, width)
@@ -512,24 +495,48 @@ defmodule Roundtable.TUI.Render do
     end
   end
 
-  defp wrap(text, width) when width > 0 do
-    text
-    |> String.split("\n")
-    |> Enum.flat_map(fn line ->
-      case chunk(line, width) do
-        [] -> [""]
-        chunks -> chunks
-      end
+  # A reply is Markdown: headings, bullets and fenced code, wrapped on words.
+  defp message_lines(body, width) do
+    body
+    |> Markdown.blocks()
+    |> Enum.flat_map(&block_lines(&1, width))
+    |> trim_trailing_blanks()
+    |> case do
+      [] -> [pad("", width)]
+      lines -> lines
+    end
+  end
+
+  defp block_lines(:blank, width), do: [pad("", width)]
+
+  defp block_lines({:heading, text}, width) do
+    text |> Markdown.plain() |> Markdown.wrap(width) |> Enum.map(&[@bold, pad(&1, width), @reset])
+  end
+
+  defp block_lines({:bullet, text}, width) do
+    # wrap/2 always yields at least one line, even for an empty bullet.
+    [first | rest] = Markdown.plain(text) |> Markdown.wrap(max(width - 2, 1))
+
+    [[@green, "• ", @reset, pad(first, width - 2)]] ++
+      Enum.map(rest, &pad("  " <> &1, width))
+  end
+
+  # A gutter rather than fences: the bar says "code" without spending a line.
+  defp block_lines({:code, _language, lines}, width) do
+    Enum.map(lines, fn line ->
+      [@dim, "▏", @reset, @cyan, pad(" " <> cut(line, max(width - 2, 0)), width - 1), @reset]
     end)
   end
 
-  defp wrap(_, _), do: [""]
+  defp block_lines({:text, text}, width) do
+    text |> Markdown.plain() |> Markdown.wrap(width) |> Enum.map(&pad(&1, width))
+  end
 
-  defp chunk(line, width) do
-    line
-    |> String.graphemes()
-    |> Enum.chunk_every(width)
-    |> Enum.map(&Enum.join/1)
+  defp trim_trailing_blanks(lines) do
+    lines
+    |> Enum.reverse()
+    |> Enum.drop_while(&(IO.iodata_to_binary(&1) |> String.trim() == ""))
+    |> Enum.reverse()
   end
 
   defp pad(_text, width) when width <= 0, do: ""

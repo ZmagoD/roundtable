@@ -648,3 +648,20 @@ h1, h2, h3, p { margin: 0; }
 .directory-name { font-weight: 600; }
 .directory-repo { font-size: 9px; letter-spacing: .6px; text-transform: uppercase; padding: 1px 5px; border-radius: 4px; background: var(--green-soft-3); color: var(--green); }
 .directory-path { margin-left: auto; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
+
+/* Selects: the native control brings its own chrome, which looks nothing like
+   the rest of the page. Draw the arrow instead. */
+select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 15px) calc(50% + 1px), calc(100% - 10px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 30px;
+}
+.modal select { border-color: var(--green-surface-23); }
+.modal select:hover { border-color: var(--green-soft-10); }
+.modal select:focus-visible { outline-offset: 1px; }
+.modal option { background: var(--green-surface-24); color: var(--green-ink-9); }
+.assignment-controls select, .composer-footer select { background-position: calc(100% - 9px) calc(50% + 1px), calc(100% - 5px) calc(50% + 1px); padding-right: 18px; }
