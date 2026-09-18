@@ -24,6 +24,8 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/roundtable"
 import topbar from "../vendor/topbar"
+import {Terminal} from "../vendor/xterm"
+import {FitAddon} from "../vendor/xterm-fit"
 
 // Theme is applied before the socket connects so the page never flashes the
 // wrong one. "system" is the absence of an override, not a third palette.
@@ -56,6 +58,53 @@ const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
   hooks: {...colocatedHooks,
+    // A real terminal emulator: the server has a pty, this draws what it says
+    // and sends back what is typed. Bytes both ways are base64 because the
+    // socket carries JSON and terminal traffic is arbitrary bytes.
+    Terminal: {
+      mounted() {
+        const style = getComputedStyle(document.documentElement)
+        this.term = new Terminal({
+          fontSize: 12,
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          cursorBlink: true,
+          theme: {
+            background: style.getPropertyValue("--terminal-bg").trim() || "#12150f",
+            foreground: style.getPropertyValue("--terminal-fg").trim() || "#d7dfd0"
+          }
+        })
+        this.fit = new FitAddon()
+        this.term.loadAddon(this.fit)
+        this.term.open(this.el)
+        this.term.focus()
+
+        const encode = (text) => btoa(String.fromCharCode(...new TextEncoder().encode(text)))
+        this.term.onData(data => this.pushEvent("terminal-input", {data: encode(data)}))
+
+        const sync = () => {
+          this.fit.fit()
+          this.pushEvent("terminal-resize", {rows: this.term.rows, cols: this.term.cols})
+        }
+        this.sync = sync
+        // The pty only learns the size when told, and the browser can change it
+        // at any moment.
+        this.observer = new ResizeObserver(() => sync())
+        this.observer.observe(this.el)
+        requestAnimationFrame(sync)
+
+        this.handleEvent("terminal-output", ({data}) => {
+          const bytes = Uint8Array.from(atob(data), c => c.charCodeAt(0))
+          this.term.write(bytes)
+        })
+        this.handleEvent("terminal-closed", () => {
+          this.term.write("\r\n\x1b[2mThe shell exited. Close and open the terminal to start another.\x1b[0m\r\n")
+        })
+      },
+      destroyed() {
+        if (this.observer) this.observer.disconnect()
+        if (this.term) this.term.dispose()
+      }
+    },
     Conversation: {
       mounted() { this.el.scrollTop = this.el.scrollHeight; this.follow = true; this.el.addEventListener("scroll", () => { this.follow = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 100 }) },
       updated() { if (this.follow) this.el.scrollTop = this.el.scrollHeight }

@@ -50,10 +50,19 @@
         </div>
         <div class="header-actions">
           <span class="live-badge"><span class="online-dot"></span> Live</span><button
+            id="add-agent-button"
             class="button secondary"
             phx-click="panel"
             phx-value-name="agent"
           >+ Add agent</button>
+          <button
+            id="terminal-button"
+            class="button secondary"
+            phx-click={if @terminal, do: "close-terminal", else: "open-terminal"}
+            title="A shell in this room's directory"
+          >
+            {if @terminal, do: "Close terminal", else: "Terminal"}
+          </button>
         </div>
       </header>
       <div class="room-body">
@@ -162,6 +171,19 @@
               </div>
             </details>
           </div>
+          <section :if={@terminal} class="terminal-panel" aria-label="Terminal">
+            <div class="terminal-bar">
+              <span>Shell in <code>{@room.directory}</code></span>
+              <button class="text-button" phx-click="close-terminal">Close</button>
+            </div>
+            <div
+              class="terminal-host"
+              id={"terminal-#{@room.id}"}
+              phx-hook="Terminal"
+              phx-update="ignore"
+            >
+            </div>
+          </section>
           <div class="composer-wrap">
             <.form
               for={@message_form}

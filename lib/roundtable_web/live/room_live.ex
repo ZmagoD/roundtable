@@ -32,6 +32,7 @@ defmodule RoundtableWeb.RoomLive do
        directory: System.get_env("ROUNDTABLE_WORKSPACE") || File.cwd!(),
        changes: nil,
        diff: nil,
+       terminal: nil,
        page_title: "Roundtable"
      )
      |> stream(:messages, [])}
@@ -52,6 +53,7 @@ defmodule RoundtableWeb.RoomLive do
 
     {:noreply,
      socket
+     |> close_terminal()
      |> assign(room: room, panel: nil, form_error: nil, last_message_id: 0, diff: nil)
      |> stream(:messages, [], reset: true)
      |> refresh()
@@ -114,6 +116,37 @@ defmodule RoundtableWeb.RoomLive do
            agent_form: to_form(attrs, as: :agent)
          )}
     end
+  end
+
+  def handle_event("open-terminal", _, %{assigns: %{room: room}} = socket)
+      when not is_nil(room) do
+    if socket.assigns.terminal do
+      {:noreply, socket}
+    else
+      case Roundtable.Terminal.start_link(owner: self(), directory: room.directory) do
+        {:ok, terminal} ->
+          {:noreply, assign(socket, terminal: terminal)}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Could not open a terminal: #{inspect(reason)}")}
+      end
+    end
+  end
+
+  def handle_event("open-terminal", _, socket), do: {:noreply, socket}
+
+  def handle_event("close-terminal", _, socket), do: {:noreply, close_terminal(socket)}
+
+  def handle_event("terminal-input", %{"data" => data}, socket) do
+    if socket.assigns.terminal, do: Roundtable.Terminal.input(socket.assigns.terminal, data)
+    {:noreply, socket}
+  end
+
+  def handle_event("terminal-resize", %{"rows" => rows, "cols" => cols}, socket) do
+    if socket.assigns.terminal,
+      do: Roundtable.Terminal.resize(socket.assigns.terminal, rows, cols)
+
+    {:noreply, socket}
   end
 
   def handle_event("toggle-diff", _, socket) do
@@ -295,12 +328,29 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   @impl true
+  def handle_info({:terminal_output, data}, socket),
+    do: {:noreply, push_event(socket, "terminal-output", %{data: data})}
+
+  def handle_info({:terminal_exit, _status}, socket) do
+    {:noreply, socket |> assign(terminal: nil) |> push_event("terminal-closed", %{})}
+  end
+
   def handle_info(:poll_git, socket), do: {:noreply, poll_git(socket)}
 
   def handle_info(:room_updated, socket), do: {:noreply, refresh(socket)}
 
   def handle_info(:rooms_updated, socket),
     do: {:noreply, assign(socket, rooms: Chat.rooms(), model_presets: Chat.model_presets())}
+
+  defp close_terminal(%{assigns: %{terminal: nil}} = socket), do: socket
+
+  defp close_terminal(socket) do
+    GenServer.stop(socket.assigns.terminal, :normal)
+    assign(socket, terminal: nil)
+  catch
+    # Already gone: the shell exited, or the page is being torn down.
+    :exit, _ -> assign(socket, terminal: nil)
+  end
 
   # Git runs off the socket: a large repository must not hold up a render.
   defp poll_git(%{assigns: %{room: nil}} = socket), do: socket

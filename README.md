@@ -83,6 +83,23 @@ The theme follows your system, with Auto/Light/Dark in the sidebar if you would
 rather choose. The palette is one set of colours: the dark values keep each hue
 and invert its lightness, so there is only ever one design to keep in step.
 
+### A terminal in the room
+
+The **Terminal** button opens a shell in the room's working directory, in the
+page. It is a real terminal on a real pty, so curses programs, job control and
+line editing all work — `lazygit`, `vim` and `htop` included.
+
+The BEAM cannot allocate a pty, and starts every process it spawns in a new
+session with no controlling terminal, so `priv/terminal_bridge.py` allocates
+one and relays bytes. The shell is tied to the page that opened it: close the
+tab, switch rooms, or lose the connection, and it goes with you rather than
+lingering as a process nobody can see.
+
+This is a shell with your user's access, reachable by anyone who can reach the
+page. That is the same access the agents in the room already have, and the same
+reason the service binds to loopback, checks origins, and says not to put it
+behind a proxy without authentication.
+
 ### As a desktop app
 
 `roundtable open` starts the service if it is not running and opens the UI in a

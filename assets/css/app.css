@@ -4,6 +4,7 @@
 @source "../js";
 @source "../../lib/roundtable_web";
 @plugin "../vendor/heroicons";
+@import "../vendor/xterm.css";
 
 /* The palette. Light values are the original design, unchanged. Dark
    values keep each hue and invert its lightness, so the theme is one
@@ -627,3 +628,11 @@ h1, h2, h3, p { margin: 0; }
 .agent-no-role .text-button { font-style: normal; }
 
 .fixed-field { margin: 0; padding: 9px 11px; border: 1px dashed var(--line); border-radius: 7px; color: var(--muted); font-size: 13px; }
+
+/* The terminal: the room's directory, on a real pty. */
+:root { --terminal-bg: #12150f; --terminal-fg: #d7dfd0; }
+.terminal-panel { border-top: 1px solid var(--line); background: var(--terminal-bg); display: flex; flex-direction: column; height: 300px; flex-shrink: 0; }
+.terminal-bar { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: var(--green-surface-2); border-bottom: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+.terminal-bar code { font-size: 11px; }
+.terminal-host { flex: 1; min-height: 0; padding: 6px 4px 4px 10px; }
+.terminal-host .xterm { height: 100%; }

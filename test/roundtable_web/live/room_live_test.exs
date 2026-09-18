@@ -14,7 +14,7 @@ defmodule RoundtableWeb.RoomLiveTest do
     assert has_element?(view, "h1", "Checkout")
 
     for name <- ["ada", "tester"] do
-      view |> element(".header-actions button") |> render_click()
+      view |> element("#add-agent-button") |> render_click()
 
       view
       |> form("#agent-form",
@@ -132,7 +132,7 @@ defmodule RoundtableWeb.RoomLiveTest do
     end
 
     test "an invalid agent name is refused and the form keeps what was typed", %{view: view} do
-      view |> element(".header-actions button") |> render_click()
+      view |> element("#add-agent-button") |> render_click()
 
       html =
         view
@@ -347,8 +347,48 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert render(view) =~ "No role set"
     end
 
+    test "a terminal opens on the room's directory, and closes again", %{view: view, room: room} do
+      refute has_element?(view, ".terminal-panel")
+
+      html = view |> element("#terminal-button") |> render_click()
+      assert html =~ "terminal-panel"
+      assert html =~ room.directory
+      assert html =~ ~s(phx-hook="Terminal")
+
+      html = view |> element("#terminal-button") |> render_click()
+      refute html =~ "terminal-panel"
+    end
+
+    test "keystrokes and resizes reach the shell", %{view: view} do
+      view |> element("#terminal-button") |> render_click()
+
+      # Base64 both ways: the socket carries JSON, terminal traffic is bytes.
+      render_hook(view, "terminal-input", %{"data" => Base.encode64("echo hi\n")})
+      render_hook(view, "terminal-resize", %{"rows" => 30, "cols" => 100})
+
+      assert has_element?(view, ".terminal-panel")
+    end
+
+    test "input with no terminal open is ignored rather than crashing", %{view: view} do
+      render_hook(view, "terminal-input", %{"data" => Base.encode64("rm -rf /\n")})
+      render_hook(view, "terminal-resize", %{"rows" => 10, "cols" => 10})
+
+      refute has_element?(view, ".terminal-panel")
+    end
+
+    test "switching rooms takes the terminal with it", %{view: view, conn: conn} do
+      view |> element("#terminal-button") |> render_click()
+      assert has_element?(view, ".terminal-panel")
+
+      {:ok, other} = Chat.create_room(%{"name" => "Elsewhere", "directory" => File.cwd!()})
+      {:ok, moved, _} = live(conn, "/rooms/#{other.id}")
+
+      # A shell belongs to the directory it was opened in.
+      refute has_element?(moved, ".terminal-panel")
+    end
+
     test "closing a panel leaves the room visible", %{view: view} do
-      view |> element(".header-actions button") |> render_click()
+      view |> element("#add-agent-button") |> render_click()
       assert has_element?(view, "#agent-form")
 
       view |> element("[phx-click=close-panel]") |> render_click()
