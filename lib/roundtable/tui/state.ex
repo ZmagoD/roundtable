@@ -58,18 +58,9 @@ defmodule Roundtable.TUI.State do
     }
   end
 
-  @doc """
-  The directory whose changes the pane watches.
-
-  Agents can be given their own working directory (a separate worktree, say),
-  so `/changes <agent>` follows that agent instead of the room.
-  """
+  @doc "The directory whose changes the pane watches: the room's."
   def watched_directory(%{room: nil}), do: nil
-
-  def watched_directory(state) do
-    agent = Enum.find(state.agents, &(&1.name == state.changes_target))
-    (agent && agent.directory) || state.room.directory
-  end
+  def watched_directory(state), do: state.room.directory
 
   def put_changes(state, changes), do: %{state | changes: changes}
 
@@ -218,7 +209,7 @@ defmodule Roundtable.TUI.State do
        state,
        "/room <name> · /new-room <name> <dir> · /agent <name> <provider> [dir] · " <>
          "/stop <agent> · /reset <agent> · /retry [run] · /approve accept|decline [n] · " <>
-         "/changes [agent|room|off] · /who · /role <agent> <text> · " <>
+         "/changes [on|off] · /who · /role <agent> <text> · " <>
          "/model <agent> <id> · /rename <agent> <new> · /ask <room>/<agent> <q> · /delegate <room>/<agent> <task> · " <>
          "/lazygit · /quit"
      ), []}
@@ -259,15 +250,10 @@ defmodule Roundtable.TUI.State do
     {positional, flags} = split_flags(args)
 
     case String.split(positional, " ", trim: true) do
-      [name, provider | rest] when provider in @providers ->
-        directory = flags["dir"] || Enum.join(rest, " ")
-
+      [name, provider | _ignored] when provider in @providers ->
+        # No directory: a participant works in its room's, always.
         attrs =
-          %{
-            "name" => name,
-            "provider" => provider,
-            "directory" => if(directory == "", do: nil, else: directory)
-          }
+          %{"name" => name, "provider" => provider}
           |> put_given("role", flags["role"])
           |> put_given("model", flags["model"])
           |> put_given("cost_tier", flags["tier"])
@@ -283,7 +269,7 @@ defmodule Roundtable.TUI.State do
       _ ->
         {put_status(
            state,
-           "Usage: /agent <name> <#{Enum.join(@providers, "|")}> [dir] " <>
+           "Usage: /agent <name> <#{Enum.join(@providers, "|")}> " <>
              "[--model m] [--role text] [--tier economy|standard|premium]"
          ), []}
     end
@@ -381,17 +367,7 @@ defmodule Roundtable.TUI.State do
   end
 
   defp dispatch(state, "changes", "off"), do: {%{state | changes_visible: false}, []}
-  defp dispatch(state, "changes", ""), do: {%{state | changes_visible: true}, []}
-
-  defp dispatch(state, "changes", "room"),
-    do: {%{state | changes_visible: true, changes_target: nil}, []}
-
-  defp dispatch(state, "changes", name) do
-    case Enum.find(state.agents, &(&1.name == String.trim(name))) do
-      nil -> {put_status(state, "No agent called #{name}. Try /changes room."), []}
-      agent -> {%{state | changes_visible: true, changes_target: agent.name}, []}
-    end
-  end
+  defp dispatch(state, "changes", _), do: {%{state | changes_visible: true}, []}
 
   defp dispatch(state, name, _) when name in ~w(lazygit git), do: {state, [:git_ui]}
 

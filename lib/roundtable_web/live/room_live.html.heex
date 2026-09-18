@@ -472,21 +472,12 @@
           rows="2"
           maxlength="4000"
         />
-        <.input
-          :if={is_nil(@editing_agent)}
-          field={@agent_form[:directory]}
-          label="Working directory"
-          required
-        />
-        <div :if={@editing_agent} class="input-field">
+        <div class="input-field">
           <label>Working directory</label>
-          <p class="fixed-field">{@agent_form[:directory].value}</p>
+          <p class="fixed-field">{@room && @room.directory}</p>
         </div>
-        <p :if={is_nil(@editing_agent)} class="form-note">
-          Use a separate Git worktree for concurrent edits.
-        </p>
-        <p :if={@editing_agent} class="form-note">
-          The agent and its directory are what a live session is built on, so they stay as they are.
+        <p class="form-note">
+          Everyone in a room works on the same tree. For a separate worktree, make a separate room.
         </p>
         <.input
           field={@agent_form[:preset_id]}
@@ -498,7 +489,18 @@
           field={@agent_form[:model]}
           label="Model (optional)"
           placeholder="Use the provider’s default model"
+          list="agent-model-options"
+          autocomplete="off"
         />
+        <datalist id="agent-model-options">
+          <option :for={model <- @model_options} value={model}></option>
+        </datalist>
+        <p :if={@model_options != []} class="form-note">
+          {length(@model_options)} suggestions. Any name the CLI accepts works.
+        </p>
+        <p :if={@model_options == []} class="form-note">
+          This CLI does not list its models. Type any name it accepts.
+        </p>
         <.input
           field={@agent_form[:cost_tier]}
           label="Relative cost for custom model"

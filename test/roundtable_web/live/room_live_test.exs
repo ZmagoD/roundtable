@@ -8,7 +8,7 @@ defmodule RoundtableWeb.RoomLiveTest do
     view |> element(".welcome button") |> render_click()
 
     view
-    |> form("#room-form", room: %{name: "Checkout", directory: File.cwd!()})
+    |> form("#room-form", room: %{name: "Checkout"})
     |> render_submit()
 
     assert has_element?(view, "h1", "Checkout")
@@ -21,7 +21,6 @@ defmodule RoundtableWeb.RoomLiveTest do
         agent: %{
           name: name,
           provider: "codex",
-          directory: File.cwd!(),
           role: "Review changes",
           model: ""
         }
@@ -137,7 +136,7 @@ defmodule RoundtableWeb.RoomLiveTest do
       html =
         view
         |> form("#agent-form",
-          agent: %{name: "Not Valid", provider: "codex", directory: File.cwd!()}
+          agent: %{name: "Not Valid", provider: "codex"}
         )
         |> render_submit()
 
@@ -245,6 +244,39 @@ defmodule RoundtableWeb.RoomLiveTest do
       html = render(view)
       refute html =~ "Changes on"
       assert html =~ "Plain"
+    end
+
+    test "the model field offers what the CLI reports", %{view: view} do
+      html = view |> element("#add-agent-button") |> render_click()
+
+      assert html =~ ~s(id="agent-model-options")
+      assert html =~ ~s(list="agent-model-options")
+
+      # codex cannot list its models, so the field says so rather than lying.
+      assert html =~ "does not list its models"
+
+      html =
+        view
+        |> form("#agent-form", agent: %{name: "x", provider: "claude"})
+        |> render_change()
+
+      # Claude Code documents these aliases in its own --help.
+      for alias_name <- ~w(fable opus sonnet) do
+        assert html =~ ~s(value="#{alias_name}")
+      end
+
+      assert html =~ "suggestions. Any name the CLI accepts works."
+    end
+
+    test "the agent form shows the room's directory rather than asking for one", %{
+      view: view,
+      room: room
+    } do
+      html = view |> element("#add-agent-button") |> render_click()
+
+      refute html =~ ~s(name="agent[directory]")
+      assert html =~ room.directory
+      assert html =~ "make a separate room"
     end
 
     test "the theme can be switched, and follows the system by default", %{view: view} do

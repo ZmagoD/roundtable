@@ -170,35 +170,36 @@ defmodule Roundtable.ChatTest do
     assert prompt =~ ~r/@ada:.*status=running/
   end
 
-  test "the roster names a directory only when it differs from the room's", %{
-    room: room,
-    ada: ada
-  } do
-    {:ok, message} = Chat.post(room.id, "@ada start")
-    run = Repo.get_by!(Run, agent_id: ada.id, message_id: message.id)
+  test "models come from the CLI where it can say, and are never invented" do
+    alias Roundtable.Agents
 
-    # Everyone shares the room's directory, so repeating it says nothing.
-    {prompt, _} = Chat.prompt(ada, run)
-    refute prompt =~ "directory="
+    # Claude Code has no listing command; these are the aliases its --help names.
+    assert Agents.models("claude") == ["fable", "opus", "sonnet"]
 
-    worktree =
-      Path.join(System.tmp_dir!(), "roundtable-worktree-#{System.unique_integer([:positive])}")
+    # Codex has neither a listing nor documented aliases, so nothing is offered.
+    assert Agents.models("codex") == []
+    assert Agents.models("nonsense") == []
 
-    File.mkdir_p!(worktree)
-    on_exit(fn -> File.rm_rf!(worktree) end)
+    # OpenCode can list, so whatever it reports is what we offer.
+    opencode = Agents.models("opencode")
+    assert is_list(opencode)
+    assert Enum.all?(opencode, &is_binary/1)
+    refute Enum.any?(opencode, &(&1 == ""))
+  end
 
-    {:ok, _} =
+  test "a participant is put in its room's directory, whatever it was given", %{room: room} do
+    other = Path.join(System.tmp_dir!(), "somewhere-else-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(other)
+    on_exit(fn -> File.rm_rf!(other) end)
+
+    {:ok, agent} =
       Chat.create_agent(room.id, %{
         "name" => "grace",
         "provider" => "opencode",
-        "directory" => worktree
+        "directory" => other
       })
 
-    {prompt, _} = Chat.prompt(ada, run)
-    assert prompt =~ "@grace: provider=opencode"
-    assert prompt =~ "directory=#{worktree}"
-
-    refute prompt =~
-             "@ada: provider=codex, model=provider default, relative cost=unknown, status=running, directory="
+    assert agent.directory == room.directory
+    refute agent.directory == other
   end
 end

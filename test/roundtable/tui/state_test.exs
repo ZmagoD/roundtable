@@ -133,12 +133,11 @@ defmodule Roundtable.TUI.StateTest do
     assert state.status =~ "Usage: /new-room"
 
     {_, effects} = state() |> type("/agent bob codex") |> State.handle_key(:enter)
+    assert [{:create_agent, attrs}] = effects
+    assert attrs == %{"name" => "bob", "provider" => "codex"}
 
-    assert [{:create_agent, %{"name" => "bob", "provider" => "codex", "directory" => nil}}] =
-             effects
-
-    {_, effects} = state() |> type("/agent bob codex /srv/x") |> State.handle_key(:enter)
-    assert [{:create_agent, %{"directory" => "/srv/x"}}] = effects
+    # A participant works in its room's directory; there is nothing to pass.
+    refute Map.has_key?(attrs, "directory")
 
     {state, []} = state() |> type("/agent bob gpt") |> State.handle_key(:enter)
     assert state.status =~ "Unknown provider gpt"
@@ -217,14 +216,6 @@ defmodule Roundtable.TUI.StateTest do
     assert [{:create_agent, %{"role" => "review diffs for correctness"}}] = effects
   end
 
-  test "--dir wins over a positional directory, and both still work" do
-    {_, effects} = state() |> type("/agent a codex /positional") |> State.handle_key(:enter)
-    assert [{:create_agent, %{"directory" => "/positional"}}] = effects
-
-    {_, effects} = state() |> type("/agent a codex --dir /flagged") |> State.handle_key(:enter)
-    assert [{:create_agent, %{"directory" => "/flagged"}}] = effects
-  end
-
   test "/role sets a role on an existing agent" do
     {_, effects} =
       state() |> type("/role ada plan only, never write code") |> State.handle_key(:enter)
@@ -284,33 +275,17 @@ defmodule Roundtable.TUI.StateTest do
     assert effects == [:git_ui]
   end
 
-  test "/changes follows a room, an agent, or nothing" do
+  test "/changes shows or hides the pane" do
     {state, []} = state() |> type("/changes off") |> State.handle_key(:enter)
     refute state.changes_visible
 
-    {state, []} = state() |> type("/changes ada") |> State.handle_key(:enter)
+    {state, []} = state |> type("/changes") |> State.handle_key(:enter)
     assert state.changes_visible
-    assert state.changes_target == "ada"
-
-    {state, []} = state |> type("/changes room") |> State.handle_key(:enter)
-    assert state.changes_target == nil
-
-    {state, []} = state() |> type("/changes ghost") |> State.handle_key(:enter)
-    assert state.status =~ "No agent called ghost"
   end
 
-  test "the watched directory follows the target agent" do
-    agents = [
-      %Agent{id: 7, name: "ada", directory: "/worktrees/ada"},
-      %Agent{id: 8, name: "tester", directory: nil}
-    ]
-
-    state = state(agents: agents)
-    assert State.watched_directory(state) == "/tmp"
-    assert State.watched_directory(%{state | changes_target: "ada"}) == "/worktrees/ada"
-    # An agent without its own directory falls back to the room's.
-    assert State.watched_directory(%{state | changes_target: "tester"}) == "/tmp"
-    assert State.watched_directory(%{state | room: nil}) == nil
+  test "the watched directory is the room's" do
+    assert State.watched_directory(state()) == "/tmp"
+    assert State.watched_directory(%{state() | room: nil}) == nil
   end
 
   test "ctrl-c quits" do

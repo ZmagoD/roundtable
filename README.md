@@ -127,8 +127,9 @@ where it got to. The service node is `roundtable@<hostname>`; override it with
 `ROUNDTABLE_NODE`, and the cookie with `ROUNDTABLE_COOKIE`.
 
 Agents do not run in the browser or in the client: the service starts each
-provider CLI as a process on your machine, in that participant's working
-directory. So point a room at the project you want worked on — from the
+provider CLI as a process on your machine, in the room's working directory.
+Every participant in a room works on the same tree — a room is a project, and
+separate trees are separate rooms. So point a room at the project you want worked on — from the
 directory itself, `/new-room My App .` is enough — and the agent has the access
 your user has there, subject to the provider's own permissions.
 
@@ -140,7 +141,7 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/help`, or `?` on an empty line | the full help screen |
 | `/rooms`, `/room <name>` | list rooms, switch to one |
 | `/new-room <name> <dir>` | create a room; `.` is the directory you started the client in |
-| `/agent <name> <provider> [dir]` | add a participant; `--model`, `--role`, `--tier`, `--dir` |
+| `/agent <name> <provider>` | add a participant; `--model`, `--role`, `--tier` |
 | `/role <agent> <text>` | set what a participant is for |
 | `/model <agent> <id\|default>` | pin a model, or hand the choice back |
 | `/rename <agent> <new name>` | rename a participant, before its first turn |
@@ -148,7 +149,7 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/stop <agent>`, `/reset <agent>` | stop a participant's queue, clear its session |
 | `/retry [run]` | retry the newest failed run, or one by id |
 | `/approve accept\|decline [n]` | answer a pending tool approval |
-| `/changes [agent\|room\|off]` | watch a different directory, or hide the pane |
+| `/changes [on\|off]` | show or hide the changes pane |
 | `/ask <room>/<agent> <question>` | ask another room; the answer comes back here |
 | `/delegate <room>/<agent> <task>` | hand work to another room; it reports back |
 | `/lazygit` | hand the terminal to lazygit |
@@ -181,9 +182,8 @@ see files appear and line counts move while a turn is still running:
  3 files, +130 -7
 ```
 
-`^T` hides and shows it. When an agent has its own working directory — a
-separate worktree, say — `/changes <agent>` follows that one instead of the
-room's.
+`^T` hides and shows it. It watches the room's directory, which is where every
+participant in the room works.
 
 `^G` hands the terminal to **lazygit** in whichever directory the pane is
 watching, and brings the client back when you quit it. Set `ROUNDTABLE_GIT_UI`
@@ -196,6 +196,19 @@ afterwards.
 Without the service running, `mix tui --local` starts a standalone client that
 owns the database itself. Use it only when the background service is stopped —
 two coordinators on one database fight over the same delivery queue.
+
+### Choosing a model
+
+The model field suggests what it can. OpenCode is asked directly — `opencode
+models` lists what that installation can reach — so the suggestions are
+whatever your setup actually has. Claude Code has no such command, so the
+aliases its own `--help` documents are offered (`fable`, `opus`, `sonnet`); it
+takes full names too. Codex has neither, so nothing is suggested rather than a
+list invented here.
+
+They are suggestions, not a menu: the field stays free text, so a model that
+appears tomorrow needs no release. Model presets in the sidebar save the ones
+you use with a cost tier attached.
 
 ### Rooms as teams
 
@@ -247,9 +260,9 @@ importantly — a role, because every agent is told about the others and uses
 that to decide who to hand work to:
 
 ```
-/agent architect claude --model claude-opus-5 --tier premium --role "Plan and assign. Never write code yourself."
+/agent architect claude --model opus --tier premium --role "Plan and assign. Never write code yourself."
 /agent builder codex --tier economy --role "Implement exactly what architect specifies."
-/agent reviewer claude --model claude-sonnet-5 --tier standard --role "Review diffs for correctness and tests."
+/agent reviewer claude --model sonnet --tier standard --role "Review diffs for correctness and tests."
 ```
 
 `^P` shows who is in the room, what they run on, and what each is for:

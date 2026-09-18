@@ -15,7 +15,7 @@ defmodule RoundtableWeb.CoreComponents do
   attr :options, :list, default: []
 
   attr :rest, :global,
-    include: ~w(autofocus required maxlength pattern placeholder rows disabled autocomplete)
+    include: ~w(autofocus required maxlength pattern placeholder rows disabled autocomplete list)
 
   def input(assigns) do
     assigns = assign(assigns, :input_id, assigns.id || assigns.field.id)

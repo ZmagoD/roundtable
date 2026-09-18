@@ -26,6 +26,7 @@ defmodule RoundtableWeb.RoomLive do
        runs: [],
        approvals: [],
        providers: Roundtable.Agents.providers(),
+       model_options: [],
        panel: nil,
        form_error: nil,
        message_form: to_form(%{"body" => "", "to" => "room"}, as: :message),
@@ -80,6 +81,7 @@ defmodule RoundtableWeb.RoomLive do
      assign(socket,
        panel: name,
        form_error: nil,
+       model_options: Roundtable.Agents.models(agent_form[:provider].value),
        room_form: room_form,
        agent_form: agent_form,
        preset_form:
@@ -110,6 +112,7 @@ defmodule RoundtableWeb.RoomLive do
         {:noreply,
          assign(socket,
            panel: "agent",
+           model_options: Roundtable.Agents.models(agent.provider),
            editing_agent: agent.id,
            editing_renamable: Chat.renamable?(agent),
            form_error: nil,
@@ -220,7 +223,11 @@ defmodule RoundtableWeb.RoomLive do
         do: Map.put(attrs, "preset_id", ""),
         else: attrs
 
-    {:noreply, assign(socket, agent_form: to_form(attrs, as: :agent))}
+    {:noreply,
+     assign(socket,
+       agent_form: to_form(attrs, as: :agent),
+       model_options: Roundtable.Agents.models(attrs["provider"])
+     )}
   end
 
   def handle_event("save-preset", %{"preset" => attrs}, socket) do

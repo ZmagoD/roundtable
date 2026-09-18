@@ -87,12 +87,27 @@ defmodule Roundtable.Chat do
     %Room{} |> Room.changeset(attrs) |> valid_directory() |> Repo.insert() |> notify_rooms()
   end
 
+  @doc """
+  Adds a participant to a room, working in that room's directory.
+
+  The directory is the room's, always. A room is a project: everyone in it
+  works on the same tree, and separate trees are separate rooms. Anything the
+  caller passes for `directory` is ignored rather than honoured, because a
+  participant quietly working somewhere else is the kind of thing you only
+  discover from a diff you did not expect.
+  """
   def create_agent(room_id, attrs) do
+    room = room!(room_id)
+
     %Agent{room_id: room_id}
-    |> Agent.changeset(attrs)
+    |> Agent.changeset(Map.put(normalise(attrs), "directory", room.directory))
     |> valid_directory()
     |> Repo.insert()
     |> tap(fn result -> if match?({:ok, _}, result), do: broadcast(room_id) end)
+  end
+
+  defp normalise(attrs) do
+    Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
   end
 
   @doc """
@@ -207,8 +222,6 @@ defmodule Roundtable.Chat do
   # What each agent is told about the others: enough to pick the right one, and
   # nothing about what they are doing.
   defp roster(room_id) do
-    room_directory = room!(room_id).directory
-
     Enum.map_join(agents(room_id), "\n", fn member ->
       active = active_run(member)
       model = (active && active.model) || member.model || "provider default"
@@ -216,7 +229,7 @@ defmodule Roundtable.Chat do
       status = (active && active.status) || "idle"
 
       "@#{member.name}: provider=#{member.provider}, model=#{model}, relative cost=#{tier}, " <>
-        "status=#{status}#{elsewhere(member, room_directory)}, role=#{member.role || "general"}"
+        "status=#{status}, role=#{member.role || "general"}"
     end)
   end
 
@@ -230,14 +243,6 @@ defmodule Roundtable.Chat do
         limit: 1
     )
   end
-
-  # A directory is only worth naming when it differs from the room's; otherwise
-  # it repeats the path this agent was already told is its own.
-  defp elsewhere(%{directory: directory}, room_directory)
-       when is_binary(directory) and directory != room_directory,
-       do: ", directory=#{directory}"
-
-  defp elsewhere(_, _), do: ""
 
   # Other rooms are teams, not teammates: an agent is told who it can reach and
   # nothing about what they are working on.
@@ -563,7 +568,6 @@ defmodule Roundtable.Chat do
     Avoid unnecessary mentions, acknowledgements, or reply loops. Delegation stops after four hops.
     A participant whose status is running, approval or queued already has work; mentioning it queues
     more behind that. Prefer an idle participant, or say why the busy one has to be the one.
-    A participant with its own directory is working in a separate checkout from yours.
     You can ask the human for clarification. Do not spawn additional agents outside this room.
 
     Unread room messages (JSON):
