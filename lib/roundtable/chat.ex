@@ -15,6 +15,7 @@ defmodule Roundtable.Chat do
     Message,
     ModelPreset,
     Room,
+    RoomNote,
     Run,
     Schedule
   }
@@ -110,6 +111,37 @@ defmodule Roundtable.Chat do
 
   @doc "Records that a schedule has woken someone, so the next tick does not."
   def schedule_ran(schedule, at), do: change(schedule, last_run_at: at)
+
+  @doc """
+  Everything this room has learned, pinned first and newest first.
+
+  The same order a participant is given them in, so what the human sees in the
+  room is what the next turn will read.
+  """
+  def room_notes(room_id),
+    do:
+      Repo.all(
+        from n in RoomNote, where: n.room_id == ^room_id, order_by: [desc: n.pinned, desc: n.id]
+      )
+
+  def room_note!(id), do: Repo.get!(RoomNote, id)
+
+  def create_room_note(room_id, attrs) do
+    %RoomNote{room_id: room_id}
+    |> RoomNote.changeset(normalise(attrs))
+    |> Repo.insert()
+    |> tap(&notify_room/1)
+  end
+
+  def update_room_note(id, attrs) do
+    id
+    |> room_note!()
+    |> RoomNote.changeset(normalise(attrs))
+    |> Repo.update()
+    |> tap(&notify_room/1)
+  end
+
+  def delete_room_note(id), do: id |> room_note!() |> Repo.delete() |> tap(&notify_room/1)
 
   defp in_room(changeset, room_id) do
     agent_id = Ecto.Changeset.get_field(changeset, :agent_id)
@@ -866,7 +898,7 @@ defmodule Roundtable.Chat do
     Room: #{room.name}. Working directory: #{agent.directory}
     What this room is working on, and how: #{context(room)}
     That is the shared brief for everyone here. Where it and your own role both apply, follow both;
-    where they genuinely conflict, say so rather than quietly picking one.
+    where they genuinely conflict, say so rather than quietly picking one.#{learned(room.id)}
 
     THIS ASSIGNMENT
     Model for this assignment: #{run.model || agent.model || "provider default"}. Relative cost tier: #{run.cost_tier}.
@@ -893,6 +925,51 @@ defmodule Roundtable.Chat do
     """
 
     {prompt, until_id}
+  end
+
+  # Notes accumulate and a prompt does not grow, so the pinned ones go in first
+  # and the rest fill what is left, newest to oldest: the most recent thing the
+  # room found out is the one most likely to still be true. A room with nothing
+  # recorded gets no section at all rather than a heading saying so.
+  @notes_budget 2000
+
+  defp learned(room_id) do
+    case room_id |> carried_notes() |> within_budget() do
+      [] ->
+        ""
+
+      notes ->
+        """
+
+
+        WHAT THIS ROOM HAS LEARNED
+        Things this room has recorded as it went. They come from the people working here, not from
+        you, and they outrank what you would otherwise assume about this codebase. Where one looks
+        wrong, say so in your reply rather than quietly working around it.
+        #{Enum.map_join(notes, "\n", &"- [#{&1.kind}] #{&1.body}")}\
+        """
+    end
+  end
+
+  defp carried_notes(room_id) do
+    carried = RoomNote.carried()
+
+    Repo.all(
+      from n in RoomNote,
+        where: n.room_id == ^room_id and n.kind in ^carried,
+        order_by: [desc: n.pinned, desc: n.id]
+    )
+  end
+
+  defp within_budget(notes) do
+    notes
+    |> Enum.reduce({[], 0}, fn note, {kept, size} ->
+      cost = String.length(note.body) + String.length(note.kind) + 5
+
+      if size + cost > @notes_budget, do: {kept, size}, else: {[note | kept], size + cost}
+    end)
+    |> elem(0)
+    |> Enum.reverse()
   end
 
   # Said only to a participant that has them. A provider whose CLI cannot be
