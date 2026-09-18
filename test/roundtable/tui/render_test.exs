@@ -94,7 +94,7 @@ defmodule Roundtable.TUI.RenderTest do
     body = "the rounding is fine but the test does not cover the boundary case"
     lines = state(messages: [message(1, "ada", body, "agent")], size: {30, 90}) |> screen()
 
-    text = lines |> Enum.map(&String.trim/1) |> Enum.join("\n")
+    text = Enum.map_join(lines, "\n", &String.trim/1)
     refute text =~ ~r/\bbounda\n/
     assert text =~ "boundary"
   end
