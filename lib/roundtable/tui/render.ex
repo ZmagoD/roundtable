@@ -27,7 +27,13 @@ defmodule Roundtable.TUI.Render do
     left = sidebar(state, body)
     # The changes pane takes from the transcript, never from the frame.
     changes = changes_lines(state, width, div(body, 2))
-    right = transcript(state, body - length(changes), width) ++ changes
+
+    upper =
+      if state.roster_visible,
+        do: roster(state, body - length(changes), width),
+        else: transcript(state, body - length(changes), width)
+
+    right = upper ++ changes
 
     [
       "\e[H\e[2J",
@@ -119,6 +125,40 @@ defmodule Roundtable.TUI.Render do
   end
 
   @doc false
+  def roster(state, height, width) do
+    header = heading("participants · #{length(state.agents)}", width)
+
+    blocks =
+      Enum.flat_map(state.agents, fn agent ->
+        status = State.agent_status(agent, state.runs)
+        {dot, colour} = agent_dot(status)
+        model = agent.model || "provider default"
+
+        headline =
+          " #{dot} @#{agent.name}  #{agent.provider} · #{model} · #{agent.cost_tier}"
+
+        role =
+          case agent.role do
+            nil -> ["   no role set — /role #{agent.name} <what they should do>"]
+            "" -> ["   no role set — /role #{agent.name} <what they should do>"]
+            text -> text |> wrap(width - 4) |> Enum.map(&("   " <> &1))
+          end
+
+        [[colour, pad(headline, width), @reset]] ++
+          Enum.map(role, &[@dim, pad(&1, width), @reset]) ++
+          [pad("", width)]
+      end)
+
+    lines =
+      case blocks do
+        [] -> [[@dim, pad(" No participants yet — /agent <name> <provider>", width), @reset]]
+        list -> list
+      end
+
+    fit([header | lines], height, pad("", width), :top)
+  end
+
+  @doc false
   def changes_lines(state, width, max_height) do
     directory = State.watched_directory(state)
 
@@ -163,7 +203,8 @@ defmodule Roundtable.TUI.Render do
   defp plural(_), do: "files"
 
   defp heading(text, width) do
-    label = cut(" " <> text <> " ", width)
+    # One column is spent on the leading rule, so the label cannot have it all.
+    label = cut(" " <> text <> " ", max(width - 1, 0))
     [@dim, "─", label, String.duplicate("─", max(width - 1 - width(label), 0)), @reset]
   end
 
@@ -294,7 +335,7 @@ defmodule Roundtable.TUI.Render do
   defp status_line(state, cols) do
     left =
       state.status ||
-        "/help · Tab recipient · ^T changes · ^G lazygit · ^C quit"
+        "/help · ^P who · ^T changes · ^G lazygit · ^C quit"
 
     right = if state.connected, do: state.target, else: "disconnected"
 

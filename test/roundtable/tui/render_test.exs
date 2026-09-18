@@ -205,6 +205,60 @@ defmodule Roundtable.TUI.RenderTest do
     assert length(lines) == 24
   end
 
+  test "the roster shows every participant and keeps the frame intact" do
+    agents = [
+      %Agent{
+        id: 7,
+        name: "ada",
+        provider: "codex",
+        model: "gpt-5-codex",
+        cost_tier: "economy",
+        role: "implement only"
+      },
+      %Agent{
+        id: 8,
+        name: "linus",
+        provider: "claude",
+        model: nil,
+        cost_tier: "premium",
+        role: nil
+      }
+    ]
+
+    state = state(agents: agents, roster_visible: true)
+
+    for size <- [{24, 80}, {40, 120}, {8, 40}] do
+      {rows, cols} = size
+      lines = screen(%{state | size: size})
+      assert length(lines) == rows
+      for line <- lines, do: assert(String.length(line) == cols)
+    end
+
+    screen = state |> screen() |> Enum.join("\n")
+    assert screen =~ "participants · 2"
+    assert screen =~ "@ada"
+    assert screen =~ "gpt-5-codex"
+    assert screen =~ "economy"
+    assert screen =~ "implement only"
+    assert screen =~ "@linus"
+    assert screen =~ "provider default"
+    assert screen =~ "no role set"
+  end
+
+  test "the roster replaces the transcript while it is open" do
+    state = state(messages: [message(1, "you", "a message in the transcript")])
+
+    assert screen(state) |> Enum.join("\n") =~ "a message in the transcript"
+
+    refute screen(%{state | roster_visible: true}) |> Enum.join("\n") =~
+             "a message in the transcript"
+  end
+
+  test "an empty roster says how to add someone" do
+    screen = state(agents: [], roster_visible: true) |> screen() |> Enum.join("\n")
+    assert screen =~ "No participants yet"
+  end
+
   test "counts transcript lines for scroll clamping" do
     assert Render.total_lines(state(messages: [])) == 0
     assert Render.total_lines(state()) == 1

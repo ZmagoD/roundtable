@@ -25,6 +25,7 @@ defmodule Roundtable.TUI.State do
             changes: nil,
             changes_visible: true,
             changes_target: nil,
+            roster_visible: false,
             handoff: nil,
             quit: false
 
@@ -89,6 +90,9 @@ defmodule Roundtable.TUI.State do
 
   def handle_key(state, :ctrl_g), do: {clear_status(state), [:git_ui]}
 
+  def handle_key(state, :ctrl_p),
+    do: {%{clear_status(state) | roster_visible: not state.roster_visible}, []}
+
   def handle_key(state, :enter), do: submit(clear_status(state))
 
   def handle_key(state, {:char, char}) do
@@ -132,6 +136,10 @@ defmodule Roundtable.TUI.State do
   def handle_key(state, :down), do: {scroll(state, -1), []}
   def handle_key(state, :page_up), do: {scroll(state, body_height(state)), []}
   def handle_key(state, :page_down), do: {scroll(state, -body_height(state)), []}
+
+  def handle_key(%{roster_visible: true} = state, :escape),
+    do: {%{state | roster_visible: false}, []}
+
   def handle_key(state, :escape), do: {%{state | input: "", cursor: 0} |> retype(), []}
   def handle_key(state, :tab), do: {cycle_recipient(state), []}
   def handle_key(state, _), do: {state, []}
@@ -200,7 +208,8 @@ defmodule Roundtable.TUI.State do
        state,
        "/room <name> · /new-room <name> <dir> · /agent <name> <provider> [dir] · " <>
          "/stop <agent> · /reset <agent> · /retry [run] · /approve accept|decline [n] · " <>
-         "/changes [agent|room|off] · /lazygit · /quit"
+         "/changes [agent|room|off] · /who · /role <agent> <text> · " <>
+         "/model <agent> <id> · /lazygit · /quit"
      ), []}
   end
 
@@ -231,15 +240,21 @@ defmodule Roundtable.TUI.State do
   end
 
   defp dispatch(state, "agent", args) do
-    case String.split(args, " ", trim: true) do
-      [name, provider | rest] when provider in @providers ->
-        directory = Enum.join(rest, " ")
+    {positional, flags} = split_flags(args)
 
-        attrs = %{
-          "name" => name,
-          "provider" => provider,
-          "directory" => if(directory == "", do: nil, else: directory)
-        }
+    case String.split(positional, " ", trim: true) do
+      [name, provider | rest] when provider in @providers ->
+        directory = flags["dir"] || Enum.join(rest, " ")
+
+        attrs =
+          %{
+            "name" => name,
+            "provider" => provider,
+            "directory" => if(directory == "", do: nil, else: directory)
+          }
+          |> put_given("role", flags["role"])
+          |> put_given("model", flags["model"])
+          |> put_given("cost_tier", flags["tier"])
 
         {state, [{:create_agent, attrs}]}
 
@@ -250,10 +265,42 @@ defmodule Roundtable.TUI.State do
          ), []}
 
       _ ->
-        {put_status(state, "Usage: /agent <name> <#{Enum.join(@providers, "|")}> [directory]"),
-         []}
+        {put_status(
+           state,
+           "Usage: /agent <name> <#{Enum.join(@providers, "|")}> [dir] " <>
+             "[--model m] [--role text] [--tier economy|standard|premium]"
+         ), []}
     end
   end
+
+  defp dispatch(state, "role", args) do
+    case String.split(String.trim(args), " ", parts: 2) do
+      [name, text] when text != "" ->
+        with_agent(
+          state,
+          name,
+          &{state, [{:update_agent, &1.id, %{"role" => unquote_value(text)}}]}
+        )
+
+      _ ->
+        {put_status(state, "Usage: /role <agent> <what they should do>"), []}
+    end
+  end
+
+  defp dispatch(state, "model", args) do
+    case String.split(String.trim(args), " ", parts: 2) do
+      [name, model] when model != "" ->
+        # "default" hands the choice back to the provider.
+        value = if model in ["default", "-"], do: nil, else: unquote_value(model)
+        with_agent(state, name, &{state, [{:update_agent, &1.id, %{"model" => value}}]})
+
+      _ ->
+        {put_status(state, "Usage: /model <agent> <model id|default>"), []}
+    end
+  end
+
+  defp dispatch(state, name, _) when name in ~w(who roster participants),
+    do: {%{state | roster_visible: not state.roster_visible}, []}
 
   defp dispatch(state, action, name) when action in ~w(stop reset) do
     case Enum.find(state.agents, &(&1.name == String.trim(name))) do
@@ -309,6 +356,38 @@ defmodule Roundtable.TUI.State do
 
   defp dispatch(state, name, _),
     do: {put_status(state, "Unknown command /#{name}. Try /help."), []}
+
+  defp with_agent(state, name, fun) do
+    case Enum.find(state.agents, &(&1.name == String.trim(name))) do
+      nil -> {put_status(state, "No agent called #{String.trim(name)}."), []}
+      agent -> fun.(agent)
+    end
+  end
+
+  defp put_given(attrs, _key, nil), do: attrs
+  defp put_given(attrs, _key, ""), do: attrs
+  defp put_given(attrs, key, value), do: Map.put(attrs, key, value)
+
+  # "a b --model x --role do things" -> {"a b", %{"model" => "x", "role" => "do things"}}
+  defp split_flags(args) do
+    [positional | flags] = String.split(args, ~r/\s--/)
+
+    {String.trim(positional),
+     Map.new(flags, fn flag ->
+       case String.split(flag, " ", parts: 2) do
+         [key] -> {key, ""}
+         [key, value] -> {key, unquote_value(String.trim(value))}
+       end
+     end)}
+  end
+
+  defp unquote_value(<<quote_char, _::binary>> = value) when quote_char in [?", ?'] do
+    if String.last(value) == <<quote_char>> and String.length(value) > 1,
+      do: String.slice(value, 1..-2//1),
+      else: value
+  end
+
+  defp unquote_value(value), do: value
 
   defp find_room(state, name) do
     name = String.trim(name)

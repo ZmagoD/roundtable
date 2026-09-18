@@ -150,6 +150,73 @@ defmodule Roundtable.TUI.StateTest do
     assert state.status =~ "Unknown command /frobnicate"
   end
 
+  test "/agent takes a model, a role and a tier as flags" do
+    {_, effects} =
+      state()
+      |> type(~s(/agent builder codex --model gpt-5-codex --role implement only --tier economy))
+      |> State.handle_key(:enter)
+
+    assert [{:create_agent, attrs}] = effects
+    assert attrs["name"] == "builder"
+    assert attrs["model"] == "gpt-5-codex"
+    assert attrs["role"] == "implement only"
+    assert attrs["cost_tier"] == "economy"
+  end
+
+  test "a quoted role keeps its spaces and loses its quotes" do
+    {_, effects} =
+      state()
+      |> type(~s(/agent critic claude --role "review diffs for correctness"))
+      |> State.handle_key(:enter)
+
+    assert [{:create_agent, %{"role" => "review diffs for correctness"}}] = effects
+  end
+
+  test "--dir wins over a positional directory, and both still work" do
+    {_, effects} = state() |> type("/agent a codex /positional") |> State.handle_key(:enter)
+    assert [{:create_agent, %{"directory" => "/positional"}}] = effects
+
+    {_, effects} = state() |> type("/agent a codex --dir /flagged") |> State.handle_key(:enter)
+    assert [{:create_agent, %{"directory" => "/flagged"}}] = effects
+  end
+
+  test "/role sets a role on an existing agent" do
+    {_, effects} =
+      state() |> type("/role ada plan only, never write code") |> State.handle_key(:enter)
+
+    assert [{:update_agent, 7, %{"role" => "plan only, never write code"}}] = effects
+
+    {state, []} = state() |> type("/role ghost anything") |> State.handle_key(:enter)
+    assert state.status =~ "No agent called ghost"
+
+    {state, []} = state() |> type("/role ada") |> State.handle_key(:enter)
+    assert state.status =~ "Usage: /role"
+  end
+
+  test "/model pins a model, and default hands it back to the provider" do
+    {_, effects} = state() |> type("/model ada gpt-5-codex") |> State.handle_key(:enter)
+    assert [{:update_agent, 7, %{"model" => "gpt-5-codex"}}] = effects
+
+    {_, effects} = state() |> type("/model ada default") |> State.handle_key(:enter)
+    assert [{:update_agent, 7, %{"model" => nil}}] = effects
+  end
+
+  test "ctrl-p and /who toggle the roster, and Esc closes it" do
+    {state, []} = State.handle_key(state(), :ctrl_p)
+    assert state.roster_visible
+
+    {state, []} = State.handle_key(state, :ctrl_p)
+    refute state.roster_visible
+
+    {state, []} = state |> type("/who") |> State.handle_key(:enter)
+    assert state.roster_visible
+
+    # Esc closes the roster before it clears the message line.
+    {state, []} = State.handle_key(%{state | input: "kept"}, :escape)
+    refute state.roster_visible
+    assert state.input == "kept"
+  end
+
   test "ctrl-t toggles the changes pane" do
     {state, []} = State.handle_key(state(), :ctrl_t)
     refute state.changes_visible

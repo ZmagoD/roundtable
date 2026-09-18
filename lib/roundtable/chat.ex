@@ -83,6 +83,31 @@ defmodule Roundtable.Chat do
     |> tap(fn result -> if match?({:ok, _}, result), do: broadcast(room_id) end)
   end
 
+  @doc """
+  Changes a participant's briefing without disturbing its session.
+
+  Only the fields that describe *how* an agent should work are editable. Its
+  name is how the room addresses it, its provider decides the adapter, and its
+  directory was validated when it was created; changing those underneath a
+  live session would invalidate the transcript that session is resuming from.
+  """
+  def update_agent(agent_id, attrs) do
+    Repo.get!(Agent, agent_id)
+    |> Ecto.Changeset.cast(attrs, [:role, :model, :cost_tier])
+    |> Ecto.Changeset.validate_length(:role, max: 4000)
+    |> Ecto.Changeset.validate_inclusion(:cost_tier, [
+      "economy",
+      "standard",
+      "premium",
+      "unknown"
+    ])
+    |> Repo.update()
+    |> tap(fn
+      {:ok, agent} -> broadcast(agent.room_id)
+      _ -> :ok
+    end)
+  end
+
   defp valid_directory(changeset) do
     directory = Ecto.Changeset.get_field(changeset, :directory)
 

@@ -92,7 +92,10 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/help` | list the commands |
 | `/rooms`, `/room <name>` | list rooms, switch to one |
 | `/new-room <name> <dir>` | create a room on an existing absolute directory |
-| `/agent <name> <provider> [dir]` | add a participant |
+| `/agent <name> <provider> [dir]` | add a participant; `--model`, `--role`, `--tier`, `--dir` |
+| `/role <agent> <text>` | set what a participant is for |
+| `/model <agent> <id\|default>` | pin a model, or hand the choice back |
+| `/who` | show every participant, their model, tier and role |
 | `/stop <agent>`, `/reset <agent>` | stop a participant's queue, clear its session |
 | `/retry [run]` | retry the newest failed run, or one by id |
 | `/approve accept\|decline [n]` | answer a pending tool approval |
@@ -104,7 +107,10 @@ cycles the recipient. Lines beginning with `/` are commands:
 `↑`/`↓` and `PgUp`/`PgDn` scroll the transcript, `^L` redraws. Approvals and
 failed runs appear inline with the command that answers them.
 
-The message line takes the usual editing keys: `Esc` clears it, `^U` deletes to
+`^P` opens the roster: every participant with their provider, model, cost tier
+and role, which is also what each agent is told about the others.
+
+The message line takes the usual editing keys: `Esc` closes the roster if it is open and otherwise clears it, `^U` deletes to
 the start, `^W` deletes the word behind the cursor, and `Home`/`End` jump to
 either end.
 

@@ -211,6 +211,13 @@ defmodule Roundtable.TUI do
     end
   end
 
+  defp perform({:update_agent, agent_id, attrs}, context) do
+    case Client.update_agent(context.client, agent_id, attrs) do
+      {:ok, agent} -> refresh(context) |> status("@#{agent.name} updated.")
+      {:error, reason} -> status(context, describe(reason))
+    end
+  end
+
   defp perform({:approve, run_id, request_id, decision}, context) do
     case Client.approve(context.client, run_id, request_id, decision) do
       :ok -> refresh(context) |> status("Approval #{decision}ed.")

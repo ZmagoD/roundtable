@@ -66,6 +66,9 @@ defmodule Roundtable.Client do
   def create_agent(c, room_id, attrs),
     do: call(c, Chat, :create_agent, [room_id, attrs], @write_timeout)
 
+  def update_agent(c, agent_id, attrs),
+    do: call(c, Chat, :update_agent, [agent_id, attrs], @write_timeout)
+
   def post(c, room_id, body, opts \\ []),
     do: call(c, Coordinator, :post, [room_id, body, opts], @write_timeout)
 
