@@ -19,13 +19,18 @@ defmodule Roundtable.Chat.Agent do
   @doc """
   The fields that can change after a participant exists.
 
-  Deliberately not provider or directory: see `Roundtable.Chat.update_agent/2`.
+  Deliberately not provider or directory, and the name only while
+  `renamable?` — see `Roundtable.Chat.update_agent/2`.
   """
-  def rename_changeset(agent, attrs) do
+  def rename_changeset(agent, attrs, renamable? \\ true) do
     agent
-    |> cast(attrs, [:name, :role, :model, :cost_tier])
+    |> cast(
+      attrs,
+      if(renamable?, do: [:name, :role, :model, :cost_tier], else: ~w(role model cost_tier)a)
+    )
     |> update_change(:name, &String.downcase/1)
     |> validate_required([:name])
+    |> refuse_rename(renamable?, attrs)
     |> validate_format(:name, ~r/^[a-z][a-z0-9_-]{0,29}$/)
     |> validate_exclusion(:name, ["you", "system", "all"])
     |> validate_length(:role, max: 4000)
@@ -34,6 +39,19 @@ defmodule Roundtable.Chat.Agent do
       name: :agents_room_id_name_index,
       message: "is already used in this room"
     )
+  end
+
+  # Silently ignoring a name the caller sent would be worse than refusing it.
+  defp refuse_rename(changeset, true, _attrs), do: changeset
+
+  defp refuse_rename(changeset, false, attrs) do
+    asked = attrs["name"] || attrs[:name]
+
+    if asked && String.downcase(to_string(asked)) != changeset.data.name do
+      add_error(changeset, :name, "cannot change once a participant has taken a turn")
+    else
+      changeset
+    end
   end
 
   def changeset(agent, attrs) do

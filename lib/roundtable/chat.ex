@@ -103,19 +103,27 @@ defmodule Roundtable.Chat do
   invalidate the transcript it resumes from — deleting the participant and
   adding another is the honest way to do that.
 
-  A rename is allowed. Mentions are resolved when a message is posted, so past
-  turns keep the agent they were assigned to; only the old name in the
-  transcript stops resolving, which is what a rename means.
+  A rename is allowed only until the participant has taken its first turn.
+  After that the room has been addressing it by name in the transcript, and a
+  rename would leave a conversation full of mentions of someone who is not
+  there. Its role and model stay editable for as long as it exists — those are
+  instructions for the next turn, not a record of the last one.
   """
   def update_agent(agent_id, attrs) do
-    Repo.get!(Agent, agent_id)
-    |> Agent.rename_changeset(attrs)
+    agent = Repo.get!(Agent, agent_id)
+
+    agent
+    |> Agent.rename_changeset(attrs, renamable?(agent))
     |> Repo.update()
     |> tap(fn
       {:ok, agent} -> broadcast(agent.room_id)
       _ -> :ok
     end)
   end
+
+  @doc "Whether a participant can still be renamed: has it taken a turn yet?"
+  def renamable?(%Agent{id: id}),
+    do: not Repo.exists?(from r in Run, where: r.agent_id == ^id)
 
   defp valid_directory(changeset) do
     directory = Ecto.Changeset.get_field(changeset, :directory)

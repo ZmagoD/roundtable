@@ -20,6 +20,7 @@ defmodule RoundtableWeb.RoomLive do
        preset_form: to_form(%{"cost_tier" => "unknown"}, as: :preset),
        editing_preset: nil,
        editing_agent: nil,
+       editing_renamable: true,
        room_form: to_form(%{}, as: :room),
        agent_form: to_form(%{}, as: :agent),
        runs: [],
@@ -59,7 +60,7 @@ defmodule RoundtableWeb.RoomLive do
 
   @impl true
   def handle_event("panel", %{"name" => name}, socket) do
-    socket = assign(socket, editing_agent: nil)
+    socket = assign(socket, editing_agent: nil, editing_renamable: true)
     room_form = to_form(%{"directory" => socket.assigns.directory}, as: :room)
 
     agent_form =
@@ -84,7 +85,8 @@ defmodule RoundtableWeb.RoomLive do
            as: :preset
          ),
        editing_preset: nil,
-       editing_agent: nil
+       editing_agent: nil,
+       editing_renamable: true
      )}
   end
 
@@ -107,6 +109,7 @@ defmodule RoundtableWeb.RoomLive do
          assign(socket,
            panel: "agent",
            editing_agent: agent.id,
+           editing_renamable: Chat.renamable?(agent),
            form_error: nil,
            agent_form: to_form(attrs, as: :agent)
          )}

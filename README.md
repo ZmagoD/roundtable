@@ -73,9 +73,11 @@ The service survives closing the terminal; automatic start at login is not insta
 
 The room header shows the current branch and the working directory, and a panel
 lists what has changed in it — file by file, with line counts — updating while a
-turn runs. Click it for the patch itself. Each participant can be renamed,
-re-roled, or given a different model from its card; its provider and directory
-stay fixed, because a live session is built on them.
+turn runs. Click it for the patch itself. Each participant can be re-roled or given a different model from its card, and
+renamed until it takes its first turn — after that the room has been addressing
+it by name, and a rename would leave a conversation full of mentions of someone
+who is not there. Its provider and directory stay fixed, because a live session
+is built on them.
 
 The theme follows your system, with Auto/Light/Dark in the sidebar if you would
 rather choose. The palette is one set of colours: the dark values keep each hue
@@ -124,7 +126,7 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/agent <name> <provider> [dir]` | add a participant; `--model`, `--role`, `--tier`, `--dir` |
 | `/role <agent> <text>` | set what a participant is for |
 | `/model <agent> <id\|default>` | pin a model, or hand the choice back |
-| `/rename <agent> <new name>` | rename a participant |
+| `/rename <agent> <new name>` | rename a participant, before its first turn |
 | `/who` | show every participant, their model, tier and role |
 | `/stop <agent>`, `/reset <agent>` | stop a participant's queue, clear its session |
 | `/retry [run]` | retry the newest failed run, or one by id |

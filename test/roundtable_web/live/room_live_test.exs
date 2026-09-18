@@ -321,6 +321,28 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert Chat.agent!(agent.id).name == "ada"
     end
 
+    test "the name can no longer be edited once the agent has taken a turn", %{
+      conn: conn,
+      room: room,
+      agent: agent
+    } do
+      {:ok, _} = Chat.post(room.id, "@ada work")
+      {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+
+      html = view |> element(".agent-edit[phx-value-id='#{agent.id}']") |> render_click()
+
+      refute html =~ ~s(name="agent[name]")
+      assert html =~ "has taken a turn"
+
+      # Its role is still editable: that is an instruction for the next turn.
+      view
+      |> form("#agent-form", agent: %{role: "Review only.", model: "", cost_tier: "unknown"})
+      |> render_submit()
+
+      assert Chat.agent!(agent.id).role == "Review only."
+      assert Chat.agent!(agent.id).name == "ada"
+    end
+
     test "an agent without a role says so, and offers to set one", %{view: view} do
       assert render(view) =~ "No role set"
     end

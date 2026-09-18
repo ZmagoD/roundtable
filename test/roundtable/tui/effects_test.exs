@@ -142,6 +142,37 @@ defmodule Roundtable.TUI.EffectsTest do
     assert Chat.agent!(other.id).name == "grace"
   end
 
+  test "a participant cannot be renamed once it has taken a turn", %{
+    context: context,
+    agent: agent,
+    room: room
+  } do
+    assert Chat.renamable?(agent)
+
+    {:ok, _} = Chat.post(room.id, "@ada start")
+    refute Chat.renamable?(Chat.agent!(agent.id))
+
+    context = TUI.perform({:update_agent, agent.id, %{"name" => "ada-2"}}, context)
+    assert context.state.status =~ "cannot change once a participant has taken a turn"
+    assert Chat.agent!(agent.id).name == "ada"
+
+    # Its role and model are instructions for the next turn, not a record of
+    # the last one, so they stay editable.
+    context = TUI.perform({:update_agent, agent.id, %{"role" => "Review only."}}, context)
+    assert context.state.status =~ "updated"
+    assert Chat.agent!(agent.id).role == "Review only."
+  end
+
+  test "sending the same name back is not a rename", %{context: context, agent: agent, room: room} do
+    {:ok, _} = Chat.post(room.id, "@ada start")
+
+    context =
+      TUI.perform({:update_agent, agent.id, %{"name" => "ada", "role" => "Still here."}}, context)
+
+    assert context.state.status =~ "updated"
+    assert Chat.agent!(agent.id).role == "Still here."
+  end
+
   test "an invalid name is refused", %{context: context, agent: agent} do
     context = TUI.perform({:update_agent, agent.id, %{"name" => "Not Valid"}}, context)
 

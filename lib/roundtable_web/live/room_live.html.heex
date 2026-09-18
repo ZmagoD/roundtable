@@ -378,10 +378,16 @@
             "Save your models once. Choose the right one for each task."
 
           _ ->
-            if(@editing_agent,
-              do: "Rename it, change what it is for, or pin a model.",
-              else: "A name, a role, and a fresh session."
-            )
+            cond do
+              @editing_agent && @editing_renamable ->
+                "Rename it, change what it is for, or pin a model."
+
+              @editing_agent ->
+                "Change what it is for, or pin a model. It has taken a turn, so the room has been addressing it by name."
+
+              true ->
+                "A name, a role, and a fresh session."
+            end
         end}
       </p>
       <p :if={@form_error} class="form-error" role="alert">{@form_error}</p>
@@ -408,13 +414,18 @@
       >
         <div class="form-row">
           <.input
+            :if={@editing_renamable}
             field={@agent_form[:name]}
             label="Name"
             placeholder="e.g. ada"
             pattern="[a-zA-Z][a-zA-Z0-9_-]{0,29}"
             required
             autofocus
-          /><.input
+          />
+          <div :if={not @editing_renamable} class="input-field">
+            <label>Name</label>
+            <p class="fixed-field">@{@agent_form[:name].value}</p>
+          </div><.input
             :if={is_nil(@editing_agent)}
             field={@agent_form[:provider]}
             label="Agent"
