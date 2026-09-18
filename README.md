@@ -270,6 +270,47 @@ Mistral and Grok:
 So a new provider usually needs no code. An adapter is for a CLI with its own
 agent loop — its own tools, approvals and sessions — not for reaching a model.
 
+### A model on your own machine
+
+Ollama is a model server, not an agent: it has no tools, no file editing and
+no approvals, so there is nothing for an adapter to drive. It is reached the
+same way any other model is — through a CLI that already has an agent loop.
+
+OpenCode takes a custom provider, so point one at your Ollama host. In
+`~/.config/opencode/opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama",
+      "options": { "baseURL": "http://192.168.1.50:11434/v1" },
+      "models": {
+        "qwen2.5-coder:14b": { "name": "Qwen 2.5 Coder 14B" }
+      }
+    }
+  }
+}
+```
+
+The address is whichever machine runs it — `127.0.0.1` when it is this one —
+and the `/v1` suffix matters: that is Ollama's OpenAI-compatible endpoint.
+
+Nothing is needed here. Roundtable asks the CLI what it can reach, so the
+models appear in `/models opencode ollama` and in the browser's picker as soon
+as OpenCode knows about them:
+
+```
+/agent local opencode --model ollama/qwen2.5-coder:14b --tier economy
+```
+
+One caveat worth setting expectations on: a participant is only as useful as
+its model is at *tool use*. A small local model that writes good prose may
+still fail to call an editor reliably, and the turn ends having said a lot and
+changed nothing. Give it bounded work and check the changes pane.
+
 ### Rooms as teams
 
 Rooms are sealed from each other. An agent sees only its own room's roster and
