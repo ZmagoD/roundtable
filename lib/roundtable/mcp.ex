@@ -1,0 +1,475 @@
+defmodule Roundtable.MCP do
+  @moduledoc """
+  The rooms themselves, offered to a participant as tools.
+
+  Setting a team up is form-filling: a room, a directory, a brief, four
+  participants. The person doing it is usually already here, talking to an
+  agent, so these tools let them ask for it instead — the agent calls back into
+  the service over MCP and the room appears.
+
+  Everything goes through `Roundtable.Chat`, so a participant building a room is
+  held to exactly the rules the browser form is held to. Nothing here removes
+  anything: a room that should not have been made is one the human deletes,
+  rather than history an agent can lose on a misreading.
+
+  Who is calling is a signed token, minted for a participant when its turn
+  starts and handed to that CLI for that turn alone. It is what makes "this
+  room" mean something, and its short life is what stops a token left behind in
+  a log from being a standing key to the service.
+  """
+  alias Roundtable.{Agents, Chat, Coordinator}
+
+  @salt "roundtable mcp participant"
+
+  # A turn is capped at thirty minutes. A token that outlives its turn by much
+  # is only useful to something that should not have it.
+  @max_age 2 * 60 * 60
+
+  # Providers whose CLI takes an MCP server on the command line *and* has an
+  # approval channel back to the room. Without the second, a participant could
+  # rearrange the rooms with nowhere for the human to say no.
+  @providers ["claude", "codex"]
+
+  @doc """
+  Where the tool server answers, or `nil` when there is nothing to reach.
+
+  Only the node serving HTTP can answer, so a client started with `--local`
+  offers no tools rather than handing agents an address that answers nothing.
+  Set `config :roundtable, :mcp_url, false` to turn the tools off entirely.
+  """
+  def url do
+    case Application.get_env(:roundtable, :mcp_url, :endpoint) do
+      :endpoint -> if serving?(), do: RoundtableWeb.Endpoint.url() <> "/mcp"
+      url when is_binary(url) -> url
+      _ -> nil
+    end
+  end
+
+  @doc "Whether this participant's CLI is one the tools can be wired into."
+  def offered?(%{provider: provider} = agent),
+    do: provider in @providers and is_integer(Map.get(agent, :id)) and url() != nil
+
+  def offered?(_agent), do: false
+
+  @doc "A bearer token that says which participant is calling."
+  def token(%{id: id}), do: Phoenix.Token.sign(RoundtableWeb.Endpoint, @salt, id)
+
+  @doc "The participant a bearer token names, while it is still in a room."
+  def participant(token) when is_binary(token) do
+    with {:ok, id} <-
+           Phoenix.Token.verify(RoundtableWeb.Endpoint, @salt, token, max_age: @max_age) do
+      {:ok, Chat.agent!(id)}
+    end
+  rescue
+    Ecto.NoResultsError -> {:error, :gone}
+  end
+
+  def participant(_token), do: {:error, :invalid}
+
+  @doc "Every tool, in the shape an MCP client expects to read it."
+  def tools do
+    [
+      %{
+        name: "list_rooms",
+        description:
+          "Every room here: its name, working directory, shared brief, and who is in it.",
+        inputSchema: object(%{})
+      },
+      %{
+        name: "list_participants",
+        description: "The participants in one room, with what each is for and what it runs on.",
+        inputSchema: object(%{"room" => room_property()})
+      },
+      %{
+        name: "list_profiles",
+        description:
+          "The saved participant profiles. A profile is a template — adding one to a room " <>
+            "creates a participant there with its own session.",
+        inputSchema: object(%{})
+      },
+      %{
+        name: "list_providers",
+        description:
+          "The agent CLIs this machine can run, whether each is installed, and model names " <>
+            "worth offering for it.",
+        inputSchema: object(%{})
+      },
+      %{
+        name: "create_room",
+        description:
+          "Makes a room: a working tree, a brief, and the participants you then add to it. " <>
+            "The room starts empty; add_participant fills it.",
+        inputSchema:
+          object(
+            %{
+              "name" => string("What the room is called, as a person would say it."),
+              "directory" =>
+                string(
+                  "Absolute path to the working tree this room is about. Defaults to the " <>
+                    "directory of the room you are in."
+                ),
+              "brief" => brief_property()
+            },
+            ["name"]
+          )
+      },
+      %{
+        name: "update_room",
+        description: "Changes a room's name or its shared brief. Its directory cannot move.",
+        inputSchema:
+          object(%{
+            "room" => room_property(),
+            "name" => string("A new name for the room."),
+            "brief" => brief_property()
+          })
+      },
+      %{
+        name: "add_participant",
+        description:
+          "Adds a participant to a room, from a saved profile or from scratch. It works in " <>
+            "the room's directory and gets its own session.",
+        inputSchema:
+          object(%{
+            "room" => room_property(),
+            "profile" =>
+              string("A saved profile to add, by name or id. list_profiles shows the library."),
+            "name" =>
+              string(
+                "What to call it in the room: lowercase letters, digits, - and _. With a " <>
+                  "profile this overrides the profile's own name, which is how the same " <>
+                  "profile can be in a room twice."
+              ),
+            "provider" => string("Which CLI runs it: #{Enum.join(Agents.ids(), ", ")}."),
+            "model" => string("Model id for that provider. Leave it out for the CLI's default."),
+            "role" => role_property(),
+            "cost_tier" => cost_tier_property(),
+            "auto_approve" => auto_approve_property()
+          })
+      },
+      %{
+        name: "update_participant",
+        description:
+          "Changes what a participant is for and what it runs on. Its provider and directory " <>
+            "stay fixed, and it can only be renamed before its first turn.",
+        inputSchema:
+          object(
+            %{
+              "participant" => string("Who to change, by name or id."),
+              "room" => room_property(),
+              "name" => string("A new name, while it has not taken a turn yet."),
+              "model" => string("Model id for its provider."),
+              "role" => role_property(),
+              "cost_tier" => cost_tier_property(),
+              "auto_approve" => auto_approve_property()
+            },
+            ["participant"]
+          )
+      },
+      %{
+        name: "create_profile",
+        description:
+          "Saves a participant worth having again: provider, model, cost tier, role, " <>
+            "approvals. A template, not a participant — it joins no room by itself.",
+        inputSchema:
+          object(
+            %{
+              "name" => string("Profile name, and the default name it takes in a room."),
+              "provider" => string("Which CLI runs it: #{Enum.join(Agents.ids(), ", ")}."),
+              "model" => string("Model id for that provider."),
+              "role" => role_property(),
+              "cost_tier" => cost_tier_property(),
+              "auto_approve" => auto_approve_property()
+            },
+            ["name", "provider"]
+          )
+      },
+      %{
+        name: "update_profile",
+        description:
+          "Changes a saved profile. Participants already added from it are their own and stay " <>
+            "as they are.",
+        inputSchema:
+          object(
+            %{
+              "profile" => string("Which profile, by name or id."),
+              "name" => string("A new name for the profile."),
+              "provider" => string("Which CLI runs it: #{Enum.join(Agents.ids(), ", ")}."),
+              "model" => string("Model id for that provider."),
+              "role" => role_property(),
+              "cost_tier" => cost_tier_property(),
+              "auto_approve" => auto_approve_property()
+            },
+            ["profile"]
+          )
+      }
+    ]
+  end
+
+  @doc """
+  Runs one tool for the participant that asked for it.
+
+  `{:ok, text}` is what the agent reads back; `{:error, message}` is a sentence
+  it can act on — a tool failing is an answer, not a transport error.
+  """
+  def call(agent, name, args \\ %{})
+
+  def call(_agent, "list_rooms", _args),
+    do: {:ok, json(Enum.map(Chat.rooms(), &room_view/1))}
+
+  def call(agent, "list_participants", args) do
+    with {:ok, room} <- room(agent, args),
+         do: {:ok, json(Enum.map(Chat.agents(room.id), &participant_view/1))}
+  end
+
+  def call(_agent, "list_profiles", _args),
+    do: {:ok, json(Enum.map(Chat.agent_profiles(), &profile_view/1))}
+
+  def call(_agent, "list_providers", _args),
+    do: {:ok, json(Enum.map(Agents.providers(), &Map.put(&1, :models, Agents.models(&1.id))))}
+
+  def call(agent, "create_room", args) do
+    attrs = %{
+      "name" => args["name"],
+      "directory" => args["directory"] || Chat.room!(agent.room_id).directory,
+      "context" => args["brief"] || ""
+    }
+
+    case Chat.create_room(attrs) do
+      {:ok, room} ->
+        done(
+          agent,
+          "created room #{room.id}, #{room.name}, working in #{room.directory}. " <>
+            "It has no participants yet."
+        )
+
+      {:error, changeset} ->
+        {:error, invalid(changeset)}
+    end
+  end
+
+  def call(agent, "update_room", args) do
+    with {:ok, room} <- room(agent, args),
+         attrs = take(args, %{"name" => "name", "brief" => "context"}),
+         {:ok, updated} <- write(Chat.update_room(room.id, attrs)) do
+      done(agent, "updated room #{updated.id}, #{updated.name}: #{changed(attrs)}.")
+    end
+  end
+
+  def call(agent, "add_participant", args) do
+    with {:ok, room} <- room(agent, args),
+         {:ok, added} <- add(room, args) do
+      done(
+        agent,
+        "added #{added.name} to room #{room.id}, #{room.name}, running on " <>
+          "#{added.provider}#{model_suffix(added)}."
+      )
+    end
+  end
+
+  def call(agent, "update_participant", args) do
+    with {:ok, room} <- room(agent, args),
+         {:ok, target} <- participant_in(room, args["participant"]),
+         attrs = take(args, participant_fields()),
+         {:ok, updated} <- write(Chat.update_agent(target.id, attrs)) do
+      done(agent, "updated #{updated.name} in room #{room.id}: #{changed(attrs)}.")
+    end
+  end
+
+  def call(agent, "create_profile", args) do
+    with {:ok, profile} <- write(Chat.create_agent_profile(take(args, profile_fields()))) do
+      done(
+        agent,
+        "saved the profile #{profile.name}, running on #{profile.provider}" <>
+          "#{model_suffix(profile)}. Add it to a room with add_participant."
+      )
+    end
+  end
+
+  def call(agent, "update_profile", args) do
+    with {:ok, profile} <- profile(args["profile"]),
+         attrs = take(args, profile_fields()),
+         {:ok, updated} <- write(Chat.update_agent_profile(profile.id, attrs)) do
+      done(agent, "updated the profile #{updated.name}: #{changed(attrs)}.")
+    end
+  end
+
+  def call(_agent, name, _args),
+    do: {:error, "There is no tool called #{name} here."}
+
+  defp participant_fields,
+    do: %{
+      "name" => "name",
+      "model" => "model",
+      "role" => "role",
+      "cost_tier" => "cost_tier",
+      "auto_approve" => "auto_approve"
+    }
+
+  defp profile_fields, do: Map.put(participant_fields(), "provider", "provider")
+
+  defp add(room, %{"profile" => reference} = args) when is_binary(reference) do
+    with {:ok, profile} <- profile(reference),
+         do: write(Chat.add_profile_to_room(room.id, profile.id, args["name"]))
+  end
+
+  defp add(room, args) do
+    attrs =
+      args
+      |> take(Map.put(participant_fields(), "provider", "provider"))
+      |> Map.put_new("provider", "")
+
+    write(Chat.create_agent(room.id, attrs))
+  end
+
+  # The human is watching a conversation, not a database, so anything a
+  # participant changes about the rooms is said out loud where it was asked for.
+  # Never with an "@" in it: that would read as a mention and start a turn.
+  defp done(agent, text) do
+    Coordinator.post(agent.room_id, String.replace("#{agent.name}: #{text}", "@", ""),
+      sender: "system",
+      kind: "agent",
+      metadata: %{"tool" => "roundtable"}
+    )
+
+    {:ok, text}
+  end
+
+  defp room(_agent, %{"room" => reference}) when is_binary(reference) and reference != "" do
+    case Chat.find_room(reference) do
+      nil -> {:error, "There is no room called #{reference}. list_rooms shows them all."}
+      room -> {:ok, room}
+    end
+  end
+
+  defp room(agent, _args), do: {:ok, Chat.room!(agent.room_id)}
+
+  defp participant_in(room, reference) when is_binary(reference) and reference != "" do
+    wanted = String.downcase(String.trim(reference))
+    members = Chat.agents(room.id)
+
+    case Enum.find(members, &(&1.name == wanted or to_string(&1.id) == wanted)) do
+      nil -> {:error, "#{room.name} has no participant called #{reference}."}
+      agent -> {:ok, agent}
+    end
+  end
+
+  defp participant_in(room, _reference),
+    do: {:error, "Say which participant in #{room.name} to change."}
+
+  defp profile(reference) when is_binary(reference) and reference != "" do
+    wanted = String.downcase(String.trim(reference))
+
+    case Enum.find(Chat.agent_profiles(), &(&1.name == wanted or to_string(&1.id) == wanted)) do
+      nil -> {:error, "There is no profile called #{reference}. list_profiles shows the library."}
+      profile -> {:ok, profile}
+    end
+  end
+
+  defp profile(_reference), do: {:error, "Say which profile to use, by name."}
+
+  # Only what the caller actually sent: a field left out keeps its value rather
+  # than being cleared to the JSON default.
+  defp take(args, fields) do
+    for {given, attribute} <- fields, Map.has_key?(args, given), into: %{} do
+      {attribute, args[given]}
+    end
+  end
+
+  defp changed(attrs) when map_size(attrs) == 0, do: "nothing"
+  defp changed(attrs), do: attrs |> Map.keys() |> Enum.sort() |> Enum.join(", ")
+
+  defp write({:ok, record}), do: {:ok, record}
+  defp write({:error, changeset}), do: {:error, invalid(changeset)}
+
+  defp invalid(changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {message, opts} ->
+      Regex.replace(~r"%{(\w+)}", message, fn _, key ->
+        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+      end)
+    end)
+    |> Enum.map_join("; ", fn {field, messages} -> "#{field} #{Enum.join(messages, ", ")}" end)
+  end
+
+  defp model_suffix(%{model: model}) when is_binary(model) and model != "", do: " (#{model})"
+  defp model_suffix(_record), do: ""
+
+  defp room_view(room) do
+    %{
+      id: room.id,
+      name: room.name,
+      directory: room.directory,
+      brief: room.context,
+      participants: Enum.map(Chat.agents(room.id), & &1.name)
+    }
+  end
+
+  defp participant_view(agent) do
+    %{
+      id: agent.id,
+      name: agent.name,
+      provider: agent.provider,
+      model: agent.model,
+      cost_tier: agent.cost_tier,
+      role: agent.role,
+      auto_approve: agent.auto_approve
+    }
+  end
+
+  defp profile_view(profile) do
+    %{
+      id: profile.id,
+      name: profile.name,
+      provider: profile.provider,
+      model: profile.model,
+      cost_tier: profile.cost_tier,
+      role: profile.role,
+      auto_approve: profile.auto_approve
+    }
+  end
+
+  defp json(data), do: Jason.encode!(data, pretty: true)
+
+  defp serving?, do: Phoenix.Endpoint.server?(:roundtable, RoundtableWeb.Endpoint)
+
+  defp object(properties, required \\ []),
+    do: %{
+      type: "object",
+      properties: properties,
+      required: required,
+      additionalProperties: false
+    }
+
+  defp string(description), do: %{type: "string", description: description}
+
+  defp room_property,
+    do: string("Which room, by name, slug or id. Defaults to the room you are in.")
+
+  defp brief_property,
+    do:
+      string(
+        "What this team is doing and how it works. Every participant in the room is given it " <>
+          "at the start of every turn."
+      )
+
+  defp role_property,
+    do:
+      string(
+        "The standing brief for this participant: what it is for and how it should work here."
+      )
+
+  defp cost_tier_property,
+    do: %{
+      type: "string",
+      enum: ["economy", "standard", "premium", "unknown"],
+      description: "A planning hint about relative cost. Not a verified price."
+    }
+
+  defp auto_approve_property,
+    do: %{
+      type: "boolean",
+      description:
+        "Whether it approves its own tool calls. Leave it false unless the human asks for " <>
+          "an unattended participant."
+    }
+end

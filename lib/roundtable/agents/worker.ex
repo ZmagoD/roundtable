@@ -52,7 +52,8 @@ defmodule Roundtable.Agents.Worker do
           :use_stdio,
           :stderr_to_stdout,
           args: [runner],
-          cd: state.agent.directory
+          cd: state.agent.directory,
+          env: Roundtable.Agents.Protocol.env(state.agent)
         ])
 
       {:os_pid, pid} = Port.info(port, :os_pid)

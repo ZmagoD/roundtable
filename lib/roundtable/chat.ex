@@ -721,7 +721,7 @@ defmodule Roundtable.Chat do
     Avoid unnecessary mentions, acknowledgements, or reply loops. Delegation stops after four hops.
     A participant whose status is running, approval or queued already has work; mentioning it queues
     more behind that. Prefer an idle participant, or say why the busy one has to be the one.
-    You can ask the human for clarification. Do not spawn additional agents outside this room.
+    You can ask the human for clarification. Do not spawn additional agents outside this room.#{tools(agent)}
 
     Unread room messages (JSON):
     #{Jason.encode!(Enum.map(unread, &%{id: &1.id, sender: &1.sender, body: &1.body, assignment: &1.metadata}))}
@@ -731,6 +731,24 @@ defmodule Roundtable.Chat do
     """
 
     {prompt, until_id}
+  end
+
+  # Said only to a participant that has them. A provider whose CLI cannot be
+  # given the tools should not be told about rooms it has no way to make.
+  defp tools(agent) do
+    if Roundtable.MCP.offered?(agent) do
+      """
+
+
+      THE ROOMS THEMSELVES
+      You have tools for the rooms here. Use them to see who is where, and — when the human asks for
+      it — to make a room, give it its brief, and add participants to it from the saved profiles or
+      from scratch. Only when asked: never to give yourself help, and never to start the work in a
+      room you have just made. Setting one up is the whole job; hand it back.\
+      """
+    else
+      ""
+    end
   end
 
   # Nobody works well from a blank brief, so say plainly that there is none

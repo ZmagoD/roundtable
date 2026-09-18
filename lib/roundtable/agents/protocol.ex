@@ -1,6 +1,12 @@
 defmodule Roundtable.Agents.Protocol do
   @moduledoc "Normalizes provider events without shell or terminal scraping."
-  def command(%{provider: "codex"}), do: {"codex", ["app-server"]}
+  alias Roundtable.MCP
+
+  # Where a provider that cannot take a secret on the command line reads it.
+  @token_variable "ROUNDTABLE_MCP_TOKEN"
+
+  # Overrides come before the subcommand, which is where codex looks for them.
+  def command(%{provider: "codex"} = a), do: {"codex", tools(a) ++ ["app-server"]}
 
   def command(%{provider: "claude"} = a) do
     args = [
@@ -17,7 +23,8 @@ defmodule Roundtable.Agents.Protocol do
       "stdio"
     ]
 
-    {"claude", args ++ optional("--resume", a.session_id) ++ optional("--model", a.model)}
+    {"claude",
+     args ++ optional("--resume", a.session_id) ++ optional("--model", a.model) ++ tools(a)}
   end
 
   def command(%{provider: "opencode"} = a) do
@@ -25,6 +32,55 @@ defmodule Roundtable.Agents.Protocol do
      ["run", "--format", "json"] ++
        optional("--session", a.session_id) ++ optional("--model", a.model)}
   end
+
+  @doc """
+  The rooms themselves, handed to a participant as flags for its own CLI.
+
+  Passed per turn rather than written into the CLI's own configuration: the
+  token in it says which participant is calling, and that is only true for the
+  turn it was minted for. A provider without both a way to take a server on the
+  command line and an approval channel back to the room gets nothing — see
+  `Roundtable.MCP`.
+  """
+  def tools(agent) do
+    if MCP.offered?(agent),
+      do: flags(agent.provider, MCP.url(), MCP.token(agent)),
+      else: []
+  end
+
+  defp flags("claude", url, token) do
+    config = %{
+      mcpServers: %{
+        roundtable: %{
+          type: "http",
+          url: url,
+          headers: %{"Authorization" => "Bearer #{token}"}
+        }
+      }
+    }
+
+    ["--mcp-config", Jason.encode!(config)]
+  end
+
+  # Codex reads the token from the environment instead, which keeps it out of
+  # the process list every user on the machine can read.
+  defp flags("codex", url, _token) do
+    [
+      "-c",
+      ~s(mcp_servers.roundtable.url="#{url}"),
+      "-c",
+      ~s(mcp_servers.roundtable.bearer_token_env_var="#{@token_variable}")
+    ]
+  end
+
+  @doc "Environment for the CLI: a participant's key to its own rooms."
+  def env(%{provider: "codex"} = agent) do
+    if MCP.offered?(agent),
+      do: [{~c"#{@token_variable}", String.to_charlist(MCP.token(agent))}],
+      else: []
+  end
+
+  def env(_agent), do: []
 
   @doc "A flag and its value, or nothing: an empty value would be a parse error."
   def optional(_flag, value) when value in [nil, ""], do: []

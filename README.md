@@ -575,6 +575,40 @@ session pointer, but leaves the room conversation intact. Old native transcripts
 remain managed by the provider CLI. Roundtable does not currently offer a picker
 for those older sessions.
 
+### Ask for a room instead of filling the form
+
+Setting a team up is form-filling — a room, a directory, a brief, four
+participants — and you are usually already here, talking to an agent. So ask it
+instead:
+
+> Make a room called Billing on /home/me/work/billing, brief it to keep the
+> invoice service green, then put the reviewer profile in it and add a codex
+> implementer called linus.
+
+A participant running on Claude Code or Codex is handed the rooms themselves as
+tools for the length of its turn. It can look at the rooms, profiles and
+providers here; make a room and set its brief; add participants from the library
+or from scratch; and change a role, a model or a cost tier. Each call stops for
+your approval like any other tool use — unless that participant approves its own
+— and whatever it changed is said out loud in the room where you asked for it:
+
+```
+ada: added reviewer-api to room 4, Billing, running on codex.
+```
+
+Nothing there deletes. A room made from a misread instruction is one you remove
+yourself, which costs you a room you did not want rather than history you cannot
+get back. Nothing there posts, either: what an agent sets up is handed back to
+you rather than started.
+
+The tools are wired in per turn, with a token that says which participant is
+calling, so the rooms only ever change on behalf of someone who is actually in
+one. OpenCode and Grok participants are not given them: their CLIs read MCP
+servers from their own configuration and have no approval channel back to the
+room, and a tool that rearranges rooms with nowhere to say no is not one worth
+having. The service answers them at `/mcp` on its own loopback port; turn them
+off for everyone with `config :roundtable, :mcp_url, false`.
+
 ## Models and cost-aware assignments
 
 Open **Model presets** in the sidebar to save model IDs/aliases accepted by your

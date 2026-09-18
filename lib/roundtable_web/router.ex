@@ -10,6 +10,13 @@ defmodule RoundtableWeb.Router do
     plug :put_secure_browser_headers
   end
 
+  # The tool server participants call back into; see Roundtable.MCP. No
+  # pipeline: it is JSON-RPC over one POST, with its own bearer token, and none
+  # of the browser's session or CSRF machinery applies to it.
+  scope "/" do
+    forward "/mcp", RoundtableWeb.Plugs.MCP
+  end
+
   scope "/", RoundtableWeb do
     pipe_through :browser
 

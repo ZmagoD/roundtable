@@ -80,6 +80,28 @@ in one room, give the second a different name: `/hire reviewer reviewer-api`.
 
 Editing or deleting a profile never reaches back into rooms.
 
+## Ask for the room instead of filling the form
+
+A participant on Claude Code or Codex has the rooms themselves as tools while
+its turn runs, so a team can be described rather than typed:
+
+```
+@ada Make a room called Billing on /home/me/work/billing, brief it to keep the
+invoice service green, then hire the reviewer profile into it and add a codex
+implementer called linus.
+```
+
+It can list rooms, participants, profiles and providers; create a room and give
+it a brief; add participants from a profile or from scratch; and change a role,
+a model or a cost tier. It cannot delete anything — rooms and participants go
+when you remove them, not before — and it cannot post, so what it sets up is
+handed back rather than started.
+
+Every call stops for your approval like any other tool use, unless that
+participant approves its own, and each change is written into the room as it
+happens. OpenCode and Grok participants do not get the tools: they have no
+approval channel, so there would be nowhere to say no.
+
 ## Let an orchestrator run unattended
 
 Codex and Claude Code stop and ask before each tool use. That is right for a

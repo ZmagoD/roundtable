@@ -80,3 +80,13 @@ ID. Reset creates a fresh conversation on the next turn and supplies room histor
 Tests should cover session creation/resume, fragmented streaming, final output,
 permissions, errors, unknown events, and shutdown. Never include real credentials
 or proprietary room history in fixtures.
+
+## The rooms as tools
+
+A participant whose CLI takes an MCP server on the command line *and* can ask
+the room for approval is given one: the service's own `/mcp`, with a token
+minted for that turn. `Roundtable.Agents.Protocol.tools/1` builds the flags,
+`env/1` the environment, and `Roundtable.MCP` decides who is offered them at
+all. If your CLI has both, add a clause to `flags/3`. If it has no approval
+channel, do not — a tool that rearranges the rooms with nowhere to say no is not
+worth having.
