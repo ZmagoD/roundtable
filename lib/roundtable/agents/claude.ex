@@ -1,8 +1,15 @@
 defmodule Roundtable.Agents.Claude do
+  @moduledoc """
+  Adapter for `claude -p`, which speaks streaming JSON with a control channel.
+
+  Partial message events carry the text as it is generated; whole assistant
+  messages are the fallback when a build does not emit them. Tool approvals
+  arrive on the control channel and are answered the same way.
+  """
   @behaviour Roundtable.Agents.Adapter
   import Roundtable.Agents.Worker, only: [write: 2, put_output: 2, approval: 3]
-  alias Roundtable.Coordinator
   alias Roundtable.Agents.Protocol
+  alias Roundtable.Coordinator
   def id, do: "claude"
   def label, do: "Claude Code"
   def command(agent, _prompt), do: Protocol.command(Map.put(agent, :provider, "claude"))

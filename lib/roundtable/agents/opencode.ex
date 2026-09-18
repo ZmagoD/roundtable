@@ -1,8 +1,15 @@
 defmodule Roundtable.Agents.OpenCode do
+  @moduledoc """
+  Adapter for `opencode run --format json`.
+
+  OpenCode takes its prompt on stdin and expects it closed, and it has no
+  interactive approval channel: tool permissions come from its own
+  configuration, so `approve/4` reports that it cannot grant one.
+  """
   @behaviour Roundtable.Agents.Adapter
   import Roundtable.Agents.Worker, only: [put_output: 2, write_raw: 2, close_stdin: 1]
-  alias Roundtable.Coordinator
   alias Roundtable.Agents.Protocol
+  alias Roundtable.Coordinator
   def id, do: "opencode"
   def label, do: "OpenCode"
 

@@ -66,4 +66,37 @@ defmodule Roundtable.ClientTest do
     assert Client.describe(c) == "in-process"
     assert Client.describe(%Client{node: :roundtable@box}) == "roundtable@box"
   end
+
+  describe "talking to a node that is not there" do
+    # The terminal shows whatever comes back here, so an unreachable service has
+    # to become a message rather than an exit that takes the client down.
+    @absent %Client{node: :"roundtable@nowhere-that-exists"}
+
+    test "an unreachable node is an error, not a crash" do
+      assert {:error, :disconnected} = Client.rooms(@absent)
+      assert {:error, :disconnected} = Client.agents(@absent, 1)
+      assert {:error, :disconnected} = Client.post(@absent, 1, "hello")
+      assert {:error, :disconnected} = Client.approvals(@absent, 1)
+    end
+
+    test "connecting without distribution says so" do
+      refute Node.alive?()
+      assert {:error, :no_distribution} = Client.connect(:roundtable@nowhere)
+    end
+
+    test "an in-process client still raises what the context raises", %{client: c} do
+      # Locally there is no transport to translate the error, and a caller in
+      # the same node expects the context's own behaviour.
+      assert_raise Ecto.NoResultsError, fn -> Client.update_agent(c, 999_999, %{}) end
+    end
+
+    test "watching an absent node fails without leaving a relay behind" do
+      assert {:error, :disconnected} = Client.watch(@absent, self(), 1)
+      refute_receive :watch_ready, 100
+    end
+
+    test "rewatch on a client with no relay is harmless" do
+      assert Client.rewatch(@absent, nil, 1, 2) == :ok
+    end
+  end
 end

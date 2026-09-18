@@ -1,7 +1,14 @@
 defmodule Roundtable.Chat do
+  @moduledoc """
+  Rooms, participants, messages and the turns they schedule.
+
+  The coordination core, and the only module that writes to the database. Both
+  clients — the browser UI and the terminal — go through here, so a rule lives
+  in one place rather than once per client.
+  """
   import Ecto.Query
+  alias Roundtable.Chat.{Agent, CrossRoomRequest, Message, ModelPreset, Room, Run}
   alias Roundtable.Repo
-  alias Roundtable.Chat.{Room, Agent, Message, Run, ModelPreset, CrossRoomRequest}
 
   def model_presets, do: Repo.all(from p in ModelPreset, order_by: [p.provider, p.name])
 
@@ -13,31 +20,36 @@ defmodule Roundtable.Chat do
     Repo.get!(ModelPreset, id) |> ModelPreset.changeset(attrs) |> Repo.update() |> notify_rooms()
   end
 
+  @purposes ["general", "planning", "implementation", "verification"]
+
+  # How far a chain of mentions can travel from a human message, across rooms
+  # as well as within one.
+  @max_depth 4
+
   def assignment(agent, preset_id, purpose) do
-    if purpose not in ["general", "planning", "implementation", "verification"] do
-      {:error, "Choose a valid task type."}
-    else
-      preset = Enum.find(model_presets(), &(to_string(&1.id) == preset_id))
+    preset = Enum.find(model_presets(), &(to_string(&1.id) == preset_id))
 
-      cond do
-        preset_id not in [nil, ""] and is_nil(preset) ->
-          {:error, "Model preset not found."}
-
-        preset && preset.provider != agent.provider ->
-          {:error, "Choose a model for #{agent.provider}."}
-
-        true ->
-          {:ok,
-           %{
-             agent_id: agent.id,
-             name: agent.name,
-             model: (preset && preset.model) || agent.model,
-             cost_tier: (preset && preset.cost_tier) || agent.cost_tier,
-             purpose: purpose
-           }}
-      end
+    with :ok <- valid_purpose(purpose),
+         :ok <- valid_preset(preset, preset_id, agent) do
+      {:ok,
+       %{
+         agent_id: agent.id,
+         name: agent.name,
+         model: (preset && preset.model) || agent.model,
+         cost_tier: (preset && preset.cost_tier) || agent.cost_tier,
+         purpose: purpose
+       }}
     end
   end
+
+  defp valid_purpose(purpose) when purpose in @purposes, do: :ok
+  defp valid_purpose(_), do: {:error, "Choose a valid task type."}
+
+  # An empty preset id means "keep this agent's own model", which is always fine.
+  defp valid_preset(nil, id, _agent) when id in [nil, ""], do: :ok
+  defp valid_preset(nil, _id, _agent), do: {:error, "Model preset not found."}
+  defp valid_preset(%{provider: provider}, _id, %{provider: provider}), do: :ok
+  defp valid_preset(_preset, _id, agent), do: {:error, "Choose a model for #{agent.provider}."}
 
   def rooms, do: Repo.all(from r in Room, order_by: [asc: r.id])
   def room!(id), do: Repo.get!(Room, id)
@@ -133,59 +145,101 @@ defmodule Roundtable.Chat do
     if body == "" or byte_size(body) > limit do
       {:error, "Write a message of up to 64 KB."}
     else
-      Repo.transaction(fn ->
-        room!(room_id)
+      result =
+        Repo.transaction(fn ->
+          room!(room_id)
+          message = insert_message(room_id, body, opts)
 
-        message =
-          Repo.insert!(%Message{
-            room_id: room_id,
-            metadata: opts[:metadata] || metadata(opts[:assignment]),
-            body: body,
-            sender: Keyword.get(opts, :sender, "you"),
-            agent_id: opts[:agent_id],
-            kind: Keyword.get(opts, :kind, "human"),
-            depth: Keyword.get(opts, :depth, 0)
-          })
-
-        targets = recipients(body, agents(room_id))
-
-        # A delivered request quotes the mention that created it, and an answer
-        # can quote anything. Scanning either would ask the same question again,
-        # forever, so only original messages dispatch across rooms.
-        unless Map.has_key?(message.metadata, "cross_room") do
           dispatch_cross_room(message, body)
-        end
+          schedule_turns(message, body, opts)
+          message
+        end)
 
-        if message.depth < 4 do
-          for agent <- targets, agent.id != message.agent_id do
-            assignment =
-              if opts[:assignment] && opts[:assignment].agent_id == agent.id,
-                do: opts[:assignment],
-                else: %{model: agent.model, cost_tier: agent.cost_tier, purpose: "general"}
-
-            Repo.insert!(%Run{
-              agent_id: agent.id,
-              message_id: message.id,
-              model: assignment.model,
-              cost_tier: assignment.cost_tier,
-              purpose: assignment.purpose
-            })
-          end
-        end
-
-        message
-      end)
-      |> tap(fn _ -> if Keyword.get(opts, :broadcast, true), do: broadcast(room_id) end)
+      # The coordinator posts several messages per turn and broadcasts once.
+      if Keyword.get(opts, :broadcast, true), do: broadcast(room_id)
+      result
     end
   end
+
+  defp insert_message(room_id, body, opts) do
+    Repo.insert!(%Message{
+      room_id: room_id,
+      metadata: opts[:metadata] || metadata(opts[:assignment]),
+      body: body,
+      sender: Keyword.get(opts, :sender, "you"),
+      agent_id: opts[:agent_id],
+      kind: Keyword.get(opts, :kind, "human"),
+      depth: Keyword.get(opts, :depth, 0)
+    })
+  end
+
+  # A turn per mentioned participant, except the sender answering itself. Past
+  # the hop cap a message is still recorded, it just stops starting new work.
+  defp schedule_turns(%{depth: depth}, _body, _opts) when depth >= @max_depth, do: :ok
+
+  defp schedule_turns(message, body, opts) do
+    for agent <- recipients(body, agents(message.room_id)), agent.id != message.agent_id do
+      assignment = assignment_for(agent, opts[:assignment])
+
+      Repo.insert!(%Run{
+        agent_id: agent.id,
+        message_id: message.id,
+        model: assignment.model,
+        cost_tier: assignment.cost_tier,
+        purpose: assignment.purpose
+      })
+    end
+
+    :ok
+  end
+
+  defp assignment_for(agent, %{agent_id: agent_id} = assignment) when agent_id == agent.id,
+    do: assignment
+
+  defp assignment_for(agent, _),
+    do: %{model: agent.model, cost_tier: agent.cost_tier, purpose: "general"}
+
+  # What each agent is told about the others: enough to pick the right one, and
+  # nothing about what they are doing.
+  defp roster(room_id) do
+    room_directory = room!(room_id).directory
+
+    Enum.map_join(agents(room_id), "\n", fn member ->
+      active = active_run(member)
+      model = (active && active.model) || member.model || "provider default"
+      tier = (active && active.cost_tier) || member.cost_tier
+      status = (active && active.status) || "idle"
+
+      "@#{member.name}: provider=#{member.provider}, model=#{model}, relative cost=#{tier}, " <>
+        "status=#{status}#{elsewhere(member, room_directory)}, role=#{member.role || "general"}"
+    end)
+  end
+
+  # Queued counts as busy: that turn is already assigned, and the model on it is
+  # the one the agent will actually run with.
+  defp active_run(member) do
+    Repo.one(
+      from r in Run,
+        where: r.agent_id == ^member.id and r.status in ["running", "approval", "queued"],
+        order_by: [desc: r.id],
+        limit: 1
+    )
+  end
+
+  # A directory is only worth naming when it differs from the room's; otherwise
+  # it repeats the path this agent was already told is its own.
+  defp elsewhere(%{directory: directory}, room_directory)
+       when is_binary(directory) and directory != room_directory,
+       do: ", directory=#{directory}"
+
+  defp elsewhere(_, _), do: ""
 
   # Other rooms are teams, not teammates: an agent is told who it can reach and
   # nothing about what they are working on.
   defp neighbours(room_id) do
     others =
       rooms()
-      |> Enum.reject(&(&1.id == room_id))
-      |> Enum.reject(&(agents(&1.id) == []))
+      |> Enum.reject(&(&1.id == room_id or agents(&1.id) == []))
       |> Enum.take(5)
 
     case others do
@@ -214,6 +268,11 @@ defmodule Roundtable.Chat do
     end
   end
 
+  # A delivered request quotes the mention that created it, and an answer can
+  # quote anything. Scanning either would ask the same question again, forever,
+  # so only original messages dispatch across rooms.
+  defp dispatch_cross_room(%{metadata: %{"cross_room" => _}}, _body), do: :ok
+
   defp dispatch_cross_room(message, body) do
     for {slug, agent_name} <- cross_room_mentions(body) do
       with room when not is_nil(room) <- find_room(slug),
@@ -240,8 +299,6 @@ defmodule Roundtable.Chat do
 
     Enum.filter(agents, &(&1.name in names or "all" in names))
   end
-
-  @max_depth 4
 
   @doc "How a room is addressed from another room: `Design Team` -> `design-team`."
   def room_slug(%Room{name: name}), do: room_slug(name)
@@ -379,25 +436,36 @@ defmodule Roundtable.Chat do
   end
 
   defp resolve_target(target) do
+    with {:ok, room_ref, agent_name} <- split_target(target),
+         {:ok, room} <- find_target_room(room_ref) do
+      find_target_agent(room, agent_name)
+    end
+  end
+
+  defp split_target(target) do
     case String.split(String.trim(target), "/", parts: 2) do
-      [room_ref, agent_name] when agent_name != "" ->
-        case find_room(room_ref) do
-          nil ->
-            {:error, "No room called #{room_ref}."}
+      [room_ref, agent_name] when agent_name != "" -> {:ok, room_ref, agent_name}
+      _ -> {:error, "Address it as room/agent, for example design-team/grace."}
+    end
+  end
 
-          room ->
-            case Enum.find(agents(room.id), &(&1.name == String.downcase(agent_name))) do
-              nil ->
-                names = agents(room.id) |> Enum.map_join(", ", &"@#{&1.name}")
-                {:error, "No @#{agent_name} in #{room.name}. It has: #{names}"}
+  defp find_target_room(room_ref) do
+    case find_room(room_ref) do
+      nil -> {:error, "No room called #{room_ref}."}
+      room -> {:ok, room}
+    end
+  end
 
-              agent ->
-                {:ok, room, agent}
-            end
-        end
+  defp find_target_agent(room, agent_name) do
+    members = agents(room.id)
 
-      _ ->
-        {:error, "Address it as room/agent, for example design-team/grace."}
+    case Enum.find(members, &(&1.name == String.downcase(agent_name))) do
+      nil ->
+        names = Enum.map_join(members, ", ", &"@#{&1.name}")
+        {:error, "No @#{agent_name} in #{room.name}. It has: #{names}"}
+
+      agent ->
+        {:ok, room, agent}
     end
   end
 
@@ -470,35 +538,7 @@ defmodule Roundtable.Chat do
     # The assigned message is always explicit, even when an earlier turn read it.
     task = Repo.get!(Message, run.message_id)
 
-    room_directory = room!(agent.room_id).directory
-
-    roster =
-      agents(agent.room_id)
-      |> Enum.map_join("\n", fn member ->
-        # Queued counts as busy: that turn is already assigned, and its model is
-        # the one it will actually run with.
-        active =
-          Repo.one(
-            from r in Run,
-              where: r.agent_id == ^member.id and r.status in ["running", "approval", "queued"],
-              order_by: [desc: r.id],
-              limit: 1
-          )
-
-        model = (active && active.model) || member.model || "provider default"
-        tier = (active && active.cost_tier) || member.cost_tier
-        status = (active && active.status) || "idle"
-
-        # Only worth saying when it differs from the room's; otherwise it is the
-        # same path this agent was already told is its own.
-        directory =
-          if member.directory && member.directory != room_directory,
-            do: ", directory=#{member.directory}",
-            else: ""
-
-        "@#{member.name}: provider=#{member.provider}, model=#{model}, relative cost=#{tier}, " <>
-          "status=#{status}#{directory}, role=#{member.role || "general"}"
-      end)
+    roster = roster(agent.room_id)
 
     prompt = """
     You are @#{agent.name} in Roundtable, a shared room with a human and other coding agents.

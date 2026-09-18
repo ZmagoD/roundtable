@@ -1,8 +1,19 @@
 defmodule Roundtable.Coordinator do
+  @moduledoc """
+  Serialises every queue transition in the service.
+
+  One process owns which turns are running, so two clients cannot start the
+  same agent twice and a delivery cannot interleave with a retry. It holds no
+  durable state of its own: runs live in the database, and this process only
+  decides what happens next.
+  """
   use GenServer
+
+  # Turns that may run at once, across every room.
+  @max_workers 4
   import Ecto.Query
   alias Roundtable.{Chat, Repo}
-  alias Roundtable.Chat.{Agent, Run, Message}
+  alias Roundtable.Chat.{Agent, Message, Run}
 
   def start_link(_), do: GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
 
@@ -69,10 +80,7 @@ defmodule Roundtable.Coordinator do
       send(pid, {:approval, request_id, decision})
       state = %{state | approvals: Map.delete(state.approvals, key)}
       run = Repo.get!(Run, id)
-
-      if not Enum.any?(state.approvals, fn {{run_id, _}, _} -> run_id == id end),
-        do: Chat.change(run, status: "running")
-
+      resume_if_last_approval(state, run)
       Chat.broadcast(Chat.agent!(run.agent_id).room_id)
       {:reply, :ok, state}
     else
@@ -120,39 +128,51 @@ defmodule Roundtable.Coordinator do
   defp apply_event(state, run, agent, {:done, status, error}) do
     Repo.transaction(fn ->
       Chat.change(run, status: status, error: error)
-
-      if status == "completed" do
-        Chat.change(agent, last_seen_id: run.context_until_id)
-
-        if String.trim(run.output) != "" do
-          source = Repo.get!(Message, run.message_id)
-
-          Chat.post(agent.room_id, run.output,
-            sender: agent.name,
-            agent_id: agent.id,
-            kind: "agent",
-            metadata: %{
-              "name" => agent.name,
-              "model" => run.model,
-              "cost_tier" => run.cost_tier,
-              "purpose" => run.purpose
-            },
-            broadcast: false,
-            depth: source.depth + 1
-          )
-        end
-
-        # If this turn was another room's question, carry the answer home.
-        Chat.deliver_answer(run.message_id, run.output)
-      else
-        Chat.fail_request(run.message_id, error || status)
-      end
+      finish_turn(status, run, agent, error)
     end)
 
     state = forget(state, run.id)
     # A failed turn blocks queued turns for this participant until explicitly retried.
     state = if status != "completed", do: cancel_agent(state, agent.id), else: state
     schedule(state)
+  end
+
+  # A turn's last approval is what unblocks it; the others were answered while
+  # more were still outstanding.
+  defp resume_if_last_approval(state, run) do
+    if Enum.any?(state.approvals, fn {{run_id, _}, _} -> run_id == run.id end),
+      do: :ok,
+      else: Chat.change(run, status: "running")
+  end
+
+  defp finish_turn("completed", run, agent, _error) do
+    Chat.change(agent, last_seen_id: run.context_until_id)
+    publish_output(run, agent)
+    # If this turn was another room's question, carry the answer home.
+    Chat.deliver_answer(run.message_id, run.output)
+  end
+
+  defp finish_turn(status, run, _agent, error),
+    do: Chat.fail_request(run.message_id, error || status)
+
+  defp publish_output(run, agent) do
+    if String.trim(run.output) != "" do
+      source = Repo.get!(Message, run.message_id)
+
+      Chat.post(agent.room_id, run.output,
+        sender: agent.name,
+        agent_id: agent.id,
+        kind: "agent",
+        metadata: %{
+          "name" => agent.name,
+          "model" => run.model,
+          "cost_tier" => run.cost_tier,
+          "purpose" => run.purpose
+        },
+        broadcast: false,
+        depth: source.depth + 1
+      )
+    end
   end
 
   @impl true
@@ -168,6 +188,48 @@ defmodule Roundtable.Coordinator do
         {:noreply, state}
     end
   end
+
+  # One turn per participant, and @max_workers across the service. A run that
+  # cannot start now stays queued and is reconsidered on the next transition.
+  defp start_if_free(run, state) do
+    busy = Enum.any?(state.workers, fn {_, w} -> w.agent_id == run.agent_id end)
+
+    if map_size(state.workers) < @max_workers and not busy,
+      do: start_worker(run, state),
+      else: state
+  end
+
+  defp start_worker(run, state) do
+    agent = run.agent_id |> then(&Repo.get!(Agent, &1)) |> reset_stale_session(run)
+    agent = %{agent | model: run.model, cost_tier: run.cost_tier}
+    {prompt, until_id} = Chat.prompt(agent, run)
+    run = Chat.change(run, status: "running", context_until_id: until_id)
+    worker_module = Application.get_env(:roundtable, :agent_worker, Roundtable.Agents.Worker)
+
+    case DynamicSupervisor.start_child(
+           Roundtable.AgentSupervisor,
+           {worker_module, {agent, run, prompt}}
+         ) do
+      {:ok, pid} ->
+        Chat.broadcast(agent.room_id)
+        worker = %{pid: pid, ref: Process.monitor(pid), agent_id: agent.id}
+        %{state | workers: Map.put(state.workers, run.id, worker)}
+
+      {:error, reason} ->
+        Chat.change(run, status: "failed", error: inspect(reason))
+        Chat.broadcast(agent.room_id)
+        state
+    end
+  end
+
+  # A model change starts a fresh native session, so a resumed one cannot
+  # silently keep running on the model the human moved away from.
+  defp reset_stale_session(%{session_id: nil} = agent, _run), do: agent
+
+  defp reset_stale_session(%{session_model: model} = agent, %{model: model}), do: agent
+
+  defp reset_stale_session(agent, _run),
+    do: Chat.change(agent, session_id: nil, session_model: nil, last_seen_id: 0)
 
   defp cancel_agent(state, agent_id) do
     state =
@@ -203,52 +265,8 @@ defmodule Roundtable.Coordinator do
 
   defp schedule(state) do
     if Application.get_env(:roundtable, :start_agents, true) do
-      queued = Repo.all(from r in Run, where: r.status == "queued", order_by: r.id)
-
-      Enum.reduce(queued, state, fn run, acc ->
-        busy = Enum.any?(acc.workers, fn {_, w} -> w.agent_id == run.agent_id end)
-
-        if map_size(acc.workers) < 4 and not busy do
-          agent = Repo.get!(Agent, run.agent_id)
-
-          agent =
-            if agent.session_id && agent.session_model != run.model,
-              do: Chat.change(agent, session_id: nil, session_model: nil, last_seen_id: 0),
-              else: agent
-
-          agent = %{agent | model: run.model, cost_tier: run.cost_tier}
-          {prompt, until_id} = Chat.prompt(agent, run)
-          run = Chat.change(run, status: "running", context_until_id: until_id)
-
-          worker_module =
-            Application.get_env(:roundtable, :agent_worker, Roundtable.Agents.Worker)
-
-          case DynamicSupervisor.start_child(
-                 Roundtable.AgentSupervisor,
-                 {worker_module, {agent, run, prompt}}
-               ) do
-            {:ok, pid} ->
-              Chat.broadcast(agent.room_id)
-
-              %{
-                acc
-                | workers:
-                    Map.put(acc.workers, run.id, %{
-                      pid: pid,
-                      ref: Process.monitor(pid),
-                      agent_id: agent.id
-                    })
-              }
-
-            {:error, reason} ->
-              Chat.change(run, status: "failed", error: inspect(reason))
-              Chat.broadcast(agent.room_id)
-              acc
-          end
-        else
-          acc
-        end
-      end)
+      Repo.all(from r in Run, where: r.status == "queued", order_by: r.id)
+      |> Enum.reduce(state, &start_if_free/2)
     else
       state
     end

@@ -29,18 +29,14 @@ defmodule Roundtable.Client do
   is almost always "the service was never started".
   """
   def connect(node, cookie \\ nil) when is_atom(node) do
-    cond do
-      not Node.alive?() ->
-        {:error, :no_distribution}
+    if Node.alive?() do
+      if cookie, do: Node.set_cookie(node, cookie)
 
-      true ->
-        if cookie, do: Node.set_cookie(node, cookie)
-
-        if Node.connect(node) == true do
-          {:ok, %__MODULE__{node: node}}
-        else
-          {:error, :not_running}
-        end
+      if Node.connect(node) == true,
+        do: {:ok, %__MODULE__{node: node}},
+        else: {:error, :not_running}
+    else
+      {:error, :no_distribution}
     end
   end
 

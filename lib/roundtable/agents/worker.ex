@@ -1,4 +1,12 @@
 defmodule Roundtable.Agents.Worker do
+  @moduledoc """
+  One agent turn: a CLI process, its event stream, and the run it belongs to.
+
+  Owns the port for a single turn and translates the adapter's decisions into
+  coordinator events. Every worker is temporary — a turn that dies stays dead
+  until a human retries it, rather than restarting and repeating side effects
+  the agent has already performed.
+  """
   use GenServer, restart: :temporary
   alias Roundtable.Coordinator
 

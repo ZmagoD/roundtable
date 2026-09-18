@@ -1,4 +1,5 @@
 defmodule Roundtable.TestWorker do
+  @moduledoc false
   use GenServer, restart: :temporary
   def start_link(args), do: GenServer.start_link(__MODULE__, args)
 

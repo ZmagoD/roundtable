@@ -156,15 +156,18 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   def handle_event("edit-preset", %{"id" => id}, socket) do
-    if preset = Enum.find(socket.assigns.model_presets, &(to_string(&1.id) == id)) do
-      attrs =
-        Map.take(preset, [:name, :provider, :model, :cost_tier])
-        |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end)
+    case Enum.find(socket.assigns.model_presets, &(to_string(&1.id) == id)) do
+      nil ->
+        {:noreply, socket}
 
-      {:noreply,
-       assign(socket, editing_preset: preset.id, preset_form: to_form(attrs, as: :preset))}
-    else
-      {:noreply, socket}
+      preset ->
+        attrs =
+          preset
+          |> Map.take([:name, :provider, :model, :cost_tier])
+          |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end)
+
+        {:noreply,
+         assign(socket, editing_preset: preset.id, preset_form: to_form(attrs, as: :preset))}
     end
   end
 
@@ -196,19 +199,20 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   def handle_event(action, %{"id" => id}, socket) when action in ["stop", "reset"] do
-    if agent = Enum.find(socket.assigns.agents, &(to_string(&1.id) == id)) do
-      case action do
-        "stop" -> Coordinator.stop(agent.id)
-        "reset" -> Coordinator.reset(agent.id)
-      end
+    case {action, Enum.find(socket.assigns.agents, &(to_string(&1.id) == id))} do
+      {_, nil} -> :ok
+      {"stop", agent} -> Coordinator.stop(agent.id)
+      {"reset", agent} -> Coordinator.reset(agent.id)
     end
 
     {:noreply, refresh(socket)}
   end
 
   def handle_event("retry", %{"id" => id}, socket) do
-    if run = Enum.find(socket.assigns.runs, &(to_string(&1.id) == id)),
-      do: Coordinator.retry(run.id)
+    case Enum.find(socket.assigns.runs, &(to_string(&1.id) == id)) do
+      nil -> :ok
+      run -> Coordinator.retry(run.id)
+    end
 
     {:noreply, refresh(socket)}
   end

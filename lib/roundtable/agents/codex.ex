@@ -1,4 +1,11 @@
 defmodule Roundtable.Agents.Codex do
+  @moduledoc """
+  Adapter for `codex app-server`, which speaks JSON-RPC over stdio.
+
+  Codex streams a turn as numbered items rather than one message, so this
+  adapter reassembles them in arrival order and publishes the final answer on
+  its own once the turn completes.
+  """
   @behaviour Roundtable.Agents.Adapter
   import Roundtable.Agents.Worker, only: [write: 2, put_output: 2, joined: 1, approval: 3]
   alias Roundtable.Coordinator
@@ -100,7 +107,7 @@ defmodule Roundtable.Agents.Codex do
     write(state, %{
       id: id,
       error: %{
-        code: -32601,
+        code: -32_601,
         message: "Roundtable does not support #{method}. Ask the human in the room instead."
       }
     })

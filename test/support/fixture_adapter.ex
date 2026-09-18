@@ -1,4 +1,5 @@
 defmodule Roundtable.FixtureAdapter do
+  @moduledoc false
   @behaviour Roundtable.Agents.Adapter
   alias Roundtable.Agents.Worker
   def id, do: "fixture"

@@ -278,7 +278,18 @@ shell commands.
 mix test
 mix format --check-formatted
 mix compile --warnings-as-errors
+mix credo --strict
 ```
+
+`mix precommit` runs all four. CI runs them on every push, plus `shellcheck`
+on `install.sh` and `bin/roundtable`, which reach users before any Elixir does.
+
+The adapters have contract tests because provider protocols change under us,
+and a wrong clause there does not crash — it silently drops a turn's output or
+leaves a turn that never finishes. The terminal client's pure layers (key
+decoding, state transitions, rendering) are tested directly; its event loop,
+terminal control and `mix tui` are exercised by hand against a real pty, not by
+the suite.
 
 Tests use fake workers and synthetic protocol events, so they don't consume
 model tokens or depend on installed provider credentials. See `docs/TESTING.md`

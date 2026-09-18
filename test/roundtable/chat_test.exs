@@ -1,7 +1,7 @@
 defmodule Roundtable.ChatTest do
   use Roundtable.DataCase, async: false
   alias Roundtable.{Chat, Repo}
-  alias Roundtable.Chat.{Run, Agent}
+  alias Roundtable.Chat.{Agent, Run}
 
   setup do
     {:ok, room} = Chat.create_room(%{"name" => "Build", "directory" => File.cwd!()})

@@ -1,4 +1,10 @@
 defmodule RoundtableWeb.CoreComponents do
+  @moduledoc """
+  The components the room UI actually uses.
+
+  Pared back to the two that earn their place. Anything a single template needs
+  belongs in that template until a second one wants it.
+  """
   use Phoenix.Component
 
   attr :field, Phoenix.HTML.FormField, required: true
