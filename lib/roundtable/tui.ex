@@ -288,6 +288,35 @@ defmodule Roundtable.TUI do
     status(context, listed)
   end
 
+  def perform(:profiles, context) do
+    case Client.agent_profiles(context.client) do
+      [] ->
+        status(context, "No profiles yet. Save one in the browser, under Agent profiles.")
+
+      profiles ->
+        status(
+          context,
+          Enum.map_join(profiles, " · ", &"#{&1.name} (#{&1.provider})")
+        )
+    end
+  end
+
+  def perform({:hire, room_id, profile_name, name}, context) do
+    case Enum.find(
+           Client.agent_profiles(context.client),
+           &(&1.name == String.downcase(profile_name))
+         ) do
+      nil ->
+        status(context, "No profile called #{profile_name}. /profiles lists them.")
+
+      profile ->
+        case Client.add_profile_to_room(context.client, room_id, profile.id, name) do
+          {:ok, agent} -> refresh(context) |> status("@#{agent.name} joined the room.")
+          {:error, reason} -> status(context, describe(reason))
+        end
+    end
+  end
+
   def perform({:models, args}, context) do
     case String.split(args, " ", parts: 2) do
       [provider | rest] when provider != "" ->

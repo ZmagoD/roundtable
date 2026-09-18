@@ -76,6 +76,16 @@ defmodule Roundtable.Client do
   def update_room(c, room_id, attrs),
     do: call(c, Chat, :update_room, [room_id, attrs], @write_timeout)
 
+  def agent_profiles(c) do
+    case call(c, Chat, :agent_profiles, []) do
+      profiles when is_list(profiles) -> profiles
+      _ -> []
+    end
+  end
+
+  def add_profile_to_room(c, room_id, profile_id, name),
+    do: call(c, Chat, :add_profile_to_room, [room_id, profile_id, name], @write_timeout)
+
   def post(c, room_id, body, opts \\ []),
     do: call(c, Coordinator, :post, [room_id, body, opts], @write_timeout)
 

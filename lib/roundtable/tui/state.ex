@@ -443,6 +443,22 @@ defmodule Roundtable.TUI.State do
   defp dispatch(state, "providers", _),
     do: {state, [:providers]}
 
+  defp dispatch(state, "profiles", _),
+    do: {state, [:profiles]}
+
+  defp dispatch(state, "hire", args) do
+    case {state.room, String.split(String.trim(args), " ", parts: 2)} do
+      {nil, _} ->
+        {put_status(state, "Join a room first: /room <name>"), []}
+
+      {room, [profile | rest]} when profile != "" ->
+        {state, [{:hire, room.id, profile, rest |> List.first() |> trimmed_name()}]}
+
+      _ ->
+        {put_status(state, "Usage: /hire <profile> [name in this room]"), []}
+    end
+  end
+
   defp dispatch(state, "models", args),
     do: {state, [{:models, String.trim(args)}]}
 
@@ -504,6 +520,15 @@ defmodule Roundtable.TUI.State do
   defp put_given(attrs, _key, nil), do: attrs
   defp put_given(attrs, _key, ""), do: attrs
   defp put_given(attrs, key, value), do: Map.put(attrs, key, value)
+
+  defp trimmed_name(nil), do: nil
+
+  defp trimmed_name(name) do
+    case String.trim(name) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
 
   defp room_context(%{context: context}) when is_binary(context) and context != "",
     do: "Room brief: " <> context

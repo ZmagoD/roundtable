@@ -189,6 +189,20 @@ defmodule Roundtable.TUI.StateTest do
     assert state.status =~ "No approval #9"
   end
 
+  test "hire adds a saved profile to the room" do
+    {_, effects} = state() |> type("/hire reviewer") |> State.handle_key(:enter)
+    assert effects == [{:hire, 1, "reviewer", nil}]
+
+    {_, effects} = state() |> type("/hire reviewer api-reviewer") |> State.handle_key(:enter)
+    assert effects == [{:hire, 1, "reviewer", "api-reviewer"}]
+
+    {state, []} = state() |> type("/hire") |> State.handle_key(:enter)
+    assert state.status =~ "Usage: /hire"
+
+    {_, effects} = state() |> type("/profiles") |> State.handle_key(:enter)
+    assert effects == [:profiles]
+  end
+
   test "context shows the room's brief and sets it" do
     {state, []} = state() |> type("/context") |> State.handle_key(:enter)
     assert state.status =~ "No shared brief yet"

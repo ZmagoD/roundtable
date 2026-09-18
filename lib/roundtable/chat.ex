@@ -7,7 +7,7 @@ defmodule Roundtable.Chat do
   in one place rather than once per client.
   """
   import Ecto.Query
-  alias Roundtable.Chat.{Agent, CrossRoomRequest, Message, ModelPreset, Room, Run}
+  alias Roundtable.Chat.{Agent, AgentProfile, CrossRoomRequest, Message, ModelPreset, Room, Run}
   alias Roundtable.Repo
 
   def model_presets, do: Repo.all(from p in ModelPreset, order_by: [p.provider, p.name])
@@ -18,6 +18,47 @@ defmodule Roundtable.Chat do
 
   def update_model_preset(id, attrs) do
     Repo.get!(ModelPreset, id) |> ModelPreset.changeset(attrs) |> Repo.update() |> notify_rooms()
+  end
+
+  @doc "Every saved participant profile, by name."
+  def agent_profiles, do: Repo.all(from p in AgentProfile, order_by: p.name)
+
+  def agent_profile!(id), do: Repo.get!(AgentProfile, id)
+
+  def create_agent_profile(attrs) do
+    %AgentProfile{} |> AgentProfile.changeset(normalise(attrs)) |> Repo.insert() |> notify_rooms()
+  end
+
+  def update_agent_profile(id, attrs) do
+    agent_profile!(id)
+    |> AgentProfile.changeset(normalise(attrs))
+    |> Repo.update()
+    |> notify_rooms()
+  end
+
+  @doc """
+  Deletes a profile. Participants added from it stay where they are: they are
+  their own, with their own sessions, from the moment they join a room.
+  """
+  def delete_agent_profile(id), do: id |> agent_profile!() |> Repo.delete() |> notify_rooms()
+
+  @doc """
+  Adds a profile to a room as a participant, optionally under another name.
+
+  Another name is what lets one profile be in a room twice — two reviewers on
+  different parts of the same tree — without the two sharing anything.
+  """
+  def add_profile_to_room(room_id, profile_id, name \\ nil) do
+    profile = agent_profile!(profile_id)
+
+    create_agent(room_id, %{
+      "name" => name || profile.name,
+      "provider" => profile.provider,
+      "model" => profile.model,
+      "cost_tier" => profile.cost_tier,
+      "role" => profile.role,
+      "auto_approve" => profile.auto_approve
+    })
   end
 
   @purposes ["general", "planning", "implementation", "verification"]

@@ -17,6 +17,9 @@ defmodule RoundtableWeb.RoomLive do
        agents: [],
        last_message_id: 0,
        model_presets: Chat.model_presets(),
+       agent_profiles: Chat.agent_profiles(),
+       profile_form: to_form(%{"cost_tier" => "unknown"}, as: :profile),
+       editing_profile: nil,
        preset_form: to_form(%{"cost_tier" => "unknown"}, as: :preset),
        editing_preset: nil,
        editing_agent: nil,
@@ -92,10 +95,95 @@ defmodule RoundtableWeb.RoomLive do
            as: :preset
          ),
        editing_preset: nil,
+       editing_profile: nil,
+       profile_form:
+         to_form(
+           %{
+             "provider" => default_provider(),
+             "cost_tier" => "unknown",
+             "auto_approve" => "false"
+           },
+           as: :profile
+         ),
        editing_agent: nil,
        editing_renamable: true
      )}
   end
+
+  def handle_event("edit-profile", %{"id" => id}, socket) do
+    profile = Chat.agent_profile!(String.to_integer(id))
+
+    attrs = %{
+      "name" => profile.name,
+      "provider" => profile.provider,
+      "model" => profile.model,
+      "cost_tier" => profile.cost_tier,
+      "role" => profile.role,
+      "auto_approve" => to_string(profile.auto_approve)
+    }
+
+    {:noreply,
+     assign(socket,
+       panel: "profiles",
+       editing_profile: profile.id,
+       form_error: nil,
+       profile_form: to_form(attrs, as: :profile)
+     )}
+  end
+
+  def handle_event("save-profile", %{"profile" => attrs}, socket) do
+    saved =
+      case socket.assigns.editing_profile do
+        nil -> Chat.create_agent_profile(attrs)
+        id -> Chat.update_agent_profile(id, attrs)
+      end
+
+    case saved do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> assign(
+           editing_profile: nil,
+           form_error: nil,
+           agent_profiles: Chat.agent_profiles(),
+           profile_form: to_form(%{"cost_tier" => "unknown"}, as: :profile)
+         )}
+
+      {:error, changeset} ->
+        {:noreply,
+         assign(socket, form_error: errors(changeset), profile_form: to_form(attrs, as: :profile))}
+    end
+  end
+
+  def handle_event("delete-profile", %{"id" => id}, socket) do
+    Chat.delete_agent_profile(String.to_integer(id))
+
+    {:noreply,
+     socket
+     |> assign(
+       editing_profile: nil,
+       agent_profiles: Chat.agent_profiles(),
+       profile_form: to_form(%{"cost_tier" => "unknown"}, as: :profile)
+     )
+     |> put_flash(:info, "Profile deleted. Participants added from it stay in their rooms.")}
+  end
+
+  def handle_event("add-profile", %{"id" => id}, %{assigns: %{room: room}} = socket)
+      when not is_nil(room) do
+    case Chat.add_profile_to_room(room.id, String.to_integer(id)) do
+      {:ok, agent} ->
+        {:noreply,
+         socket
+         |> assign(panel: nil)
+         |> put_flash(:info, "@#{agent.name} joined #{room.name}.")
+         |> refresh()}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, form_error: errors(changeset))}
+    end
+  end
+
+  def handle_event("add-profile", _, socket), do: {:noreply, socket}
 
   def handle_event("remove-agent", %{"id" => id}, socket) do
     case Enum.find(socket.assigns.agents, &(to_string(&1.id) == id)) do

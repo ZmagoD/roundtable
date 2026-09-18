@@ -168,6 +168,7 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/auto <agent> on\|off` | let it approve its own tool use |
 | `/rename <agent> <new name>` | rename a participant, before its first turn |
 | `/providers` | which agent CLIs are installed |
+| `/profiles`, `/hire <profile> [name]` | the profile library, and adding one here |
 | `/models <provider> [filter]` | model names that provider offers |
 | `/who` | show every participant, their model, tier and role |
 | `/stop <agent>`, `/reset <agent>` | stop a participant's queue, clear its session |
@@ -482,6 +483,20 @@ permissions remain subject to the provider's rules. Codex and Claude approval
 requests are presented in the chat; OpenCode's CLI adapter uses its configured
 permissions and cannot interactively grant a new approval. Errors are visible
 with partial output and a retry control. Each turn has a 30-minute timeout.
+
+### Agent profiles: one library, any room
+
+**Agent profiles** in the sidebar is where a participant is defined once —
+provider, model, cost tier, role, how it handles tool approvals — and added to
+any room from there, or with `/hire <profile> [name]` in the terminal client.
+`/profiles` lists them.
+
+A profile is a template, not a shared participant. Adding one creates an agent
+in that room, with its own provider session and its own queue, so the same
+"reviewer" can be in three rooms working on three trees without any of them
+seeing each other's transcript. Give it a different name to add the same profile
+twice in one room. Editing or deleting a profile leaves participants already
+added from it exactly as they are.
 
 ### The room's brief
 

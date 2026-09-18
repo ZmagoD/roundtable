@@ -24,6 +24,7 @@
     </nav>
     <button class="new-room" phx-click="panel" phx-value-name="room">+ New room</button>
     <button id="model-presets-button" class="new-room" phx-click="panel" phx-value-name="models">Model presets</button>
+    <button id="profiles-button" class="new-room" phx-click="panel" phx-value-name="profiles">Agent profiles</button>
     <div class="sidebar-bottom">
       <span class="online-dot"></span>
       Local workspace<small>Messages saved on this machine</small>
@@ -410,6 +411,7 @@
         {case @panel do
           "room" -> if(@editing_room, do: "WHAT THIS ROOM IS DOING", else: "A NEW SPACE")
           "models" -> "CAPABILITY & COST"
+          "profiles" -> "YOUR PEOPLE"
           _ -> if(@editing_agent, do: "CHANGE A PARTICIPANT", else: "EXPAND YOUR TEAM")
         end}
       </div>
@@ -417,6 +419,7 @@
         {case @panel do
           "room" -> if(@editing_room, do: "Edit this room", else: "Create a room")
           "models" -> "Model presets"
+          "profiles" -> "Agent profiles"
           _ -> if(@editing_agent, do: "Edit this agent", else: "Invite an agent")
         end}
       </h2>
@@ -430,6 +433,9 @@
 
           "models" ->
             "Save your models once. Choose the right one for each task."
+
+          "profiles" ->
+            "Define a participant once, then add it to any room."
 
           _ ->
             cond do
@@ -609,6 +615,92 @@
           <.icon name="hero-arrow-up-right" class="size-4" />
         </button>
       </.form>
+      <div :if={@panel == "profiles"}>
+        <div class="preset-list">
+          <div :for={profile <- @agent_profiles} class="preset-row profile-row">
+            <button class="profile-open" phx-click="edit-profile" phx-value-id={profile.id}>
+              <span><strong>{profile.name}</strong><small>{profile.provider} · {profile.model ||
+                "provider default"}</small></span><span class={[
+                "cost-tier",
+                profile.cost_tier
+              ]}>{profile.cost_tier}</span>
+            </button>
+            <button
+              :if={@room}
+              class="text-button"
+              phx-click="add-profile"
+              phx-value-id={profile.id}
+            >Add to {@room.name}</button>
+          </div>
+          <p :if={@agent_profiles == []} class="form-note">
+            Nobody saved yet. A profile is a participant you want again: its provider,
+            model, role and how it handles tool approvals.
+          </p>
+        </div>
+        <.form for={@profile_form} id="profile-form" phx-submit="save-profile">
+          <.input
+            field={@profile_form[:name]}
+            label="Name"
+            placeholder="e.g. reviewer"
+            pattern="[a-zA-Z][a-zA-Z0-9_-]{0,29}"
+            required
+          />
+          <.input
+            field={@profile_form[:provider]}
+            label="Agent"
+            type="select"
+            options={Enum.map(@providers, &{&1.label, &1.id})}
+          />
+          <.input
+            field={@profile_form[:role]}
+            label="Role — what it is for and how it should work"
+            type="textarea"
+            placeholder="e.g. Review changes and say what is wrong; never write them yourself"
+            rows="3"
+            maxlength="4000"
+          />
+          <.input
+            field={@profile_form[:model]}
+            label="Model (optional)"
+            placeholder="Use the provider’s default model"
+            maxlength="200"
+          />
+          <.input
+            field={@profile_form[:cost_tier]}
+            label="Relative cost"
+            type="select"
+            options={cost_options()}
+          />
+          <.input
+            field={@profile_form[:auto_approve]}
+            label="Tool approvals"
+            type="select"
+            options={[{"Ask me before each tool", "false"}, {"Approve automatically", "true"}]}
+          />
+          <p class="form-note">
+            Profiles are templates. Adding one to a room creates a participant there
+            with its own session; changing the profile later leaves it alone.
+          </p>
+          <button class="button full" type="submit" phx-disable-with="Saving…">
+            {if @editing_profile, do: "Update profile", else: "Save profile"}
+          </button>
+          <button
+            :if={@editing_profile}
+            class="text-button"
+            type="button"
+            phx-click="panel"
+            phx-value-name="profiles"
+          >Add another profile</button>
+          <button
+            :if={@editing_profile}
+            class="text-button danger"
+            type="button"
+            phx-click="delete-profile"
+            phx-value-id={@editing_profile}
+            data-confirm="Delete this profile? Participants already added from it stay in their rooms."
+          >Delete this profile</button>
+        </.form>
+      </div>
       <div :if={@panel == "models"}>
         <div class="preset-list">
           <button

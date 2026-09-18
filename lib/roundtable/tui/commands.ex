@@ -10,6 +10,8 @@ defmodule Roundtable.TUI.Commands do
   @commands [
     {"who", "", "roster: provider, model, cost tier, role, status"},
     {"providers", "", "which agent CLIs are installed"},
+    {"profiles", "", "participant profiles you can add to a room"},
+    {"hire", "<profile> [name]", "add a saved profile to this room"},
     {"models", "<provider> [filter]", "model names that provider offers"},
     {"agent", "<name> <provider> [--model m] [--role text] [--tier t]", "add a participant"},
     {"role", "<agent> <text>", "change what a participant is for"},

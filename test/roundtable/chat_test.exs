@@ -158,6 +158,51 @@ defmodule Roundtable.ChatTest do
     refute prompt =~ "Your role changed"
   end
 
+  test "a profile is a template: adding it creates a participant of its own", %{room: room} do
+    {:ok, profile} =
+      Chat.create_agent_profile(%{
+        "name" => "reviewer",
+        "provider" => "claude",
+        "model" => "sonnet",
+        "cost_tier" => "standard",
+        "role" => "Review diffs. Say what is wrong, do not fix it.",
+        "auto_approve" => true
+      })
+
+    {:ok, agent} = Chat.add_profile_to_room(room.id, profile.id)
+
+    assert agent.name == "reviewer"
+    assert agent.provider == "claude"
+    assert agent.model == "sonnet"
+    assert agent.role == "Review diffs. Say what is wrong, do not fix it."
+    assert agent.auto_approve
+    # A room's tree, not the profile's idea of one.
+    assert agent.directory == room.directory
+
+    # The same profile can be in a room twice under another name.
+    {:ok, second} = Chat.add_profile_to_room(room.id, profile.id, "reviewer-api")
+    assert second.name == "reviewer-api"
+    refute second.id == agent.id
+
+    # Changing the profile afterwards leaves the participants alone.
+    {:ok, _} = Chat.update_agent_profile(profile.id, %{"role" => "Something else entirely"})
+    assert Chat.agent!(agent.id).role == "Review diffs. Say what is wrong, do not fix it."
+
+    # And so does deleting it.
+    {:ok, _} = Chat.delete_agent_profile(profile.id)
+    assert Chat.agent_profiles() == []
+    assert Chat.agent!(agent.id).name == "reviewer"
+  end
+
+  test "a profile is checked before it can be saved" do
+    assert {:error, _} =
+             Chat.create_agent_profile(%{"name" => "Not Valid", "provider" => "codex"})
+
+    assert {:error, _} = Chat.create_agent_profile(%{"name" => "ok", "provider" => "nope"})
+    {:ok, _} = Chat.create_agent_profile(%{"name" => "twice", "provider" => "codex"})
+    assert {:error, _} = Chat.create_agent_profile(%{"name" => "twice", "provider" => "codex"})
+  end
+
   test "invalid directories and duplicate names are rejected", %{room: room} do
     assert {:error, _} =
              Chat.create_room(%{"name" => "Invalid", "directory" => "/does-not-exist-roundtable"})

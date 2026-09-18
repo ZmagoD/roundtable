@@ -187,6 +187,27 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert %{session_id: nil, last_seen_id: 0} = Chat.agent!(agent.id)
     end
 
+    test "a profile is saved once and added to a room", %{view: view, room: room} do
+      view |> element("#profiles-button") |> render_click()
+
+      view
+      |> form("#profile-form",
+        profile: %{
+          name: "reviewer",
+          provider: "claude",
+          role: "Review diffs, never write them",
+          cost_tier: "standard",
+          auto_approve: "true"
+        }
+      )
+      |> render_submit()
+
+      assert [profile] = Chat.agent_profiles()
+      view |> element("[phx-click=add-profile][phx-value-id='#{profile.id}']") |> render_click()
+
+      assert Enum.any?(Chat.agents(room.id), &(&1.name == "reviewer" and &1.auto_approve))
+    end
+
     test "the room brief is edited in place and shown back", %{view: view, room: room} do
       view |> element("#edit-room-button") |> render_click()
 

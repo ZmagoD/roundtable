@@ -590,6 +590,8 @@ h1, h2, h3, p { margin: 0; }
 .assignment-meta > .cost-tier:before { content: none; }
 .preset-list { margin-bottom: 22px; }
 .preset-row { width: 100%; display: flex; justify-content: space-between; align-items: center; text-align: left; background: var(--green-surface-8); border: 1px solid var(--green-surface-6); padding: 10px 12px; border-radius: 7px; margin-bottom: 7px; }
+.profile-row { gap: 12px; }
+.profile-open { flex: 1; display: flex; justify-content: space-between; align-items: center; text-align: left; background: none; border: none; padding: 0; }
 .preset-row strong { font-size: 11px; font-weight: 500; }
 .preset-row small { display: block; color: var(--green-mid-25); font-size: 9px; margin-top: 5px; }
 @media (max-width: 600px) { .assignment-controls { flex-wrap: wrap; gap: 6px; } .assignment-controls select { max-width: 145px; } }
