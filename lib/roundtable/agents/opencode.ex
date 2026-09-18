@@ -33,7 +33,7 @@ defmodule Roundtable.Agents.OpenCode do
         put_output(state, state.output <> text <> "\n")
 
       %{"type" => "error", "error" => error} ->
-        %{state | finished: {"failed", inspect(error)}}
+        %{state | finished: {"failed", Protocol.error_message(error)}}
 
       _ ->
         state
@@ -41,7 +41,7 @@ defmodule Roundtable.Agents.OpenCode do
   end
 
   def handle_event(%{"type" => "error", "error" => error}, state),
-    do: %{state | finished: {"failed", inspect(error)}}
+    do: %{state | finished: {"failed", Protocol.error_message(error)}}
 
   def handle_event(_, state), do: state
 end

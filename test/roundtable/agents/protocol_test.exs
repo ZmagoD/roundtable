@@ -195,6 +195,62 @@ defmodule Roundtable.Agents.ProtocolTest do
     end
   end
 
+  describe "error messages" do
+    # Captured verbatim from a real OpenCode failure.
+    @copilot %{
+      "name" => "APIError",
+      "data" => %{
+        "isRetryable" => false,
+        "message" =>
+          "Please reauthenticate with the copilot provider to ensure your credentials work properly with OpenCode.",
+        "metadata" => %{"url" => "https://api.githubcopilot.com/chat/completions"},
+        "responseBody" => "unauthorized: not licensed to use Copilot\n",
+        "responseHeaders" => %{"x-github-request-id" => "9626:320C3A"},
+        "statusCode" => 403
+      }
+    }
+
+    test "a nested API error becomes the sentence inside it" do
+      message = Protocol.error_message(@copilot)
+
+      assert message ==
+               "Please reauthenticate with the copilot provider to ensure your " <>
+                 "credentials work properly with OpenCode. (HTTP 403)"
+
+      # None of the metadata a person cannot act on.
+      refute message =~ "x-github-request-id"
+      refute message =~ "responseHeaders"
+      refute message =~ "%{"
+    end
+
+    test "the response body is used when there is no message" do
+      error = %{"data" => %{"responseBody" => "unauthorized\n", "statusCode" => 401}}
+      assert Protocol.error_message(error) == "unauthorized (HTTP 401)"
+    end
+
+    test "a flat error is taken as it is" do
+      assert Protocol.error_message(%{"message" => "rate limited"}) == "rate limited"
+      assert Protocol.error_message("plain trouble") == "plain trouble"
+      assert Protocol.error_message(%{"name" => "APIError"}) == "APIError"
+    end
+
+    test "something unrecognisable still says something" do
+      assert Protocol.error_message(%{"odd" => true}) =~ "odd"
+      assert Protocol.error_message(nil) == "nil"
+      # A struct is a map, but it has no string keys to read.
+      assert Protocol.error_message(%RuntimeError{message: "boom"}) =~ "boom"
+    end
+
+    test "opencode reports it through the adapter, not as a map dump" do
+      state = state()
+      finished = OpenCode.handle_event(%{"type" => "error", "error" => @copilot}, state)
+
+      assert {"failed", message} = finished.finished
+      assert message =~ "reauthenticate with the copilot provider"
+      refute message =~ "responseHeaders"
+    end
+  end
+
   describe "grok" do
     test "runs headless in the Messages wire format" do
       {exe, args} = Grok.command(%{session_id: nil, model: nil}, "do the thing")

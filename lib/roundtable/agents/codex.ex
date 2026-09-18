@@ -8,6 +8,7 @@ defmodule Roundtable.Agents.Codex do
   """
   @behaviour Roundtable.Agents.Adapter
   import Roundtable.Agents.Worker, only: [write: 2, put_output: 2, joined: 1, approval: 3]
+  alias Roundtable.Agents.Protocol
   alias Roundtable.Coordinator
   def id, do: "codex"
   def label, do: "Codex"
@@ -59,7 +60,7 @@ defmodule Roundtable.Agents.Codex do
   end
 
   def handle_event(%{"error" => error, "id" => _}, state),
-    do: %{state | finished: {"failed", error["message"] || inspect(error)}}
+    do: %{state | finished: {"failed", Protocol.error_message(error)}}
 
   def handle_event(%{"method" => "item/agentMessage/delta", "params" => p}, state) do
     items = Map.update(state.items, p["itemId"], p["delta"], &(&1 <> p["delta"]))
