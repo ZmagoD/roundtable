@@ -7,9 +7,9 @@ defmodule Roundtable.Agents.Claude do
   arrive on the control channel and are answered the same way.
   """
   @behaviour Roundtable.Agents.Adapter
-  import Roundtable.Agents.Worker, only: [write: 2, put_output: 2, approval: 3]
-  alias Roundtable.Agents.Protocol
-  alias Roundtable.Coordinator
+  import Roundtable.Agents.Worker, only: [write: 2, approval: 3]
+
+  alias Roundtable.Agents.{Messages, Protocol}
   def id, do: "claude"
   def label, do: "Claude Code"
   def command(agent, _prompt), do: Protocol.command(Map.put(agent, :provider, "claude"))
@@ -31,52 +31,27 @@ defmodule Roundtable.Agents.Claude do
 
   def exit_status(code, state), do: {"failed", "Claude exited (#{code}). #{state.diagnostics}"}
 
-  def handle_event(%{"type" => "system", "session_id" => session}, state) do
-    Coordinator.event(state.run.id, {:session, session})
-    %{state | session: session}
+  # Session, streaming text and completion are the shared wire format; what is
+  # Claude Code's own is the control channel that carries tool approvals.
+  def handle_event(event, state) do
+    case Messages.handle(event, state) do
+      {:ok, state} -> state
+      :unhandled -> control(event, state)
+    end
   end
 
-  def handle_event(
-        %{
-          "type" => "stream_event",
-          "event" => %{
-            "type" => "content_block_delta",
-            "delta" => %{"type" => "text_delta", "text" => text}
-          }
-        },
-        state
-      ) do
-    put_output(state, state.output <> text)
-  end
-
-  def handle_event(%{"type" => "assistant", "message" => message}, state) do
-    # Full assistant messages are a fallback when partial events aren't available.
-    if state.output == "",
-      do: put_output(state, Protocol.text_blocks(message["content"])),
-      else: state
-  end
-
-  def handle_event(%{"type" => "result"} = e, state) do
-    state = if is_binary(e["result"]), do: put_output(state, e["result"]), else: state
-
-    error =
-      if e["is_error"], do: Enum.join(e["errors"] || [e["result"] || "Claude turn failed"], "\n")
-
-    %{state | finished: {if(error, do: "failed", else: "completed"), error}}
-  end
-
-  def handle_event(
-        %{
-          "type" => "control_request",
-          "request_id" => id,
-          "request" => %{"subtype" => "can_use_tool"} = request
-        },
-        state
-      ) do
+  defp control(
+         %{
+           "type" => "control_request",
+           "request_id" => id,
+           "request" => %{"subtype" => "can_use_tool"} = request
+         },
+         state
+       ) do
     approval(state, id, request)
   end
 
-  def handle_event(%{"type" => "control_request", "request_id" => id}, state) do
+  defp control(%{"type" => "control_request", "request_id" => id}, state) do
     write(state, %{
       type: "control_response",
       response: %{subtype: "error", request_id: id, error: "Unsupported request"}
@@ -85,5 +60,5 @@ defmodule Roundtable.Agents.Claude do
     state
   end
 
-  def handle_event(_, state), do: state
+  defp control(_event, state), do: state
 end

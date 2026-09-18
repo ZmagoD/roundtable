@@ -211,7 +211,7 @@ defmodule Roundtable.TUI do
     attrs = Map.update!(attrs, "directory", &expand(&1 || context.state.room.directory))
 
     case Client.create_agent(context.client, context.state.room.id, attrs) do
-      {:ok, agent} -> refresh(context) |> status("@#{agent.name} joined.")
+      {:ok, agent} -> refresh(context) |> status(joined(agent))
       {:error, reason} -> status(context, describe(reason))
     end
   end
@@ -248,6 +248,26 @@ defmodule Roundtable.TUI do
   def perform({action, id}, context) when action in [:stop, :reset, :retry] do
     apply(Client, action, [context.client, id])
     refresh(context) |> status("#{action} sent.")
+  end
+
+  def perform(:providers, context) do
+    listed =
+      Roundtable.Agents.providers()
+      |> Enum.map_join(" · ", &"#{&1.id}#{if &1.installed, do: "", else: " (not installed)"}")
+
+    status(context, listed)
+  end
+
+  def perform({:models, args}, context) do
+    case String.split(args, " ", parts: 2) do
+      [provider | rest] when provider != "" ->
+        filter = List.first(rest) || ""
+        models = Roundtable.Agents.models(provider)
+        status(context, describe_models(provider, models, filter))
+
+      _ ->
+        status(context, "Usage: /models <provider> [filter]")
+    end
   end
 
   def perform(:git_ui, context) do
@@ -320,6 +340,30 @@ defmodule Roundtable.TUI do
 
   defp first_room(rooms) when is_list(rooms), do: List.first(rooms)
   defp first_room(_), do: nil
+
+  # Creating it is still right — the CLI may be installed later — but silence
+  # would mean finding out at the first turn, from a spawn failure.
+  defp joined(agent) do
+    if Enum.any?(Roundtable.Agents.providers(), &(&1.id == agent.provider and &1.installed)),
+      do: "@#{agent.name} joined.",
+      else: "@#{agent.name} joined, but #{agent.provider} is not installed on PATH."
+  end
+
+  defp describe_models(provider, [], _filter),
+    do: "#{provider} does not list its models. Any name it accepts works."
+
+  defp describe_models(provider, models, filter) do
+    case Enum.filter(models, &String.contains?(&1, filter)) do
+      [] ->
+        "No #{provider} model matches #{inspect(filter)} of #{length(models)}."
+
+      matching ->
+        shown = Enum.take(matching, 8)
+        more = length(matching) - length(shown)
+        suffix = if more > 0, do: " … and #{more} more of #{length(models)}", else: ""
+        "#{provider}: #{Enum.join(shown, ", ")}#{suffix}"
+    end
+  end
 
   # Resolved here, in the client, because this process runs in the shell the
   # person started it from. The service is somewhere else entirely, and "." to

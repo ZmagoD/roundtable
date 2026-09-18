@@ -159,7 +159,7 @@ defmodule Roundtable.TUI.Render do
     {"Tab", "cycle which participant you are addressing"},
     {:section, "Who is here"},
     {"/who   ^P", "roster: provider, model, cost tier, role, status"},
-    {"/agent <name> <provider>", "add one; providers are codex, claude, opencode"},
+    {"/agent <name> <provider>", "add one; /providers lists what is installed"},
     {"  [--model m] [--role text]", "a model to pin, and what it is for"},
     {"  [--tier t]", "economy, standard or premium"},
     {"/role <agent> <text>", "change what a participant is for"},

@@ -269,6 +269,53 @@ defmodule Roundtable.TUI.EffectsTest do
     assert context.state.handoff.directory == context.state.room.directory
   end
 
+  test "/providers says which CLIs are actually installed", %{context: context} do
+    context = TUI.perform(:providers, context)
+
+    for provider <- Roundtable.Agents.ids() do
+      assert context.state.status =~ provider
+    end
+  end
+
+  test "/models lists what a provider offers, and filters it", %{context: context} do
+    # Claude Code has no listing command; these are its documented aliases.
+    context = TUI.perform({:models, "claude"}, context)
+    assert context.state.status =~ "opus"
+
+    context = TUI.perform({:models, "claude son"}, context)
+    assert context.state.status =~ "sonnet"
+    refute context.state.status =~ "opus"
+
+    context = TUI.perform({:models, "claude nothing-like-this"}, context)
+    assert context.state.status =~ "No claude model matches"
+  end
+
+  test "/models says so when a provider cannot list", %{context: context} do
+    context = TUI.perform({:models, "codex"}, context)
+    assert context.state.status =~ "does not list its models"
+
+    context = TUI.perform({:models, ""}, context)
+    assert context.state.status =~ "Usage: /models"
+  end
+
+  test "adding an agent whose CLI is missing says so, but still adds it", %{
+    context: context,
+    room: room
+  } do
+    original = Application.get_env(:roundtable, :adapters)
+
+    Application.put_env(:roundtable, :adapters, [
+      Roundtable.FixtureMissingAdapter | original || []
+    ])
+
+    on_exit(fn -> Application.put_env(:roundtable, :adapters, original) end)
+
+    context = TUI.perform({:create_agent, %{"name" => "ghost", "provider" => "missing"}}, context)
+
+    assert context.state.status =~ "not installed on PATH"
+    assert Enum.any?(Chat.agents(room.id), &(&1.name == "ghost"))
+  end
+
   test "quit and refresh are handled", %{context: context} do
     assert TUI.perform(:quit, context) == context
     assert TUI.perform(:refresh, context).state.room.id == context.state.room.id

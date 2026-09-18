@@ -26,8 +26,9 @@ defmodule Roundtable.Agents.Protocol do
        optional("--session", a.session_id) ++ optional("--model", a.model)}
   end
 
-  defp optional(_, value) when value in [nil, ""], do: []
-  defp optional(flag, value), do: [flag, value]
+  @doc "A flag and its value, or nothing: an empty value would be a parse error."
+  def optional(_flag, value) when value in [nil, ""], do: []
+  def optional(flag, value), do: [flag, value]
 
   def text_blocks(blocks) when is_list(blocks) do
     blocks |> Enum.filter(&(&1["type"] == "text")) |> Enum.map_join("\n", & &1["text"])

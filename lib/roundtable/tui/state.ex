@@ -210,7 +210,7 @@ defmodule Roundtable.TUI.State do
        "/room <name> · /new-room <name> <dir> · /agent <name> <provider> [dir] · " <>
          "/stop <agent> · /reset <agent> · /retry [run] · /approve accept|decline [n] · " <>
          "/changes [on|off] · /who · /role <agent> <text> · " <>
-         "/model <agent> <id> · /rename <agent> <new> · /ask <room>/<agent> <q> · /delegate <room>/<agent> <task> · " <>
+         "/providers · /models <provider> [filter] · /rename <agent> <new> · /ask <room>/<agent> <q> · /delegate <room>/<agent> <task> · " <>
          "/lazygit · /quit"
      ), []}
   end
@@ -327,6 +327,12 @@ defmodule Roundtable.TUI.State do
          ), []}
     end
   end
+
+  defp dispatch(state, name, _) when name in ~w(providers agents),
+    do: {state, [:providers]}
+
+  defp dispatch(state, "models", args),
+    do: {state, [{:models, String.trim(args)}]}
 
   defp dispatch(state, name, _) when name in ~w(who roster participants),
     do: {%{state | roster_visible: not state.roster_visible}, []}

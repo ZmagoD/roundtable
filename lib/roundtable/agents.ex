@@ -9,6 +9,7 @@ defmodule Roundtable.Agents do
     Application.get_env(:roundtable, :adapters, [
       Roundtable.Agents.Codex,
       Roundtable.Agents.Claude,
+      Roundtable.Agents.Grok,
       Roundtable.Agents.OpenCode
     ])
   end
@@ -32,17 +33,46 @@ defmodule Roundtable.Agents do
   """
   def models(provider)
 
-  def models("opencode"), do: cached_models("opencode", ["models"])
+  def models("opencode"), do: cached_models("opencode", ["models"], &parse_lines/1)
   def models("claude"), do: ["fable", "opus", "sonnet"]
+  def models("grok"), do: cached_models("grok", ["models"], &parse_bullets/1)
   def models(_provider), do: []
 
+  @doc """
+  Pulls model names out of a CLI's listing.
+
+  `parse_lines/1` is for a listing that is one name per line; `parse_bullets/1`
+  for one that surrounds them with prose, as Grok's does:
+
+      Available models:
+        * grok-4.6 (default)
+        - grok-4.5
+
+  Both drop anything with a space in it, because no model id has one and every
+  sentence does — an unauthenticated CLI explains itself instead of listing,
+  and that explanation must not end up offered as a model.
+  """
+  def parse_lines(output) do
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == "" or String.contains?(&1, " ")))
+  end
+
+  def parse_bullets(output) do
+    ~r/^\s*[*-]\s+(\S+)/m
+    |> Regex.scan(output, capture: :all_but_first)
+    |> List.flatten()
+    |> Enum.uniq()
+  end
+
   # Listing 400-odd models means running a CLI; once per boot is plenty.
-  defp cached_models(executable, args) do
+  defp cached_models(executable, args, parser) do
     key = {__MODULE__, :models, executable}
 
     case :persistent_term.get(key, :missing) do
       :missing ->
-        models = read_models(executable, args)
+        models = read_models(executable, args, parser)
         :persistent_term.put(key, models)
         models
 
@@ -51,16 +81,16 @@ defmodule Roundtable.Agents do
     end
   end
 
-  defp read_models(executable, args) do
+  defp read_models(executable, args, parser) do
     case System.find_executable(executable) do
       nil ->
         []
 
       path ->
-        case System.cmd(path, args, stderr_to_stdout: true) do
-          {output, 0} -> output |> String.split("\n", trim: true) |> Enum.map(&String.trim/1)
-          _ -> []
-        end
+        # Some CLIs exit non-zero when unauthenticated but still print what
+        # they know, so the output is worth parsing either way.
+        {output, _status} = System.cmd(path, args, stderr_to_stdout: true)
+        parser.(output)
     end
   rescue
     _ -> []

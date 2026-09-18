@@ -145,6 +145,8 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/role <agent> <text>` | set what a participant is for |
 | `/model <agent> <id\|default>` | pin a model, or hand the choice back |
 | `/rename <agent> <new name>` | rename a participant, before its first turn |
+| `/providers` | which agent CLIs are installed |
+| `/models <provider> [filter]` | model names that provider offers |
 | `/who` | show every participant, their model, tier and role |
 | `/stop <agent>`, `/reset <agent>` | stop a participant's queue, clear its session |
 | `/retry [run]` | retry the newest failed run, or one by id |
@@ -197,14 +199,23 @@ Without the service running, `mix tui --local` starts a standalone client that
 owns the database itself. Use it only when the background service is stopped —
 two coordinators on one database fight over the same delivery queue.
 
-### Choosing a model
+### Which agents and which models
 
-The model field suggests what it can. OpenCode is asked directly — `opencode
-models` lists what that installation can reach — so the suggestions are
-whatever your setup actually has. Claude Code has no such command, so the
-aliases its own `--help` documents are offered (`fable`, `opus`, `sonnet`); it
-takes full names too. Codex has neither, so nothing is suggested rather than a
-list invented here.
+The app looks for each adapter's CLI on your PATH and says which it found — in
+the browser beside the provider, and with `/providers` in the terminal. An
+agent on a CLI you have not installed can still be created; it just says so,
+rather than letting you find out at the first turn.
+
+Models are asked of the CLI wherever it can answer. `opencode models` lists
+what that installation can reach, `grok models` prints its own; both are parsed
+for names and nothing else, because an unauthenticated CLI explains itself
+instead of listing and that explanation must not end up offered as a model.
+Claude Code has no listing command, so the aliases its own `--help` documents
+are offered (`fable`, `opus`, `sonnet`); it takes full names too. Codex has
+neither, so nothing is suggested rather than a list invented here.
+
+`/models <provider> [filter]` does the same from the terminal — with 400-odd
+OpenCode models, the filter is the point.
 
 They are suggestions, not a menu: the field stays free text, so a model that
 appears tomorrow needs no release. Model presets in the sidebar save the ones
@@ -436,6 +447,7 @@ parallel work, keep separate named agents for your regular model/role combinatio
 | --- | --- | --- | --- |
 | Codex | `codex app-server`, JSON-RPC over stdio | Thread ID | Command and file approval |
 | Claude Code | `claude -p`, streaming JSON/control protocol | Session ID | Tool approval |
+| Grok | `grok -p`, Anthropic Messages wire format | Session ID | CLI configuration only |
 | OpenCode | `opencode run --format json` | Session ID | CLI configuration only |
 
 Adding one is a module, not a fork: adapters implement

@@ -8,7 +8,8 @@ defmodule Roundtable.Agents.ProtocolTest do
   """
   use ExUnit.Case, async: true
 
-  alias Roundtable.Agents.{Claude, Codex, OpenCode, Protocol}
+  alias Roundtable.Agents
+  alias Roundtable.Agents.{Claude, Codex, Grok, OpenCode, Protocol}
 
   # `cat` echoes whatever the adapter writes back to this process, so the bytes
   # on the wire can be asserted rather than assumed.
@@ -191,6 +192,114 @@ defmodule Roundtable.Agents.ProtocolTest do
     test "an unknown event changes nothing" do
       state = state()
       assert Claude.handle_event(%{"type" => "something new"}, state) == state
+    end
+  end
+
+  describe "grok" do
+    test "runs headless in the Messages wire format" do
+      {exe, args} = Grok.command(%{session_id: nil, model: nil}, "do the thing")
+
+      assert exe == "grok"
+      # The CLI documents no way to read the prompt from stdin.
+      assert Enum.chunk_every(args, 2, 1) |> Enum.member?(["-p", "do the thing"])
+
+      assert Enum.chunk_every(args, 2, 1)
+             |> Enum.member?(["--output-format", "streaming-messages-json"])
+
+      assert "--include-partial-messages" in args
+      refute "--resume" in args
+      refute "--model" in args
+    end
+
+    test "resumes a session and pins a model when there is one" do
+      {_, args} = Grok.command(%{session_id: "s-1", model: "grok-4.6"}, "go")
+      pairs = Enum.chunk_every(args, 2, 1)
+
+      assert ["--resume", "s-1"] in pairs
+      assert ["--model", "grok-4.6"] in pairs
+    end
+
+    test "it reads the same events Claude Code emits" do
+      state = state()
+
+      assert %{session: "s-9"} =
+               Grok.handle_event(%{"type" => "system", "session_id" => "s-9"}, state)
+
+      assert %{output: "streamed"} =
+               %{
+                 "type" => "stream_event",
+                 "event" => %{
+                   "type" => "content_block_delta",
+                   "delta" => %{"type" => "text_delta", "text" => "streamed"}
+                 }
+               }
+               |> Grok.handle_event(state)
+               |> settle()
+
+      assert %{finished: {"completed", nil}} =
+               %{"type" => "result", "result" => "done"}
+               |> Grok.handle_event(state)
+               |> settle()
+    end
+
+    test "an unauthenticated run fails with what the CLI said" do
+      # Captured from a real `grok -p ... --output-format streaming-messages-json`.
+      event = %{
+        "type" => "result",
+        "subtype" => "error_during_execution",
+        "is_error" => true,
+        "errors" => ["Not signed in. To authenticate without a browser, run:\n  grok login"],
+        "session_id" => ""
+      }
+
+      assert %{finished: {"failed", message}} = event |> Grok.handle_event(state()) |> settle()
+      assert message =~ "Not signed in"
+    end
+
+    test "an empty session id is not a session" do
+      # The CLI sends session_id: "" before it has one.
+      assert %{session: nil} =
+               Grok.handle_event(%{"type" => "system", "session_id" => ""}, state())
+    end
+
+    test "it cannot grant an approval" do
+      assert Grok.approve(state(), "r1", "accept", %{}) == :unsupported
+    end
+
+    test "a clean exit counts only when something was said" do
+      assert Grok.exit_status(0, %{output: "answer", diagnostics: ""}) == {"completed", nil}
+      assert {"failed", _} = Grok.exit_status(0, %{output: "", diagnostics: "why"})
+      assert {"failed", _} = Grok.exit_status(2, %{output: "answer", diagnostics: "why"})
+    end
+  end
+
+  describe "model listings" do
+    test "one name per line, with prose rejected" do
+      assert Agents.parse_lines("openrouter/mistralai/mistral-large\nopencode/big-pickle\n") ==
+               ["openrouter/mistralai/mistral-large", "opencode/big-pickle"]
+
+      # An unauthenticated CLI explains itself; that is not a model.
+      assert Agents.parse_lines("You are not authenticated.\n\ngrok-4.6\n") == ["grok-4.6"]
+    end
+
+    test "bullets, as Grok prints them" do
+      # Captured from a real `grok models`.
+      output = """
+      You are not authenticated.
+
+      Default model: grok-4.6
+
+      Available models:
+        * grok-4.6 (default)
+        - grok-4.5
+      """
+
+      assert Agents.parse_bullets(output) == ["grok-4.6", "grok-4.5"]
+    end
+
+    test "a provider that cannot list gets nothing rather than a guess" do
+      assert Agents.models("codex") == []
+      assert Agents.models("nothing-like-this") == []
     end
   end
 
