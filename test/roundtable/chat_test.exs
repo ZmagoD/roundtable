@@ -149,4 +149,56 @@ defmodule Roundtable.ChatTest do
     assert {:error, _} = Chat.assignment(linus, to_string(preset.id), "verification")
     assert {:error, _} = Chat.assignment(ada, "999999", "general")
   end
+
+  test "the roster tells each agent who is busy", %{room: room, ada: ada} do
+    {:ok, message} = Chat.post(room.id, "@ada start")
+    run = Repo.get_by!(Run, agent_id: ada.id, message_id: message.id)
+
+    {prompt, _} = Chat.prompt(ada, run)
+    assert prompt =~ "@ada: provider=codex"
+    assert prompt =~ "@linus: provider=claude"
+    assert prompt =~ "status=idle"
+
+    # A queued turn counts as busy: the work is already assigned.
+    Chat.change(run, status: "queued")
+    {prompt, _} = Chat.prompt(ada, run)
+    assert prompt =~ ~r/@ada:.*status=queued/
+    assert prompt =~ ~r/@linus:.*status=idle/
+
+    Chat.change(run, status: "running")
+    {prompt, _} = Chat.prompt(ada, run)
+    assert prompt =~ ~r/@ada:.*status=running/
+  end
+
+  test "the roster names a directory only when it differs from the room's", %{
+    room: room,
+    ada: ada
+  } do
+    {:ok, message} = Chat.post(room.id, "@ada start")
+    run = Repo.get_by!(Run, agent_id: ada.id, message_id: message.id)
+
+    # Everyone shares the room's directory, so repeating it says nothing.
+    {prompt, _} = Chat.prompt(ada, run)
+    refute prompt =~ "directory="
+
+    worktree =
+      Path.join(System.tmp_dir!(), "roundtable-worktree-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(worktree)
+    on_exit(fn -> File.rm_rf!(worktree) end)
+
+    {:ok, _} =
+      Chat.create_agent(room.id, %{
+        "name" => "grace",
+        "provider" => "opencode",
+        "directory" => worktree
+      })
+
+    {prompt, _} = Chat.prompt(ada, run)
+    assert prompt =~ "@grace: provider=opencode"
+    assert prompt =~ "directory=#{worktree}"
+
+    refute prompt =~
+             "@ada: provider=codex, model=provider default, relative cost=unknown, status=running, directory="
+  end
 end

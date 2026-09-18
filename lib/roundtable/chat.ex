@@ -199,21 +199,34 @@ defmodule Roundtable.Chat do
     # The assigned message is always explicit, even when an earlier turn read it.
     task = Repo.get!(Message, run.message_id)
 
+    room_directory = room!(agent.room_id).directory
+
     roster =
       agents(agent.room_id)
       |> Enum.map_join("\n", fn member ->
+        # Queued counts as busy: that turn is already assigned, and its model is
+        # the one it will actually run with.
         active =
           Repo.one(
             from r in Run,
-              where: r.agent_id == ^member.id and r.status in ["running", "approval"],
+              where: r.agent_id == ^member.id and r.status in ["running", "approval", "queued"],
               order_by: [desc: r.id],
               limit: 1
           )
 
         model = (active && active.model) || member.model || "provider default"
         tier = (active && active.cost_tier) || member.cost_tier
+        status = (active && active.status) || "idle"
 
-        "@#{member.name}: provider=#{member.provider}, model=#{model}, relative cost=#{tier}, role=#{member.role || "general"}"
+        # Only worth saying when it differs from the room's; otherwise it is the
+        # same path this agent was already told is its own.
+        directory =
+          if member.directory && member.directory != room_directory,
+            do: ", directory=#{member.directory}",
+            else: ""
+
+        "@#{member.name}: provider=#{member.provider}, model=#{model}, relative cost=#{tier}, " <>
+          "status=#{status}#{directory}, role=#{member.role || "general"}"
       end)
 
     prompt = """
@@ -232,6 +245,9 @@ defmodule Roundtable.Chat do
     Respond to the assigned request. Your final response is posted to the room.
     To delegate, address another participant with @name in your final response; it starts their turn.
     Avoid unnecessary mentions, acknowledgements, or reply loops. Delegation stops after four hops.
+    A participant whose status is running, approval or queued already has work; mentioning it queues
+    more behind that. Prefer an idle participant, or say why the busy one has to be the one.
+    A participant with its own directory is working in a separate checkout from yours.
     You can ask the human for clarification. Do not spawn additional agents outside this room.
 
     Unread room messages (JSON):
