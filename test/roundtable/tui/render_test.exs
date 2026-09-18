@@ -274,8 +274,8 @@ defmodule Roundtable.TUI.RenderTest do
 
     assert screen =~ "how to use Roundtable"
 
-    for command <- ~w(/who /agent /role /model /stop /reset /retry /approve /rooms /room
-                      /new-room /ask /delegate /changes /lazygit /quit) do
+    for command <- ~w(/who /agent /role /model /rename /providers /models /stop /reset /retry
+                      /approve /rooms /room /new-room /ask /delegate /changes /lazygit /quit) do
       assert screen =~ command, "help does not mention #{command}"
     end
 

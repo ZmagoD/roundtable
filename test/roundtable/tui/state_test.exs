@@ -189,6 +189,13 @@ defmodule Roundtable.TUI.StateTest do
     assert state.status =~ "No approval #9"
   end
 
+  test "the one-line command dump is gone; /help is the full screen" do
+    {state, []} = state() |> type("/commands") |> State.handle_key(:enter)
+
+    assert state.status =~ "Unknown command /commands"
+    refute state.help_visible
+  end
+
   test "unknown commands explain themselves" do
     {state, []} = state() |> type("/frobnicate") |> State.handle_key(:enter)
     assert state.status =~ "Unknown command /frobnicate"

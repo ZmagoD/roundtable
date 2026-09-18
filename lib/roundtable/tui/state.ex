@@ -204,17 +204,6 @@ defmodule Roundtable.TUI.State do
   defp dispatch(state, "help", _),
     do: {%{state | help_visible: not state.help_visible, scroll: 0}, []}
 
-  defp dispatch(state, "commands", _) do
-    {put_status(
-       state,
-       "/room <name> · /new-room <name> <dir> · /agent <name> <provider> [dir] · " <>
-         "/stop <agent> · /reset <agent> · /retry [run] · /approve accept|decline [n] · " <>
-         "/changes [on|off] · /who · /role <agent> <text> · " <>
-         "/providers · /models <provider> [filter] · /rename <agent> <new> · /ask <room>/<agent> <q> · /delegate <room>/<agent> <task> · " <>
-         "/lazygit · /quit"
-     ), []}
-  end
-
   defp dispatch(state, "rooms", _) do
     names = Enum.map_join(state.rooms, " · ", & &1.name)
 
@@ -328,7 +317,7 @@ defmodule Roundtable.TUI.State do
     end
   end
 
-  defp dispatch(state, name, _) when name in ~w(providers agents),
+  defp dispatch(state, "providers", _),
     do: {state, [:providers]}
 
   defp dispatch(state, "models", args),
