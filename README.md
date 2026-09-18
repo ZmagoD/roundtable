@@ -1,13 +1,33 @@
 # Roundtable
 
-A local workspace where you and your coding agents share a conversation.
-Built with Phoenix LiveView, OTP, and SQLite. Bring multiple named Codex,
-Claude Code, and OpenCode sessions into one room, assign work with mentions,
-and keep the history when you close the browser.
+A local workspace where you and your coding agents share one conversation.
+Bring named Codex, Claude Code, OpenCode and Grok sessions into a room, give
+each a role, assign work with `@mentions`, and keep the history when you close
+the browser. Phoenix LiveView, OTP and SQLite; everything stays on your machine.
 
-**Status:** early working prototype. Two clients ship: a browser UI and a
-terminal client, both driving the same coordination core. A public network API
-is not implemented yet.
+![A room with three agents working on a checkout service](docs/images/room-light.png)
+
+- **A room is a project.** One working tree, shared by everyone in it, with a
+  brief the whole team works to.
+- **Participants are named and briefed.** A role that says how to work, a model,
+  a relative cost tier — and the roster is what they use to hand work to each
+  other.
+- **Mentions are the unit of work.** `@builder` starts a turn; a mention inside
+  a reply delegates, up to four hops from your message.
+- **You can watch and stop it.** Tool approvals in the chat, a terminal in the
+  room, a changes pane, retries with partial output kept.
+- **Two clients, one core.** The browser UI and a terminal client that attaches
+  to the running service over distributed Erlang.
+
+**Status:** early working prototype. A public network API is not implemented
+yet.
+
+New here? [Install](#install), then the [walkthrough](#a-walkthrough).
+Then: **[Guides](docs/GUIDES.md)** for the task-shaped version (teams, roles,
+room briefs, profiles, unattended runs, troubleshooting) ·
+**[Adapters](docs/ADAPTERS.md)** to add a provider ·
+**[Testing](docs/TESTING.md)** · **[AGENTS.md](AGENTS.md)** for how this
+codebase is written · **[Contributing](CONTRIBUTING.md)**.
 
 ## Install
 
@@ -451,13 +471,11 @@ inside it.
 
 ### The same room in a browser
 
-`roundtable open` gives the same room a window. The header carries the branch
-and the directory, the right-hand column is the roster and what has changed,
-and the theme follows your system.
-
-![The Checkout room in the browser](docs/images/room-light.png)
-
-Dark is the same palette with its lightness inverted, not a second design:
+`roundtable open` gives the same room a window — the one at the top of this
+page. The header carries the branch and the directory, the right-hand column is
+the roster with each participant's role, model and tier, and the theme follows
+your system. Dark is the same palette with its lightness inverted, not a second
+design:
 
 ![The same room in dark mode](docs/images/room-dark.png)
 
@@ -486,6 +504,8 @@ with partial output and a retry control. Each turn has a 30-minute timeout.
 
 ### Agent profiles: one library, any room
 
+![The agent profile library](docs/images/agent-profiles.png)
+
 **Agent profiles** in the sidebar is where a participant is defined once —
 provider, model, cost tier, role, how it handles tool approvals — and added to
 any room from there, or with `/hire <profile> [name]` in the terminal client.
@@ -510,6 +530,8 @@ brief and a role both apply an agent follows both, and is told to say so rather
 than choose silently if they genuinely conflict.
 
 ### What a participant knows about itself
+
+![A participant's role, model and tool approvals](docs/images/agent-setup.png)
 
 Every turn opens the same way: who it is, and the role it works to. The role is
 a standing brief — what this participant is for *and how it should behave* — so
