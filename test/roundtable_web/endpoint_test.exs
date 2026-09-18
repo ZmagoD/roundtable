@@ -1,4 +1,4 @@
-defmodule RoundtableWeb.PageControllerTest do
+defmodule RoundtableWeb.EndpointTest do
   use RoundtableWeb.ConnCase
 
   test "GET /", %{conn: conn} do

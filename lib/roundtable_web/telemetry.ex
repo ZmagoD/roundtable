@@ -44,13 +44,6 @@ defmodule RoundtableWeb.Telemetry do
         unit: {:native, :millisecond}
       ),
       sum("phoenix.socket_drain.count"),
-      summary("phoenix.channel_joined.duration",
-        unit: {:native, :millisecond}
-      ),
-      summary("phoenix.channel_handled_in.duration",
-        tags: [:event],
-        unit: {:native, :millisecond}
-      ),
 
       # Database Metrics
       summary("roundtable.repo.query.total_time",

@@ -15,7 +15,6 @@ defmodule Roundtable.Application do
       Roundtable.Repo,
       {Ecto.Migrator,
        repos: Application.fetch_env!(:roundtable, :ecto_repos), skip: skip_migrations?()},
-      {DNSCluster, query: Application.get_env(:roundtable, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Roundtable.PubSub},
       Roundtable.AgentRuntime,
       # Start to serve requests, typically the last entry
