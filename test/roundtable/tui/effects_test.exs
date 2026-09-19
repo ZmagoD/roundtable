@@ -276,7 +276,7 @@ defmodule Roundtable.TUI.EffectsTest do
 
   test "an unresolvable cross-room target is reported, not sent", %{context: context} do
     context = TUI.perform({:cross_room, "ask", "ghost/grace", "hello"}, context)
-    assert context.state.status =~ "No room called ghost"
+    assert context.state.status =~ "No team called ghost in this project"
   end
 
   test "a cross-room request without a room says so", %{context: context} do

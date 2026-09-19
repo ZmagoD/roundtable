@@ -706,8 +706,13 @@ defmodule Roundtable.Chat do
   defp dispatch_cross_room(%{metadata: %{"cross_room" => _}}, _body), do: :ok
 
   defp dispatch_cross_room(message, body) do
+    # Teams talk to each other inside one project. A team of the same name in
+    # another project is not reachable from here, which is what stops a message
+    # addressed to "engineering" from arriving in someone else's.
+    organization_id = room!(message.room_id).organization_id
+
     for {slug, agent_name} <- cross_room_mentions(body) do
-      with room when not is_nil(room) <- find_room(slug),
+      with {:ok, room} <- find_room(slug, organization_id),
            true <- room.id != message.room_id,
            target when not is_nil(target) <-
              Enum.find(agents(room.id), &(&1.name == agent_name)) do
@@ -757,6 +762,42 @@ defmodule Roundtable.Chat do
         {id, ""} -> Enum.find(rooms(), &(&1.id == id))
         _ -> nil
       end
+  end
+
+  @doc """
+  Finds a team inside one project, by slug, exact name or id.
+
+  Team names only have to be unique inside a project, so two of them elsewhere
+  are not this project's problem — and a name matching more than one team here
+  is an error rather than a guess. Quietly reaching whichever was made first is
+  how a message lands in the wrong room.
+  """
+  def find_room(reference, organization_id) do
+    reference = String.trim(reference)
+    candidates = rooms(organization_id)
+    slug = room_slug(reference)
+
+    candidates
+    |> Enum.filter(&(room_slug(&1) == slug or &1.name == reference))
+    |> one_room(reference, candidates)
+  end
+
+  defp one_room([room], _reference, _candidates), do: {:ok, room}
+  defp one_room([], reference, candidates), do: room_by_id(reference, candidates)
+
+  defp one_room(many, reference, _candidates) do
+    ids = Enum.map_join(many, ", ", &"##{&1.id}")
+
+    {:error, "More than one team here is called #{reference} (#{ids}). Say which one by id."}
+  end
+
+  defp room_by_id(reference, candidates) do
+    with {id, ""} <- Integer.parse(reference),
+         room when not is_nil(room) <- Enum.find(candidates, &(&1.id == id)) do
+      {:ok, room}
+    else
+      _ -> {:error, "No team called #{reference} in this project."}
+    end
   end
 
   @doc "Extracts `@room/agent` pairs from a message body."
@@ -858,7 +899,7 @@ defmodule Roundtable.Chat do
   was asked before the answer arrives out of nowhere.
   """
   def request_from_room(kind, room_id, target, body) do
-    with {:ok, room, agent} <- resolve_target(target),
+    with {:ok, room, agent} <- resolve_target(target, room!(room_id).organization_id),
          {:ok, note} <-
            post(
              room_id,
@@ -871,9 +912,9 @@ defmodule Roundtable.Chat do
     end
   end
 
-  defp resolve_target(target) do
+  defp resolve_target(target, organization_id) do
     with {:ok, room_ref, agent_name} <- split_target(target),
-         {:ok, room} <- find_target_room(room_ref) do
+         {:ok, room} <- find_room(room_ref, organization_id) do
       find_target_agent(room, agent_name)
     end
   end
@@ -882,13 +923,6 @@ defmodule Roundtable.Chat do
     case String.split(String.trim(target), "/", parts: 2) do
       [room_ref, agent_name] when agent_name != "" -> {:ok, room_ref, agent_name}
       _ -> {:error, "Address it as room/agent, for example design-team/grace."}
-    end
-  end
-
-  defp find_target_room(room_ref) do
-    case find_room(room_ref) do
-      nil -> {:error, "No room called #{room_ref}."}
-      room -> {:ok, room}
     end
   end
 

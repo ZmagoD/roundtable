@@ -161,7 +161,7 @@ defmodule Roundtable.CrossRoomTest do
 
   test "unresolvable targets explain themselves", ctx do
     assert {:error, reason} = Chat.request_from_room("ask", ctx.platform.id, "ghost/grace", "hi")
-    assert reason =~ "No room called ghost"
+    assert reason =~ "No team called ghost in this project"
 
     assert {:error, reason} =
              Chat.request_from_room("ask", ctx.platform.id, "design-team/ghost", "hi")

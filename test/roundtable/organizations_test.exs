@@ -147,6 +147,86 @@ defmodule Roundtable.OrganizationsTest do
     end
   end
 
+  describe "teams talking to each other" do
+    setup do
+      {:ok, alpha} = Chat.create_organization(%{"name" => "Alpha"})
+      {:ok, beta} = Chat.create_organization(%{"name" => "Beta"})
+
+      {:ok, alpha_eng} =
+        Chat.create_room(%{
+          "name" => "Engineering",
+          "directory" => File.cwd!(),
+          "organization_id" => alpha.id
+        })
+
+      {:ok, alpha_sales} =
+        Chat.create_room(%{
+          "name" => "Sales",
+          "directory" => File.cwd!(),
+          "organization_id" => alpha.id
+        })
+
+      {:ok, beta_eng} =
+        Chat.create_room(%{
+          "name" => "Engineering",
+          "directory" => File.cwd!(),
+          "organization_id" => beta.id
+        })
+
+      %{
+        alpha: alpha,
+        beta: beta,
+        alpha_eng: alpha_eng,
+        alpha_sales: alpha_sales,
+        beta_eng: beta_eng
+      }
+    end
+
+    test "reach the team of that name in their own project", ctx do
+      assert {:ok, found} = Chat.find_room("engineering", ctx.alpha.id)
+      assert found.id == ctx.alpha_eng.id
+
+      assert {:ok, found} = Chat.find_room("engineering", ctx.beta.id)
+      assert found.id == ctx.beta_eng.id
+    end
+
+    test "cannot reach a team in another project", ctx do
+      assert {:error, reason} = Chat.find_room("sales", ctx.beta.id)
+      assert reason =~ "No team called sales in this project"
+    end
+
+    test "an ask crosses rooms inside one project", ctx do
+      {:ok, _} =
+        Chat.create_agent(ctx.alpha_sales.id, %{
+          "name" => "grace",
+          "provider" => "codex",
+          "directory" => File.cwd!()
+        })
+
+      assert {:ok, _request} =
+               Chat.request_from_room(
+                 "ask",
+                 ctx.alpha_eng.id,
+                 "sales/grace",
+                 "what is the price?"
+               )
+    end
+
+    test "an ask does not cross into another project", ctx do
+      {:ok, _} =
+        Chat.create_agent(ctx.alpha_sales.id, %{
+          "name" => "grace",
+          "provider" => "codex",
+          "directory" => File.cwd!()
+        })
+
+      assert {:error, reason} =
+               Chat.request_from_room("ask", ctx.beta_eng.id, "sales/grace", "what is the price?")
+
+      assert reason =~ "No team called sales in this project"
+    end
+  end
+
   describe "renaming a project" do
     test "keeps its teams" do
       {:ok, organization} = Chat.create_organization(%{"name" => "Alpha"})
