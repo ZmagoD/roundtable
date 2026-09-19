@@ -14,6 +14,7 @@ defmodule Roundtable.Chat do
     CrossRoomRequest,
     Message,
     ModelPreset,
+    Organization,
     Room,
     RoomNote,
     Run,
@@ -21,6 +22,27 @@ defmodule Roundtable.Chat do
   }
 
   alias Roundtable.Repo
+
+  @doc "Every project, oldest first, so the list does not reorder as names change."
+  def organizations, do: Repo.all(from o in Organization, order_by: [asc: o.id])
+
+  def organization!(id), do: Repo.get!(Organization, id)
+
+  @doc """
+  Where a room goes when nobody said which project it belongs to.
+
+  The oldest organization, which on an installation that predates them is the
+  one the migration put every existing room into.
+  """
+  def default_organization, do: Repo.one(from o in Organization, order_by: [asc: o.id], limit: 1)
+
+  def create_organization(attrs) do
+    %Organization{} |> Organization.changeset(attrs) |> Repo.insert() |> notify_rooms()
+  end
+
+  def update_organization(id, attrs) do
+    organization!(id) |> Organization.changeset(attrs) |> Repo.update() |> notify_rooms()
+  end
 
   def model_presets, do: Repo.all(from p in ModelPreset, order_by: [p.provider, p.name])
 
@@ -203,6 +225,14 @@ defmodule Roundtable.Chat do
   defp valid_preset(_preset, _id, agent), do: {:error, "Choose a model for #{agent.provider}."}
 
   def rooms, do: Repo.all(from r in Room, order_by: [asc: r.id])
+
+  @doc "The teams in one project."
+  def rooms(organization_id),
+    do:
+      Repo.all(
+        from r in Room, where: r.organization_id == ^organization_id, order_by: [asc: r.id]
+      )
+
   def room!(id), do: Repo.get!(Room, id)
   def agent!(id), do: Repo.get!(Agent, id)
   def agent(id), do: Repo.get(Agent, id)
@@ -286,7 +316,7 @@ defmodule Roundtable.Chat do
     attrs = normalise(attrs)
 
     changeset =
-      %Room{}
+      new_room()
       |> Room.changeset(attrs)
       |> valid_directory()
       |> Ecto.Changeset.validate_required([:context])
@@ -337,7 +367,22 @@ defmodule Roundtable.Chat do
   end
 
   def create_room(attrs) do
-    %Room{} |> Room.changeset(attrs) |> valid_directory() |> Repo.insert() |> notify_rooms()
+    new_room()
+    |> Room.changeset(attrs)
+    |> valid_directory()
+    |> Repo.insert()
+    |> notify_rooms()
+  end
+
+  # The project is on the struct rather than put into the changeset, so that
+  # `validate_required` sees it. A caller that names one overrides it on cast,
+  # and every existing way of making a room keeps working until there is a
+  # picker in front of it.
+  defp new_room do
+    case default_organization() do
+      nil -> %Room{}
+      organization -> %Room{organization_id: organization.id}
+    end
   end
 
   @doc """
