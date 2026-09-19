@@ -110,6 +110,27 @@ defmodule RoundtableWeb.RoomLive do
     end
   end
 
+  def handle_event("make-team-head", %{"id" => id}, socket) do
+    {:ok, head} = Chat.set_team_head(String.to_integer(id))
+
+    {:noreply,
+     socket
+     |> put_flash(:info, "#{head.name} is the team head. Work for this team goes through them.")
+     |> refresh()}
+  end
+
+  def handle_event("clear-team-head", _params, %{assigns: %{room: room}} = socket)
+      when not is_nil(room) do
+    :ok = Chat.clear_team_head(room.id)
+
+    {:noreply,
+     socket
+     |> put_flash(:info, "This team has no head now. Address anyone in it directly.")
+     |> refresh()}
+  end
+
+  def handle_event("clear-team-head", _params, socket), do: {:noreply, socket}
+
   def handle_event("panel", %{"name" => name}, socket) do
     socket = assign(socket, editing_agent: nil, editing_renamable: true, editing_room: nil)
     room_form = to_form(%{"directory" => socket.assigns.directory}, as: :room)

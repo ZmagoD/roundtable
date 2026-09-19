@@ -382,7 +382,10 @@
               <div class="agent-card-top">
                 <div class={["avatar", agent.provider]}>{initials(agent.name)}</div><div>
                   <strong>{agent.name}</strong><small>{agent.provider}</small>
-                </div><span class={["status-dot", status(agent, @runs)]}></span>
+                </div><span :if={agent.head} class="team-head-badge">Team head</span><span class={[
+                  "status-dot",
+                  status(agent, @runs)
+                ]}></span>
                 <button
                   class="icon-button agent-edit"
                   phx-click="edit-agent"
@@ -393,6 +396,27 @@
                   <.icon name="hero-pencil-square" class="size-4" />
                 </button>
               </div>
+              <p class="agent-head-control">
+                <button
+                  :if={!agent.head}
+                  id={"make-head-#{agent.id}"}
+                  class="text-button"
+                  type="button"
+                  phx-click="make-team-head"
+                  phx-value-id={agent.id}
+                >
+                  Make team head
+                </button>
+                <button
+                  :if={agent.head}
+                  id={"clear-head-#{agent.id}"}
+                  class="text-button"
+                  type="button"
+                  phx-click="clear-team-head"
+                >
+                  Leave the team without a head
+                </button>
+              </p>
               <p :if={agent.role && agent.role != ""}>{agent.role}</p>
               <p :if={agent.role in [nil, ""]} class="agent-no-role">
                 No role set —

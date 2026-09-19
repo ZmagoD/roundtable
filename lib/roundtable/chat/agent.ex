@@ -10,6 +10,9 @@ defmodule Roundtable.Chat.Agent do
     field :model, :string
     field :cost_tier, :string, default: "unknown"
     field :auto_approve, :boolean, default: false
+    # The one participant in this team the human talks to, who hands work to
+    # the rest. Set through Chat.set_team_head/1, never cast from a form.
+    field :head, :boolean, default: false
     field :directory, :string
     field :session_id, :string
     field :session_model, :string

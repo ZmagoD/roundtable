@@ -265,6 +265,41 @@ defmodule Roundtable.Chat do
   def agent!(id), do: Repo.get!(Agent, id)
   def agent(id), do: Repo.get(Agent, id)
   def agents(room_id), do: Repo.all(from a in Agent, where: a.room_id == ^room_id, order_by: a.id)
+
+  @doc "The participant this team's work goes through, or nil while nobody is."
+  def team_head(room_id),
+    do: Repo.one(from a in Agent, where: a.room_id == ^room_id and a.head)
+
+  @doc """
+  Makes one participant the team's head, and the others not.
+
+  Both in one transaction: the database holds "exactly one head per team"
+  through a partial unique index, so clearing has to land before setting or
+  the second write trips the index.
+  """
+  def set_team_head(agent_id) do
+    agent = agent!(agent_id)
+
+    Repo.transaction(fn ->
+      Repo.update_all(
+        from(a in Agent, where: a.room_id == ^agent.room_id and a.head),
+        set: [head: false]
+      )
+
+      Repo.update_all(from(a in Agent, where: a.id == ^agent.id), set: [head: true])
+    end)
+
+    broadcast(agent.room_id)
+    {:ok, agent!(agent_id)}
+  end
+
+  @doc "Leaves a team with nobody designated, which is how every team starts."
+  def clear_team_head(room_id) do
+    Repo.update_all(from(a in Agent, where: a.room_id == ^room_id and a.head), set: [head: false])
+    broadcast(room_id)
+    :ok
+  end
+
   def agents, do: Repo.all(from a in Agent, order_by: [asc: a.room_id, asc: a.id])
 
   def messages(room_id),
@@ -646,7 +681,7 @@ defmodule Roundtable.Chat do
       status = (active && active.status) || "idle"
 
       "@#{member.name}: provider=#{member.provider}, model=#{model}, relative cost=#{tier}, " <>
-        "status=#{status}, role=#{member.role || "general"}"
+        "status=#{status}, #{leads(member)}role=#{member.role || "general"}"
     end)
   end
 
@@ -1121,6 +1156,11 @@ defmodule Roundtable.Chat do
     "\nThe #{count} oldest unread messages are left out: this room is longer than one turn can " <>
       "carry. Ask someone here if you need what was said before them."
   end
+
+  # Said in the roster rather than as a rule of its own: a head is who work
+  # goes through, not an authority over what anyone is allowed to say.
+  defp leads(%{head: true}), do: "team head, "
+  defp leads(_member), do: ""
 
   defp within_budget(notes) do
     notes
