@@ -1005,7 +1005,7 @@ defmodule Roundtable.Chat do
         m -> m.id
       end
 
-    unread = Enum.filter(history, &(&1.id > agent.last_seen_id))
+    {unread, omitted} = recent_unread(Enum.filter(history, &(&1.id > agent.last_seen_id)))
     # The assigned message is always explicit, even when an earlier turn read it.
     task = Repo.get!(Message, run.message_id)
 
@@ -1045,7 +1045,7 @@ defmodule Roundtable.Chat do
     more behind that. Prefer an idle participant, or say why the busy one has to be the one.
     You can ask the human for clarification. Do not spawn additional agents outside this room.#{tools(agent)}
 
-    Unread room messages (JSON):
+    Unread room messages (JSON):#{older(omitted)}
     #{Jason.encode!(Enum.map(unread, &%{id: &1.id, sender: &1.sender, body: &1.body, assignment: &1.metadata}))}
 
     Assigned message #{task.id} from #{task.sender}:
@@ -1059,6 +1059,13 @@ defmodule Roundtable.Chat do
   # and the rest fill what is left, newest to oldest: the most recent thing the
   # room found out is the one most likely to still be true. A room with nothing
   # recorded gets no section at all rather than a heading saying so.
+  # A room outlives a model's context window. Once a participant's unread
+  # messages no longer fit, the turn fails — and a failed turn does not move
+  # `last_seen_id`, so the next one carries the same oversized history and
+  # fails the same way. Carrying the newest that fit is what lets a participant
+  # that has fallen behind rejoin the conversation at all.
+  @unread_budget 60_000
+
   @notes_budget 2000
 
   defp learned(room_id) do
@@ -1087,6 +1094,32 @@ defmodule Roundtable.Chat do
         where: n.room_id == ^room_id and n.kind in ^carried,
         order_by: [desc: n.pinned, desc: n.id]
     )
+  end
+
+  # Newest first until the budget runs out, then back into reading order, so
+  # what is carried is one continuous stretch ending at now rather than a
+  # scatter of whichever messages happened to be small.
+  defp recent_unread(unread) do
+    kept =
+      unread
+      |> Enum.reverse()
+      |> Enum.reduce_while({[], 0}, fn message, {kept, size} ->
+        cost = String.length(message.body) + 40
+
+        if size + cost > @unread_budget,
+          do: {:halt, {kept, size}},
+          else: {:cont, {[message | kept], size + cost}}
+      end)
+      |> elem(0)
+
+    {kept, length(unread) - length(kept)}
+  end
+
+  defp older(0), do: ""
+
+  defp older(count) do
+    "\nThe #{count} oldest unread messages are left out: this room is longer than one turn can " <>
+      "carry. Ask someone here if you need what was said before them."
   end
 
   defp within_budget(notes) do
