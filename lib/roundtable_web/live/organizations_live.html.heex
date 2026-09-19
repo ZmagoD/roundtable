@@ -1,0 +1,200 @@
+<Layouts.app flash={@flash}>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <.link class="brand" navigate={~p"/"}>
+        <span class="brand-mark">r<span>t</span></span><span>roundtable<small>Your team workspace</small></span>
+      </.link>
+      <div class="sidebar-label">
+        <span>Team rooms</span><.link class="icon-button" navigate={~p"/"} aria-label="Rooms">⌂</.link>
+      </div>
+      <nav aria-label="Rooms">
+        <.link
+          :for={room <- @rooms}
+          class="room-link"
+          title={room.name}
+          navigate={~p"/rooms/#{room.id}"}
+        >
+          <span class="hash">#</span><span>{room.name}</span>
+        </.link>
+      </nav>
+      <div class="workspace-actions" id="workspace-navigation">
+        <.link id="workspace-home-link" class="sidebar-action" navigate={~p"/"}>
+          <.icon name="hero-arrow-left" class="size-4" /><span>Back to teams</span>
+        </.link>
+        <.link
+          id="workspace-organizations-link"
+          class="sidebar-action selected"
+          navigate={~p"/organizations"}
+          aria-current="page"
+        >
+          <.icon name="hero-building-office-2" class="size-4" /><span>Organizations</span>
+        </.link>
+        <.link id="workspace-schedules-link" class="sidebar-action" navigate={~p"/schedules"}>
+          <.icon name="hero-calendar-days" class="size-4" /><span>Schedules</span>
+        </.link>
+      </div>
+      <div class="sidebar-bottom">
+        <span class="online-dot"></span>
+        Local workspace<small>Messages saved on this machine</small>
+      </div>
+    </aside>
+
+    <main class="main-panel management-page">
+      <header class="room-header">
+        <div>
+          <div class="eyebrow">WORKSPACE</div><h1>Organizations</h1><p>
+            One project per organization, with its teams inside it
+          </p>
+        </div>
+        <button id="new-organization" class="button" phx-click="new-organization">
+          New organization <.icon name="hero-plus" class="size-4" />
+        </button>
+      </header>
+
+      <section class="management-content">
+        <div class="management-intro">
+          <div>
+            <div class="eyebrow">PROJECTS</div><h2>Your organizations</h2><p>
+              Teams belong to a project and talk to each other inside it. Two projects can each
+              have a team called Engineering without one reaching the other.
+            </p>
+          </div>
+          <div class="schedule-stats">
+            <strong>{length(@organizations)}</strong><span>{if length(@organizations) == 1,
+              do: "organization",
+              else: "organizations"}</span>
+          </div>
+        </div>
+
+        <div class="schedule-workspace">
+          <div class="schedule-list-panel">
+            <div class="schedule-list-heading">
+              <div>
+                <span class="eyebrow">PROJECTS</span><h2>All organizations</h2>
+              </div>
+              <span class="schedule-list-count">{length(@organizations)} total</span>
+            </div>
+
+            <div :if={@organizations == []} class="empty-state schedule-empty">
+              <span class="empty-state-icon">✦</span>
+              <strong>No organizations yet</strong>
+              <p>Name your first project, then add the teams that work on it.</p>
+            </div>
+
+            <div :if={@organizations != []} class="schedule-table" role="list">
+              <article
+                :for={entry <- @organizations}
+                id={"organization-#{entry.record.id}"}
+                class={["schedule-card", @editing_id == entry.record.id && "selected"]}
+                role="listitem"
+              >
+                <div class="schedule-card-main">
+                  <div class="schedule-card-kicker">
+                    <span class="eyebrow">ORGANIZATION</span><span class="schedule-status active">
+                      {length(entry.teams)} {if length(entry.teams) == 1,
+                        do: "team",
+                        else: "teams"}
+                    </span>
+                  </div>
+                  <h3>{entry.record.name}</h3>
+                  <div class="schedule-target">
+                    <span :if={entry.record.directory}>{entry.record.directory}</span>
+                    <span :if={is_nil(entry.record.directory)}>
+                      No project folder yet
+                    </span>
+                  </div>
+                  <p :if={entry.record.context != ""} class="organization-brief">
+                    {entry.record.context}
+                  </p>
+                  <div :if={entry.teams != []} class="organization-teams">
+                    <.link
+                      :for={team <- entry.teams}
+                      class="room-link"
+                      navigate={~p"/rooms/#{team.id}"}
+                    >
+                      <span class="hash">#</span><span>{team.name}</span>
+                    </.link>
+                  </div>
+                  <p :if={entry.teams == []} class="organization-teams-empty">
+                    No teams in this organization yet.
+                  </p>
+                </div>
+                <div class="schedule-card-actions">
+                  <button
+                    id={"edit-organization-#{entry.record.id}"}
+                    class="text-button"
+                    type="button"
+                    phx-click="edit-organization"
+                    phx-value-id={entry.record.id}
+                  >
+                    Edit
+                  </button>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div class="schedule-form-panel">
+            <div class="schedule-list-heading">
+              <div>
+                <span class="eyebrow">{if @editing_id, do: "EDIT", else: "NEW"}</span>
+                <h2>{if @editing_id, do: "Edit organization", else: "Add an organization"}</h2>
+              </div>
+            </div>
+
+            <.form
+              for={@organization_form}
+              id="organization-form"
+              phx-submit="save-organization"
+            >
+              <.input
+                field={@organization_form[:name]}
+                type="text"
+                label="Name"
+                placeholder="Roundtable app"
+              />
+              <.input
+                field={@organization_form[:directory]}
+                type="text"
+                label="Project folder"
+                placeholder="/home/you/Work/project"
+              />
+              <p class="field-hint">
+                Where this project's teams work and save files. Leave it empty for a project
+                that is not a checkout, such as marketing or sales.
+              </p>
+              <.input
+                field={@organization_form[:context]}
+                type="textarea"
+                label="Shared brief"
+                placeholder="What the whole project is doing."
+              />
+              <p class="field-hint">
+                Every team in this project reads this before its own brief.
+              </p>
+
+              <p :if={@form_error} id="organization-form-error" class="form-error">
+                {@form_error}
+              </p>
+
+              <div class="form-actions">
+                <button id="save-organization" class="button" type="submit">
+                  {if @editing_id, do: "Save changes", else: "Create organization"}
+                </button>
+                <button
+                  :if={@editing_id}
+                  id="cancel-edit-organization"
+                  class="text-button"
+                  type="button"
+                  phx-click="cancel-edit"
+                >
+                  Cancel
+                </button>
+              </div>
+            </.form>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</Layouts.app>

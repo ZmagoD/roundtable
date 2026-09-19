@@ -27,6 +27,7 @@ defmodule RoundtableWeb.Router do
 
     live "/", RoomLive, :index
     live "/rooms/:id", RoomLive, :show
+    live "/organizations", OrganizationsLive, :index
     live "/schedules", SchedulesLive, :index
   end
 
