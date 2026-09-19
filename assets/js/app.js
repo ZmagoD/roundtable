@@ -53,6 +53,11 @@ window.addEventListener("click", event => {
   applyTheme(choice)
 })
 
+window.addEventListener("roundtable:open-dialog", event => {
+  if (!event.target.open) event.target.showModal()
+})
+window.addEventListener("roundtable:close-dialog", event => event.target.close())
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
@@ -221,8 +226,14 @@ const liveSocket = new LiveSocket("/live", Socket, {
 })
 
 // Show progress bar on live navigation and form submits
-topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
-window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
+window.addEventListener("phx:page-loading-start", _info => {
+  const style = getComputedStyle(document.documentElement)
+  topbar.config({
+    barColors: {0: style.getPropertyValue("--green-ink-13").trim()},
+    shadowColor: style.getPropertyValue("--green-ink-4").trim()
+  })
+  topbar.show(300)
+})
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
 // connect if there are any LiveViews on the page

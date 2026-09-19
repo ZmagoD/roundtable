@@ -122,19 +122,19 @@
         </div>
       </section>
 
-      <div
+      <dialog
         :if={@schedule_modal}
         class="modal-backdrop"
         id="schedule-modal"
+        aria-labelledby="schedule-modal-title"
+        phx-mounted={
+          JS.ignore_attributes("open") |> JS.push_focus() |> JS.dispatch("roundtable:open-dialog")
+        }
+        phx-remove={JS.dispatch("roundtable:close-dialog") |> JS.pop_focus()}
         phx-window-keydown="close-schedule-modal"
         phx-key="Escape"
       >
-        <section
-          class="modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="schedule-modal-title"
-        >
+        <section class="modal">
           <button
             class="modal-close icon-button"
             phx-click="close-schedule-modal"
@@ -210,7 +210,7 @@
             </button>
           </.form>
         </section>
-      </div>
+      </dialog>
     </main>
   </div>
 </Layouts.app>

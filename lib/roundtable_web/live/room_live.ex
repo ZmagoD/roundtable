@@ -891,7 +891,13 @@ defmodule RoundtableWeb.RoomLive do
     ]
 
   defp initials(name), do: name |> String.slice(0, 2) |> String.upcase()
-  defp time(datetime), do: Calendar.strftime(datetime, "%H:%M")
+
+  def time(datetime) do
+    format =
+      if DateTime.to_date(datetime) == Date.utc_today(), do: "%H:%M", else: "%d %b %Y · %H:%M"
+
+    Calendar.strftime(datetime, format)
+  end
 
   defp active_runs(runs),
     do: Enum.filter(runs, &(&1.status in ["running", "approval", "queued"])) |> Enum.reverse()

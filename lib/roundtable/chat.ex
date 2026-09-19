@@ -205,6 +205,7 @@ defmodule Roundtable.Chat do
   def rooms, do: Repo.all(from r in Room, order_by: [asc: r.id])
   def room!(id), do: Repo.get!(Room, id)
   def agent!(id), do: Repo.get!(Agent, id)
+  def agent(id), do: Repo.get(Agent, id)
   def agents(room_id), do: Repo.all(from a in Agent, where: a.room_id == ^room_id, order_by: a.id)
   def agents, do: Repo.all(from a in Agent, order_by: [asc: a.room_id, asc: a.id])
 

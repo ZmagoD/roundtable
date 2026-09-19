@@ -11,6 +11,7 @@
    transform of a single palette rather than two sets of colours to keep
    in step. */
 :root {
+  --red-mid-1: #a5544a;
   --blue-mid-1: #7d86ad;
   --blue-mid-2: #6c80a3;
   --blue-mid-3: #838ca9;
@@ -152,6 +153,7 @@
 /* Follow the system unless the viewer has chosen otherwise. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    --red-mid-1: #d58b80;
     --blue-mid-1: #515a81;
     --blue-mid-2: #596d8f;
     --blue-mid-3: #565e7b;
@@ -292,6 +294,7 @@
 }
 
 :root[data-theme="dark"] {
+  --red-mid-1: #d58b80;
   --blue-mid-1: #515a81;
   --blue-mid-2: #596d8f;
   --blue-mid-3: #565e7b;
@@ -650,7 +653,7 @@ h1, h2, h3, p { margin: 0; }
 .changes-lines { margin-left: auto; display: flex; gap: 6px; font-size: 11px; white-space: nowrap; }
 .changes-more { color: var(--muted); font-size: 11px; }
 .added { color: var(--green); }
-.removed { color: var(--red-mid-1, #a5544a); }
+.removed { color: var(--red-mid-1); }
 .changes-diff { margin: 0; padding: 12px 14px; border-top: 1px solid var(--line); background: var(--green-surface-1); max-height: 340px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.55; white-space: pre; }
 .branch-badge { display: inline-flex; align-items: center; gap: 4px; margin-right: 9px; padding: 2px 7px; border-radius: 5px; background: var(--green-soft-3); color: var(--green); font-size: 11px; font-weight: 600; }
 
@@ -680,8 +683,8 @@ h1, h2, h3, p { margin: 0; }
 .terminal-host { flex: 1; min-height: 0; padding: 6px 4px 4px 10px; }
 .terminal-host .xterm { height: 100%; }
 
-.text-button.danger, .button.secondary.danger { color: var(--red-mid-1, #a5544a); }
-.button.secondary.danger { border-color: var(--red-mid-1, #a5544a); }
+.text-button.danger, .button.secondary.danger { color: var(--red-mid-1); }
+.button.secondary.danger { border-color: var(--red-mid-1); }
 
 /* Directory picker: type to narrow, click to walk in. */
 .directory-picker { list-style: none; margin: -4px 0 10px; padding: 6px; max-height: 210px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--green-surface-2); }
@@ -761,3 +764,8 @@ select {
   .header-actions { flex-wrap: wrap; }
   .room-body { min-height: 60dvh; }
 }
+
+/* Native dialogs make the background inert and keep keyboard focus inside. */
+dialog.modal-backdrop { margin: 0; width: 100%; height: 100%; max-width: none; max-height: none; border: 0; color: inherit; }
+dialog.modal-backdrop:not([open]) { display: none; }
+dialog.modal-backdrop::backdrop { background: transparent; }

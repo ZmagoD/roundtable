@@ -48,4 +48,24 @@ defmodule RoundtableWeb.WorkspaceNavigationTest do
 
     assert has_element?(schedules, "#workspace-home-link[href='/']")
   end
+
+  test "message times distinguish older days and years" do
+    assert RoundtableWeb.RoomLive.time(~U[2024-01-02 09:15:00Z]) == "02 Jan 2024 · 09:15"
+    today = DateTime.new!(Date.utc_today(), ~T[09:15:00], "Etc/UTC")
+    assert RoundtableWeb.RoomLive.time(today) == "09:15"
+  end
+
+  test "room and workspace schedule panels have named native dialogs", %{conn: conn} do
+    {:ok, view, _} = live(conn, "/")
+    view |> element("#build-team-button") |> render_click()
+    assert has_element?(view, "dialog#setup-panel[aria-labelledby='modal-title'] #team-form")
+
+    {:ok, schedules, _} = live(conn, "/schedules")
+    schedules |> element(".room-header button") |> render_click()
+
+    assert has_element?(
+             schedules,
+             "dialog#schedule-modal[aria-labelledby='schedule-modal-title']"
+           )
+  end
 end
