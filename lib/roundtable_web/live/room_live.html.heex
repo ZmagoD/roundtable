@@ -2,6 +2,23 @@
   <div class="app-shell">
     <aside class="sidebar">
       <a class="brand" href="/"><span class="brand-mark">r<span>t</span></span><span>roundtable<small>Your team workspace</small></span></a>
+      <div :if={@organizations != []} class="organization-switcher" id="organization-switcher">
+        <span class="eyebrow">ORGANIZATION</span>
+        <button
+          :for={organization <- @organizations}
+          id={"switch-organization-#{organization.id}"}
+          type="button"
+          class={["organization-choice", @organization_id == organization.id && "selected"]}
+          aria-current={if @organization_id == organization.id, do: "true"}
+          phx-click="select-organization"
+          phx-value-id={organization.id}
+        >
+          {organization.name}
+        </button>
+        <.link id="manage-organizations-link" class="text-button" navigate={~p"/organizations"}>
+          Manage organizations
+        </.link>
+      </div>
       <div class="sidebar-label">
         <span>Team rooms</span><button
           phx-click="panel"

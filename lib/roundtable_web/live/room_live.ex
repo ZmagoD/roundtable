@@ -14,7 +14,9 @@ defmodule RoundtableWeb.RoomLive do
     {:ok,
      assign(socket,
        room: nil,
-       rooms: Chat.rooms(),
+       organizations: Chat.organizations(),
+       organization_id: nil,
+       rooms: teams_in(nil),
        agents: [],
        last_message_id: 0,
        model_presets: Chat.model_presets(),
@@ -60,22 +62,54 @@ defmodule RoundtableWeb.RoomLive do
 
     room =
       case params["id"] do
-        nil -> List.first(Chat.rooms())
+        nil -> List.first(teams_in(showing_organization(socket)))
         id -> Enum.find(Chat.rooms(), &(to_string(&1.id) == id))
       end
+
+    # Opening a team is how you say which project you are in, so the sidebar
+    # follows the room rather than the other way round.
+    organization_id = (room && room.organization_id) || showing_organization(socket)
 
     if room && connected?(socket), do: Chat.subscribe(room.id)
 
     {:noreply,
      socket
      |> close_terminal()
-     |> assign(room: room, panel: nil, form_error: nil, last_message_id: 0, diff: nil)
+     |> assign(
+       room: room,
+       organization_id: organization_id,
+       organizations: Chat.organizations(),
+       panel: nil,
+       form_error: nil,
+       last_message_id: 0,
+       diff: nil
+     )
      |> stream(:messages, [], reset: true)
      |> refresh()
      |> poll_git()}
   end
 
   @impl true
+  def handle_event("select-organization", %{"id" => id}, socket) do
+    organization_id = String.to_integer(id)
+
+    case List.first(teams_in(organization_id)) do
+      # A project with no teams yet still opens: the sidebar shows it empty
+      # rather than leaving you in the previous project's conversation.
+      nil ->
+        {:noreply,
+         socket
+         |> close_terminal()
+         |> assign(organization_id: organization_id, room: nil, rooms: [], panel: nil)}
+
+      room ->
+        {:noreply,
+         socket
+         |> assign(organization_id: organization_id)
+         |> push_patch(to: ~p"/rooms/#{room.id}")}
+    end
+  end
+
   def handle_event("panel", %{"name" => name}, socket) do
     socket = assign(socket, editing_agent: nil, editing_renamable: true, editing_room: nil)
     room_form = to_form(%{"directory" => socket.assigns.directory}, as: :room)
@@ -719,7 +753,13 @@ defmodule RoundtableWeb.RoomLive do
   def handle_info(:room_updated, socket), do: {:noreply, refresh(socket)}
 
   def handle_info(:rooms_updated, socket),
-    do: {:noreply, assign(socket, rooms: Chat.rooms(), model_presets: Chat.model_presets())}
+    do:
+      {:noreply,
+       assign(socket,
+         rooms: teams_in(socket.assigns.organization_id),
+         organizations: Chat.organizations(),
+         model_presets: Chat.model_presets()
+       )}
 
   defp close_terminal(%{assigns: %{terminal: nil}} = socket), do: socket
 
@@ -758,7 +798,8 @@ defmodule RoundtableWeb.RoomLive do
   defp reload_room(socket),
     do: socket |> assign(room: Chat.room!(socket.assigns.room.id)) |> refresh()
 
-  defp refresh(%{assigns: %{room: nil}} = socket), do: assign(socket, rooms: Chat.rooms())
+  defp refresh(%{assigns: %{room: nil}} = socket),
+    do: assign(socket, rooms: teams_in(socket.assigns.organization_id))
 
   defp refresh(socket) do
     id = socket.assigns.room.id
@@ -775,13 +816,28 @@ defmodule RoundtableWeb.RoomLive do
     |> stream(:messages, messages)
     |> assign(
       last_message_id: last_id,
-      rooms: Chat.rooms(),
+      rooms: teams_in(socket.assigns.organization_id),
       agents: Chat.agents(id),
       schedules: Chat.schedules(id),
       notes: Chat.room_notes(id),
       runs: Chat.runs(id),
       approvals: Coordinator.approvals() |> Map.values() |> Enum.filter(&(&1.room_id == id))
     )
+  end
+
+  # The teams of one project. Without a project — an installation with none
+  # yet — every team, so the sidebar is never mysteriously empty.
+  defp teams_in(nil), do: Chat.rooms()
+  defp teams_in(organization_id), do: Chat.rooms(organization_id)
+
+  # Which project the sidebar is showing: the one the open room belongs to,
+  # otherwise the one last chosen, otherwise the oldest.
+  defp showing_organization(socket) do
+    socket.assigns[:organization_id] ||
+      case Chat.default_organization() do
+        nil -> nil
+        organization -> organization.id
+      end
   end
 
   defp errors(changeset) do
