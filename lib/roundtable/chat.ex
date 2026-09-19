@@ -37,11 +37,39 @@ defmodule Roundtable.Chat do
   def default_organization, do: Repo.one(from o in Organization, order_by: [asc: o.id], limit: 1)
 
   def create_organization(attrs) do
-    %Organization{} |> Organization.changeset(attrs) |> Repo.insert() |> notify_rooms()
+    %Organization{}
+    |> Organization.changeset(attrs)
+    |> valid_project_directory()
+    |> Repo.insert()
+    |> notify_rooms()
   end
 
   def update_organization(id, attrs) do
-    organization!(id) |> Organization.changeset(attrs) |> Repo.update() |> notify_rooms()
+    organization!(id)
+    |> Organization.changeset(attrs)
+    |> valid_project_directory()
+    |> Repo.update()
+    |> notify_rooms()
+  end
+
+  # A project does not have to be a checkout — marketing is an organization
+  # too — but a folder that is named has to exist, or the first team to inherit
+  # it fails somewhere further away from the mistake.
+  defp valid_project_directory(changeset) do
+    case Ecto.Changeset.get_field(changeset, :directory) do
+      blank when blank in [nil, ""] ->
+        changeset
+
+      directory ->
+        if Path.type(directory) == :absolute and File.dir?(directory),
+          do: changeset,
+          else:
+            Ecto.Changeset.add_error(
+              changeset,
+              :directory,
+              "must be an existing absolute directory"
+            )
+    end
   end
 
   def model_presets, do: Repo.all(from p in ModelPreset, order_by: [p.provider, p.name])
@@ -960,7 +988,7 @@ defmodule Roundtable.Chat do
     that one no longer applies.#{role_change(agent)}
     You answer to @#{agent.name}; other participants address you by that name.
 
-    THIS ROOM
+    THIS ROOM#{project(room.organization_id)}
     Room: #{room.name}. Working directory: #{agent.directory}
     What this room is working on, and how: #{context(room)}
     That is the shared brief for everyone here. Where it and your own role both apply, follow both;
@@ -1065,6 +1093,21 @@ defmodule Roundtable.Chat do
     do:
       "No role has been set for you. Do the assigned task, and say what you would need to be " <>
         "more useful in this room."
+
+  # The project above this room, when it has something to say. Additive: a
+  # team's own brief narrows it rather than replacing it, so both are shown.
+  defp project(nil), do: ""
+
+  defp project(organization_id) do
+    case Repo.get(Organization, organization_id) do
+      %{context: context} = organization when is_binary(context) and context != "" ->
+        "\nProject: #{organization.name}. The whole project is working on: #{context}" <>
+          "\nEvery team here works to that. This room's own brief adds to it."
+
+      _organization ->
+        ""
+    end
+  end
 
   # A room without a brief says so: an agent inventing the team's goal is worse
   # than an agent asking for it.

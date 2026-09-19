@@ -11,15 +11,22 @@ defmodule Roundtable.Chat.Organization do
 
   schema "organizations" do
     field :name, :string
+    # Where the project's work lives, when the project is a checkout at all.
+    field :directory, :string
+    # What the whole project is doing. A team's own brief adds to this rather
+    # than replacing it.
+    field :context, :string, default: ""
     has_many :rooms, Roundtable.Chat.Room
     timestamps(type: :utc_datetime)
   end
 
   def changeset(organization, attrs) do
     organization
-    |> cast(attrs, [:name])
+    |> cast(attrs, [:name, :directory, :context])
     |> validate_required([:name])
     |> validate_length(:name, max: 80)
+    |> validate_length(:directory, max: 4096)
+    |> validate_length(:context, max: 4000)
     |> unique_constraint(:name)
   end
 end

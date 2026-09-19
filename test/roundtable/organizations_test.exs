@@ -75,6 +75,78 @@ defmodule Roundtable.OrganizationsTest do
     end
   end
 
+  describe "a project's folder and brief" do
+    test "a folder is optional, because not every project is a checkout" do
+      assert {:ok, organization} = Chat.create_organization(%{"name" => "Marketing Co"})
+      assert organization.directory == nil
+      assert organization.context == ""
+    end
+
+    test "a folder that is named has to exist" do
+      assert {:error, changeset} =
+               Chat.create_organization(%{"name" => "Ghost", "directory" => "/no/such/place"})
+
+      assert %{directory: ["must be an existing absolute directory"]} = errors_on(changeset)
+    end
+
+    test "the project brief reaches a participant's turn, alongside the room's" do
+      {:ok, organization} =
+        Chat.create_organization(%{
+          "name" => "Roundtable app",
+          "context" => "One local workspace for a human and named agents."
+        })
+
+      {:ok, room} =
+        Chat.create_room(%{
+          "name" => "Engineering",
+          "directory" => File.cwd!(),
+          "context" => "Ship the coordination core.",
+          "organization_id" => organization.id
+        })
+
+      {:ok, agent} =
+        Chat.create_agent(room.id, %{
+          "name" => "ada",
+          "provider" => "codex",
+          "directory" => File.cwd!()
+        })
+
+      {:ok, message} = Chat.post(room.id, "@ada have a look")
+      run = Repo.one!(from r in Roundtable.Chat.Run, where: r.message_id == ^message.id)
+
+      {prompt, _until} = Chat.prompt(Chat.agent!(agent.id), run)
+
+      assert prompt =~ "Roundtable app"
+      assert prompt =~ "One local workspace for a human and named agents."
+      assert prompt =~ "Ship the coordination core."
+    end
+
+    test "a project with no brief adds nothing to the turn" do
+      {:ok, organization} = Chat.create_organization(%{"name" => "Quiet"})
+
+      {:ok, room} =
+        Chat.create_room(%{
+          "name" => "Engineering",
+          "directory" => File.cwd!(),
+          "organization_id" => organization.id
+        })
+
+      {:ok, agent} =
+        Chat.create_agent(room.id, %{
+          "name" => "ada",
+          "provider" => "codex",
+          "directory" => File.cwd!()
+        })
+
+      {:ok, message} = Chat.post(room.id, "@ada have a look")
+      run = Repo.one!(from r in Roundtable.Chat.Run, where: r.message_id == ^message.id)
+
+      {prompt, _until} = Chat.prompt(Chat.agent!(agent.id), run)
+
+      refute prompt =~ "The whole project is working on"
+    end
+  end
+
   describe "renaming a project" do
     test "keeps its teams" do
       {:ok, organization} = Chat.create_organization(%{"name" => "Alpha"})
