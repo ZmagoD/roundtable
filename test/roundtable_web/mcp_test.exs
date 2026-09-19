@@ -14,8 +14,27 @@ defmodule RoundtableWeb.Plugs.MCPTest do
   setup %{conn: conn} do
     {:ok, room} = Chat.create_room(%{"name" => "Checkout", "directory" => File.cwd!()})
     {:ok, ada} = Chat.create_agent(room.id, %{"name" => "ada", "provider" => "claude"})
+    run = turn(ada)
 
-    %{conn: put_req_header(conn, "content-type", "application/json"), room: room, ada: ada}
+    %{
+      conn: put_req_header(conn, "content-type", "application/json"),
+      room: room,
+      ada: ada,
+      run: run
+    }
+  end
+
+  # A token is only good while its turn is in progress, so a participant under
+  # test needs one — exactly as it has one in production, where the token is
+  # minted after the run is already running.
+  defp turn(agent) do
+    {:ok, message} = Chat.post(agent.room_id, "something to do")
+
+    Roundtable.Repo.insert!(%Roundtable.Chat.Run{
+      agent_id: agent.id,
+      message_id: message.id,
+      status: "running"
+    })
   end
 
   defp rpc(conn, agent, body) do

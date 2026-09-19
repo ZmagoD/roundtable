@@ -10,7 +10,7 @@ defmodule Roundtable.SchedulerTest do
   use Roundtable.DataCase, async: false
 
   alias Roundtable.Chat
-  alias Roundtable.Chat.Run
+  alias Roundtable.Chat.{Run, Schedule}
   alias Roundtable.Scheduler
 
   # A Monday, the Saturday that week, and the night before both.
@@ -201,8 +201,6 @@ defmodule Roundtable.SchedulerTest do
     end
 
     test "it reads back as a person would say it", %{room: room, ada: ada} do
-      alias Roundtable.Chat.Schedule
-
       assert Schedule.describe(schedule(room, ada, %{"at" => "09:00"})) == "09:00 every day"
 
       assert Schedule.describe(schedule(room, ada, %{"at" => "09:00", "days" => "1,2,3,4,5"})) ==
@@ -210,6 +208,92 @@ defmodule Roundtable.SchedulerTest do
 
       assert Schedule.describe(schedule(room, ada, %{"at" => "09:00,17:30", "days" => "3"})) ==
                "09:00, 17:30 on Wed"
+    end
+  end
+
+  describe "a prompt cannot wake anyone the schedule did not name" do
+    setup %{room: room} do
+      {:ok, linus} = Chat.create_agent(room.id, %{"name" => "linus", "provider" => "claude"})
+      {:ok, grace} = Chat.create_agent(room.id, %{"name" => "grace", "provider" => "claude"})
+      %{linus: linus, grace: grace}
+    end
+
+    test "@all is refused", %{room: room, ada: ada} do
+      assert {:error, changeset} =
+               Chat.create_schedule(room.id, %{
+                 "agent_id" => ada.id,
+                 "name" => "Fan out",
+                 "prompt" => "sweep the board, then tell @all what you found",
+                 "at" => "09:00"
+               })
+
+      assert [message] = errors_on(changeset).prompt
+      assert message =~ "@all"
+    end
+
+    test "naming another participant is refused", %{room: room, ada: ada} do
+      assert {:error, changeset} =
+               Chat.create_schedule(room.id, %{
+                 "agent_id" => ada.id,
+                 "name" => "Hand off",
+                 "prompt" => "sweep the board, then hand it to @grace",
+                 "at" => "09:00"
+               })
+
+      assert [message] = errors_on(changeset).prompt
+      assert message =~ "@grace"
+    end
+
+    # The guard is about what wakes a turn, not about the character. An address
+    # has a word character before the @, so the reader never saw it as a mention
+    # and refusing it here would only be a rule nobody could explain.
+    test "an email address is not a mention", %{room: room, ada: ada} do
+      assert {:ok, saved} =
+               Chat.create_schedule(room.id, %{
+                 "agent_id" => ada.id,
+                 "name" => "Mail",
+                 "prompt" => "email the digest to team@example.com",
+                 "at" => "09:00"
+               })
+
+      assert saved.prompt =~ "team@example.com"
+    end
+
+    # What the scheduler actually posts is "@name <prompt>", and the whole line
+    # is scanned. This is the invariant the guard exists for, asserted against
+    # the reader itself so the two cannot drift apart unnoticed.
+    test "an accepted prompt wakes exactly the participant it names", %{room: room, ada: ada} do
+      agents = Chat.agents(room.id)
+      assert length(agents) == 3
+
+      for prompt <- ["sweep the board", "email team@example.com", "check the a@ and b@ columns"] do
+        assert Schedule.mentions(prompt) == [], "expected #{inspect(prompt)} to carry no mention"
+
+        assert {:ok, saved} =
+                 Chat.create_schedule(room.id, %{
+                   "agent_id" => ada.id,
+                   "name" => "Sweep",
+                   "prompt" => prompt,
+                   "at" => "09:00"
+                 })
+
+        woken = Chat.recipients("@#{ada.name} #{saved.prompt}", agents)
+        assert Enum.map(woken, & &1.name) == ["ada"]
+      end
+    end
+
+    test "the fan-out cannot be saved, so it cannot fire", %{room: room, ada: ada} do
+      assert {:error, _} =
+               Chat.create_schedule(room.id, %{
+                 "agent_id" => ada.id,
+                 "name" => "Fan out",
+                 "prompt" => "tell @all",
+                 "at" => "09:00"
+               })
+
+      assert Chat.schedules(room.id) == []
+      assert wake(at(@monday, ~T[09:00:20])) == []
+      assert Repo.aggregate(Run, :count) == 0
     end
   end
 end

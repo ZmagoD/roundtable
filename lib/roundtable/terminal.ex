@@ -49,7 +49,10 @@ defmodule Roundtable.Terminal do
           :use_stdio,
           args: [bridge],
           cd: directory,
-          env: [{~c"TERM", ~c"xterm-256color"}]
+          # The same scrubbing the agents get: this is a shell with the user's
+          # access, which is the point, but it should start from the user's
+          # environment rather than the service's. See `Roundtable.SpawnEnv`.
+          env: Roundtable.SpawnEnv.sanitised() ++ [{~c"TERM", ~c"xterm-256color"}]
         ])
 
       {:os_pid, os_pid} = Port.info(port, :os_pid)

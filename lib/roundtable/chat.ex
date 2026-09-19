@@ -170,6 +170,10 @@ defmodule Roundtable.Chat do
   # as well as within one.
   @max_depth 4
 
+  # A turn that has not finished: it holds the participant busy, and its
+  # participant's MCP token is still good for exactly as long as it lasts.
+  @active_statuses ["running", "approval", "queued"]
+
   def assignment(agent, preset_id, purpose) do
     preset = Enum.find(model_presets(), &(to_string(&1.id) == preset_id))
 
@@ -561,7 +565,7 @@ defmodule Roundtable.Chat do
   # nothing about what they are doing.
   defp roster(room_id) do
     Enum.map_join(agents(room_id), "\n", fn member ->
-      active = active_run(member)
+      active = active_run(member.id)
       model = (active && active.model) || member.model || "provider default"
       tier = (active && active.cost_tier) || member.cost_tier
       status = (active && active.status) || "idle"
@@ -571,12 +575,17 @@ defmodule Roundtable.Chat do
     end)
   end
 
-  # Queued counts as busy: that turn is already assigned, and the model on it is
-  # the one the agent will actually run with.
-  defp active_run(member) do
+  @doc """
+  The turn a participant is currently working on, or `nil`.
+
+  Queued counts as active: that turn is already assigned, and the model on it is
+  the one the agent will actually run with. `Roundtable.MCP` also reads this to
+  decide whether a participant's token still belongs to a turn in progress.
+  """
+  def active_run(agent_id) when is_integer(agent_id) do
     Repo.one(
       from r in Run,
-        where: r.agent_id == ^member.id and r.status in ["running", "approval", "queued"],
+        where: r.agent_id == ^agent_id and r.status in ^@active_statuses,
         order_by: [desc: r.id],
         limit: 1
     )

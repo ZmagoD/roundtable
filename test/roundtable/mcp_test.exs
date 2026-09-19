@@ -26,8 +26,20 @@ defmodule Roundtable.MCPTest do
       })
 
     {:ok, ada} = Chat.create_agent(room.id, %{"name" => "ada", "provider" => "claude"})
-    %{room: room, ada: ada}
+    %{room: room, ada: ada, run: turn(ada)}
   end
+
+  # A token is only good while its turn is in progress, so a participant under
+  # test needs one — exactly as it has one in production, where the token is
+  # minted after the run is already running.
+  defp turn(agent) do
+    {:ok, message} = Chat.post(agent.room_id, "something to do")
+    Repo.insert!(%Run{agent_id: agent.id, message_id: message.id, status: "running"})
+  end
+
+  # `Protocol.env/1` carries the scrubbing as well as the token, so the token is
+  # picked out by name rather than by being the only thing in the list.
+  defp token_in(env), do: Enum.find(env, &match?({~c"ROUNDTABLE_MCP_TOKEN", _}, &1))
 
   describe "making a room" do
     test "it starts in the working tree of the room it was asked from", %{room: room, ada: ada} do
@@ -66,11 +78,12 @@ defmodule Roundtable.MCPTest do
       assert said.body =~ "Docs"
     end
 
-    test "and saying it never starts a turn", %{ada: ada} do
+    test "and saying it never starts a turn", %{ada: ada, run: run} do
       # A room named after a participant would otherwise read as a mention.
       {:ok, _} = MCP.call(ada, "create_room", %{"name" => "@ada"})
 
-      assert Repo.aggregate(Run, :count) == 0
+      # Only the turn ada is already taking; saying what it did started nothing.
+      assert Repo.all(Run) |> Enum.map(& &1.id) == [run.id]
       refute Enum.any?(Repo.all(Message), &(&1.body =~ "@"))
     end
 
@@ -249,6 +262,46 @@ defmodule Roundtable.MCPTest do
       {:ok, _} = Chat.delete_agent(ada.id)
       assert {:error, :gone} = MCP.participant(MCP.token(ada))
     end
+
+    # The CLI outlives the turn that started it, and the token sits in its
+    # environment and in the environment of every command it ran. A copy taken
+    # from there used to keep working; it must not.
+    test "a token stops working when its turn ends", %{ada: ada, run: run} do
+      token = MCP.token(ada)
+      assert {:ok, _} = MCP.participant(token)
+
+      Chat.change(run, status: "finished")
+
+      assert {:error, :expired} = MCP.participant(token)
+    end
+
+    test "and cannot still be used to manage rooms", %{ada: ada, run: run} do
+      token = MCP.token(ada)
+      Chat.change(run, status: "finished")
+
+      assert {:error, :expired} = MCP.participant(token)
+      refute Chat.find_room("made-after-the-turn-ended")
+    end
+
+    # A turn that stopped for a human is still a turn in progress: the CLI is
+    # alive and waiting, and refusing its tools mid-approval would break it.
+    test "a turn waiting on an approval still has its tools", %{ada: ada, run: run} do
+      token = MCP.token(ada)
+      Chat.change(run, status: "approval")
+
+      assert {:ok, found} = MCP.participant(token)
+      assert found.id == ada.id
+    end
+
+    # A later turn must not revive an old turn's token: the run is named in the
+    # signature, so a new run is a different token.
+    test "a new turn does not revive the old turn's token", %{ada: ada, run: run} do
+      token = MCP.token(ada)
+      Chat.change(run, status: "finished")
+      turn(ada)
+
+      assert {:error, :expired} = MCP.participant(token)
+    end
   end
 
   describe "what a participant may not change" do
@@ -389,7 +442,7 @@ defmodule Roundtable.MCPTest do
       # Named, not written: an argument list is world-readable through /proc.
       assert server["headers"]["Authorization"] == "Bearer ${ROUNDTABLE_MCP_TOKEN}"
 
-      assert [{~c"ROUNDTABLE_MCP_TOKEN", token}] = Protocol.env(ada)
+      assert {~c"ROUNDTABLE_MCP_TOKEN", token} = token_in(Protocol.env(ada))
       assert {:ok, %{id: id}} = token |> to_string() |> MCP.participant()
       assert id == ada.id
     end
@@ -399,7 +452,7 @@ defmodule Roundtable.MCPTest do
 
       for agent <- [ada, codex] do
         {_executable, args} = Protocol.command(agent)
-        [{_variable, token}] = Protocol.env(agent)
+        {_variable, token} = token_in(Protocol.env(agent))
 
         refute Enum.any?(args, &String.contains?(&1, to_string(token)))
       end
@@ -408,6 +461,7 @@ defmodule Roundtable.MCPTest do
     test "codex takes its overrides before the subcommand, and its token from the environment",
          %{room: room} do
       {:ok, codex} = Chat.create_agent(room.id, %{"name" => "linus", "provider" => "codex"})
+      turn(codex)
       {"codex", args} = Protocol.command(codex)
 
       assert List.last(args) == "app-server"
@@ -415,7 +469,7 @@ defmodule Roundtable.MCPTest do
       assert Enum.any?(args, &(&1 =~ "bearer_token_env_var=\"ROUNDTABLE_MCP_TOKEN\""))
       refute Enum.any?(args, &(&1 =~ "Bearer"))
 
-      assert [{~c"ROUNDTABLE_MCP_TOKEN", token}] = Protocol.env(codex)
+      assert {~c"ROUNDTABLE_MCP_TOKEN", token} = token_in(Protocol.env(codex))
       assert {:ok, _} = token |> to_string() |> MCP.participant()
       refute Enum.any?(args, &String.contains?(&1, to_string(token)))
     end
@@ -425,7 +479,19 @@ defmodule Roundtable.MCPTest do
 
       refute MCP.offered?(opencode)
       assert {"opencode", ["run", "--format", "json"]} = Protocol.command(opencode)
-      assert Protocol.env(opencode) == []
+      assert token_in(Protocol.env(opencode)) == nil
+    end
+
+    # It is given no token, but it is still scrubbed: a provider the rooms are
+    # closed to is no more entitled to this node's cookie than one they are
+    # open to. This is the branch the scrub used to sit inside and skip.
+    test "a provider with no tools is scrubbed all the same", %{room: room} do
+      {:ok, opencode} = Chat.create_agent(room.id, %{"name" => "otto", "provider" => "opencode"})
+
+      System.put_env("RELEASE_COOKIE", "a-real-cookie")
+      on_exit(fn -> System.delete_env("RELEASE_COOKIE") end)
+
+      assert {~c"RELEASE_COOKIE", false} in Protocol.env(opencode)
     end
 
     test "and neither is anyone, when the service is not serving", %{ada: ada} do

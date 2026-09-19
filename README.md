@@ -796,9 +796,21 @@ Its runtime supervisor restarts the workers, the coordinator and the scheduler
 that runs a room's standing instructions together if any of them fails. On startup, active runs become interrupted, so they
 are not silently repeated. Queued runs are eligible to resume.
 
-The app binds **only to loopback** and is designed for a single local user.
-It has no multi-user authentication. Do not put it on a public proxy without
-adding authentication and authorization. Browser origin checks and CSRF
+The web server binds **only to loopback** and the app is designed for a single
+local user. It has no multi-user authentication. Do not put it on a public proxy
+without adding authentication and authorization.
+
+One thing does not bind to loopback: **Erlang distribution**. The terminal
+client attaches over it, so the service runs a distributed node, and both that
+node's listener and `epmd` accept connections on every interface — the default,
+never narrowed here. The only thing guarding them is the release cookie. That is
+56 bytes of randomness and not guessable, but it is readable by anything running
+as you, so treat "my agents run as me" and "this laptop is on a café network" as
+the same sentence. On an untrusted network, stop the service when you are not
+using it. Narrowing this needs long node names — `inet_dist_use_interface` alone
+binds the listener where a short-name client cannot then reach it.
+
+Browser origin checks and CSRF
 protection remain enabled, and requests are answered only when addressed to a
 loopback host, so a remote page cannot read a room by pointing its own domain
 at 127.0.0.1. If a proxy needs to serve another name, allow it with

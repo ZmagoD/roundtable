@@ -15,6 +15,14 @@ defmodule Roundtable.Chat.Schedule do
   # a loop: anything past this is a turn every few minutes, paid for every day.
   @max_times 12
 
+  # A mention, as `Roundtable.Chat.recipients/2` reads one. The scheduler posts
+  # "@name <prompt>", and the whole line is scanned for mentions — so a prompt
+  # carrying its own would wake someone the schedule never named, and `@all`
+  # would wake the entire room on every occurrence. The prompt says what to do;
+  # who it goes to is the schedule's own field. Kept in step with the reader by
+  # a test, not by sharing the pattern: see `schedule_test.exs`.
+  @mention ~r/(?<![\w@])@([a-z][a-z0-9_-]*)\b(?!\/)/i
+
   schema "schedules" do
     belongs_to :room, Roundtable.Chat.Room
     belongs_to :agent, Roundtable.Chat.Agent
@@ -39,6 +47,7 @@ defmodule Roundtable.Chat.Schedule do
     |> validate_required([:room_id, :agent_id, :name, :prompt, :at])
     |> validate_length(:name, max: 120)
     |> validate_length(:prompt, max: 4000)
+    |> validate_no_mentions()
     |> validate_times()
     |> foreign_key_constraint(:agent_id)
     |> foreign_key_constraint(:room_id)
@@ -109,6 +118,27 @@ defmodule Roundtable.Chat.Schedule do
       {hour, minute}
     else
       _ -> nil
+    end
+  end
+
+  @doc "Whether text carries a mention the scheduler's post would act on."
+  def mentions(text) when is_binary(text),
+    do: @mention |> Regex.scan(text, capture: :all_but_first) |> List.flatten()
+
+  def mentions(_text), do: []
+
+  defp validate_no_mentions(changeset) do
+    case changeset |> get_field(:prompt) |> mentions() do
+      [] ->
+        changeset
+
+      names ->
+        add_error(
+          changeset,
+          :prompt,
+          "cannot mention #{Enum.map_join(names, ", ", &"@#{&1}")} — a schedule wakes the " <>
+            "participant it names, and a mention here would wake someone else every time it runs"
+        )
     end
   end
 

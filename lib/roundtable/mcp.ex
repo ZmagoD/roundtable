@@ -22,9 +22,10 @@ defmodule Roundtable.MCP do
 
   @salt "roundtable mcp participant"
 
-  # A turn is capped at thirty minutes. A token that outlives its turn by much
-  # is only useful to something that should not have it.
-  @max_age 2 * 60 * 60
+  # A turn is capped at thirty minutes (`Agents.Worker`), so a signature older
+  # than that belongs to no turn at all. This is the outer bound; what actually
+  # ends a token's life is its own run finishing — see `participant/1`.
+  @max_age 30 * 60
 
   # Providers whose CLI takes an MCP server on the command line *and* has an
   # approval channel back to the room. Without the second, a participant could
@@ -52,20 +53,58 @@ defmodule Roundtable.MCP do
 
   def offered?(_agent), do: false
 
-  @doc "A bearer token that says which participant is calling."
-  def token(%{id: id}), do: Phoenix.Token.sign(RoundtableWeb.Endpoint, @salt, id)
+  @doc """
+  A bearer token that says which participant is calling, and for which turn.
 
-  @doc "The participant a bearer token names, while it is still in a room."
+  Minted when a turn launches, by which point its run is already `running`, so
+  the run is what the token is anchored to. A token minted outside a turn names
+  no run and is refused on use rather than being quietly useful.
+  """
+  def token(%{id: id}) do
+    run_id = with run when not is_nil(run) <- Chat.active_run(id), do: run.id
+    Phoenix.Token.sign(RoundtableWeb.Endpoint, @salt, {id, run_id})
+  end
+
+  @doc """
+  The participant a bearer token names, while its turn is still running.
+
+  The signature alone is not enough. A CLI outlives the turn that started it,
+  the token is in that process's environment and in the environment of every
+  command it runs, and a copy taken from there would otherwise keep working
+  long after the human stopped watching. So the run is checked, every call: when
+  the turn is over the token is over, whatever its signature still says.
+  """
   def participant(token) when is_binary(token) do
-    with {:ok, id} <-
-           Phoenix.Token.verify(RoundtableWeb.Endpoint, @salt, token, max_age: @max_age) do
-      {:ok, Chat.agent!(id)}
+    with {:ok, {id, run_id}} <-
+           Phoenix.Token.verify(RoundtableWeb.Endpoint, @salt, token, max_age: @max_age),
+         # Whether it is still in a room is the more useful thing to say, so it
+         # is asked first: a participant that has gone hears that, not that its
+         # turn ended.
+         agent = Chat.agent!(id),
+         :ok <- turn_in_progress(id, run_id) do
+      {:ok, agent}
+    else
+      # A signature from before tokens named their run verifies but says nothing
+      # about which turn it belongs to, so it is no longer a token.
+      {:ok, _unnamed_run} -> {:error, :invalid}
+      {:error, reason} -> {:error, reason}
     end
   rescue
     Ecto.NoResultsError -> {:error, :gone}
   end
 
   def participant(_token), do: {:error, :invalid}
+
+  # `:expired` is what the plug tells the caller, and it is now true for the
+  # reason it always claimed: the turn this token belongs to has ended.
+  defp turn_in_progress(_id, nil), do: {:error, :expired}
+
+  defp turn_in_progress(id, run_id) do
+    case Chat.active_run(id) do
+      %{id: ^run_id} -> :ok
+      _other -> {:error, :expired}
+    end
+  end
 
   @doc "Every tool, in the shape an MCP client expects to read it."
   def tools do

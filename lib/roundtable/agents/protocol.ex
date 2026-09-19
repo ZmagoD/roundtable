@@ -78,12 +78,22 @@ defmodule Roundtable.Agents.Protocol do
   end
 
   @doc """
-  Environment for the CLI: a participant's key to its own rooms.
+  Environment for the CLI: a participant's key to its own rooms, and nothing of
+  the service's own.
 
   The only place the token is passed. Every provider that is offered the tools
   reads it from here, so it never appears in an argument list.
+
+  The scrubbing is unconditional and comes first. A provider that is offered no
+  tools is still a process running on this machine, and it has no more business
+  holding this node's cookie than one that is — see `Roundtable.SpawnEnv`. The
+  token goes last so that nothing in the removals can unset it.
   """
   def env(agent) do
+    Roundtable.SpawnEnv.sanitised() ++ token_env(agent)
+  end
+
+  defp token_env(agent) do
     if MCP.offered?(agent),
       do: [{~c"#{@token_variable}", String.to_charlist(MCP.token(agent))}],
       else: []
