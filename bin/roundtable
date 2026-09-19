@@ -18,7 +18,42 @@ export SECRET_KEY_BASE="$(cat "$STATE_DIR/secret")"
 RELEASE="$APP_ROOT/_build/prod/rel/roundtable/bin/roundtable"
 
 service_running() {
-  [[ -f "$STATE_DIR/beam.pid" ]] && kill -0 "$(cat "$STATE_DIR/beam.pid")" 2>/dev/null
+  [[ -f "$STATE_DIR/beam.pid" ]] || return 1
+
+  local pid
+  pid="$(cat "$STATE_DIR/beam.pid" 2>/dev/null || true)"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+
+  # A failed or test-launched release can overwrite beam.pid while the named
+  # service keeps running. Do not mistake an unrelated process for our beam.
+  [[ -r "/proc/$pid/cmdline" ]] || return 1
+  tr '\0' ' ' < "/proc/$pid/cmdline" | grep -Fq "$APP_ROOT/_build/prod/rel/roundtable"
+}
+
+release_pid() {
+  local pid
+  pid="$("$RELEASE" pid 2>/dev/null || true)"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  [[ -r "/proc/$pid/cmdline" ]] || return 1
+  tr '\0' ' ' < "/proc/$pid/cmdline" | grep -Fq "$APP_ROOT/_build/prod/rel/roundtable" || return 1
+  printf '%s\n' "$pid"
+}
+
+recover_running_service() {
+  local pid
+  pid="$(release_pid || true)"
+  [[ -n "$pid" ]] || return 1
+  printf '%s\n' "$pid" > "$STATE_DIR/beam.pid"
+
+  # The boot that clobbers beam.pid rewrites the URL file with its own port.
+  # Drop the file when it does not answer so service_url falls back to the log.
+  if [[ -s "$STATE_DIR/url" ]] && command -v curl >/dev/null 2>&1; then
+    curl -fsS --max-time 2 "$(cat "$STATE_DIR/url")/status.json" >/dev/null 2>&1 ||
+      rm -f "$STATE_DIR/url"
+  fi
+  return 0
 }
 
 # The port the service actually got. It writes the URL down at boot; the log is
@@ -35,6 +70,7 @@ service_url() {
 # when it is reachable, what it says about the rooms. The service answer is
 # nested rather than merged, so neither side has to parse the other's JSON.
 status_json() {
+  recover_running_service || true
   if ! service_running; then
     echo '{"running":false,"pid":null,"url":null,"status":null}'
     return
@@ -66,7 +102,7 @@ case "${1:-start}" in
     if [[ ! -x "$RELEASE" ]]; then
       echo "Run bin/roundtable setup first." >&2; exit 1
     fi
-    if [[ -f "$STATE_DIR/beam.pid" ]] && kill -0 "$(cat "$STATE_DIR/beam.pid")" 2>/dev/null; then
+    if service_running || recover_running_service; then
       echo "Roundtable is already running. See $STATE_DIR/server.log for its URL."; exit 0
     fi
     rm -f "$STATE_DIR/url"
@@ -87,6 +123,7 @@ case "${1:-start}" in
     exit 1
     ;;
   stop)
+    recover_running_service || true
     if [[ -f "$STATE_DIR/beam.pid" ]]; then
       pid="$(cat "$STATE_DIR/beam.pid")"
       if kill -0 "$pid" 2>/dev/null; then
@@ -116,6 +153,7 @@ case "${1:-start}" in
       status_json
       exit 0
     fi
+    recover_running_service || true
     if service_running; then
       url="$(service_url)"
       echo "Roundtable is running. ${url:+Open $url}"
