@@ -577,6 +577,11 @@ defmodule RoundtableWeb.RoomLive do
      )}
   end
 
+  def handle_event("refresh-models", _, socket) do
+    models = Roundtable.Agents.refresh_models(socket.assigns.agent_form[:provider].value)
+    {:noreply, assign(socket, model_options: models)}
+  end
+
   def handle_event("save-preset", %{"preset" => attrs}, socket) do
     result =
       if socket.assigns.editing_preset,

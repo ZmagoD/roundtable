@@ -3,13 +3,13 @@ defmodule RoundtableWeb.EndpointTest do
 
   test "GET /", %{conn: conn} do
     conn = get(conn, ~p"/")
-    assert html_response(conn, 200) =~ "Your agents."
+    assert html_response(conn, 200) =~ "Your teams."
   end
 
   test "a request addressed to another host is refused", %{conn: conn} do
     conn = get(%{conn | host: "rebound.example.com"}, ~p"/")
 
     assert conn.status == 400
-    refute conn.resp_body =~ "Your agents."
+    refute conn.resp_body =~ "Your teams."
   end
 end

@@ -139,7 +139,7 @@ defmodule RoundtableWeb.RoomLiveTest do
 
   test "create a room, add two sessions of one provider, and assign work", %{conn: conn} do
     {:ok, view, _} = live(conn, "/")
-    view |> element(".welcome button") |> render_click()
+    view |> element("#new-room-button") |> render_click()
 
     view
     |> form("#room-form", room: %{name: "Checkout"})
@@ -253,7 +253,7 @@ defmodule RoundtableWeb.RoomLiveTest do
     end
 
     test "a room with a directory that does not exist is refused with a reason", %{view: view} do
-      view |> element("button.new-room", "+ New room") |> render_click()
+      view |> element("#new-room-button") |> render_click()
 
       html =
         view
@@ -485,6 +485,23 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert html =~ "the CLI reports"
     end
 
+    test "refreshing models preserves the agent draft and selected model", %{view: view} do
+      view |> element("#add-agent-button") |> render_click()
+
+      view
+      |> form("#agent-form", agent: %{name: "local", provider: "codex"})
+      |> render_change()
+
+      view
+      |> form("#agent-form", agent: %{name: "local", provider: "claude", model: "custom-model"})
+      |> render_change()
+
+      render_click(view, "refresh-models", %{})
+      assert has_element?(view, "#agent-form input[name='agent[name]'][value='local']")
+      assert has_element?(view, "#agent-form option[value='custom-model'][selected]")
+      assert has_element?(view, "#agent-form option[value='sonnet']")
+    end
+
     test "a provider that cannot list its models still takes a typed name", %{view: view} do
       view |> element("#add-agent-button") |> render_click()
 
@@ -518,7 +535,7 @@ defmodule RoundtableWeb.RoomLiveTest do
     end
 
     test "the room form suggests directories instead of asking you to remember one", %{view: view} do
-      html = view |> element("button.new-room", "+ New room") |> render_click()
+      html = view |> element("#new-room-button") |> render_click()
 
       # Something to click before a single character is typed.
       assert html =~ "directory-picker"
@@ -533,7 +550,7 @@ defmodule RoundtableWeb.RoomLiveTest do
     end
 
     test "picking a directory fills the field and goes in", %{view: view} do
-      view |> element("button.new-room", "+ New room") |> render_click()
+      view |> element("#new-room-button") |> render_click()
 
       view
       |> form("#room-form", room: %{name: "X", directory: File.cwd!() <> "/"})
@@ -550,7 +567,7 @@ defmodule RoundtableWeb.RoomLiveTest do
     end
 
     test "a git repository is marked as one", %{view: view} do
-      view |> element("button.new-room", "+ New room") |> render_click()
+      view |> element("#new-room-button") |> render_click()
 
       html =
         view

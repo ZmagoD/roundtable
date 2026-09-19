@@ -1,193 +1,216 @@
-<div class="app-shell">
-  <aside class="sidebar">
-    <.link class="brand" navigate={~p"/"}>
-      <span class="brand-mark">r<span>t</span></span><span>roundtable<small>YOUR AGENT WORKSPACE</small></span>
-    </.link>
-    <div class="sidebar-label">
-      <span>ROOMS</span><.link class="icon-button" navigate={~p"/"} aria-label="Rooms">⌂</.link>
-    </div>
-    <nav aria-label="Rooms">
-      <.link :for={room <- @rooms} class="room-link" navigate={~p"/rooms/#{room.id}"}>
-        <span class="hash">#</span><span>{room.name}</span>
+<Layouts.app flash={@flash}>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <.link class="brand" navigate={~p"/"}>
+        <span class="brand-mark">r<span>t</span></span><span>roundtable<small>Your team workspace</small></span>
       </.link>
-    </nav>
-    <.link class="new-room" navigate={~p"/"}>Back to workspace</.link>
-    <div class="sidebar-bottom">
-      <span class="online-dot"></span>
-      Local workspace<small>Messages saved on this machine</small>
-    </div>
-  </aside>
-
-  <main class="main-panel management-page">
-    <header class="room-header">
-      <div>
-        <div class="eyebrow">WORKSPACE</div><h1>Schedules</h1><p>
-          Standing instructions across every room
-        </p>
+      <div class="sidebar-label">
+        <span>Team rooms</span><.link class="icon-button" navigate={~p"/"} aria-label="Rooms">⌂</.link>
       </div>
-      <button class="button" phx-click="new-schedule">New schedule
-      <.icon name="hero-plus" class="size-4" /></button>
-    </header>
+      <nav aria-label="Rooms">
+        <.link
+          :for={room <- @rooms}
+          class="room-link"
+          title={room.name}
+          navigate={~p"/rooms/#{room.id}"}
+        >
+          <span class="hash">#</span><span>{room.name}</span>
+        </.link>
+      </nav>
+      <div class="workspace-actions" id="workspace-navigation">
+        <.link id="workspace-home-link" class="sidebar-action" navigate={~p"/"}>
+          <.icon name="hero-arrow-left" class="size-4" /><span>Back to teams</span>
+        </.link>
+        <.link
+          id="workspace-schedules-link"
+          class="sidebar-action selected"
+          navigate={~p"/schedules"}
+          aria-current="page"
+        >
+          <.icon name="hero-calendar-days" class="size-4" /><span>Schedules</span>
+        </.link>
+      </div>
+      <div class="sidebar-bottom">
+        <span class="online-dot"></span>
+        Local workspace<small>Messages saved on this machine</small>
+      </div>
+    </aside>
 
-    <section class="management-content">
-      <div class="management-intro">
+    <main class="main-panel management-page">
+      <header class="room-header">
         <div>
-          <div class="eyebrow">AUTOMATION</div><h2>Your standing instructions</h2><p>
-            Keep recurring work visible, named, and easy to adjust.
+          <div class="eyebrow">WORKSPACE</div><h1>Schedules</h1><p>
+            Standing instructions across every room
           </p>
         </div>
-        <div class="schedule-stats">
-          <strong>{length(@schedules)}</strong><span>{if length(@schedules) == 1,
-            do: "instruction",
-            else: "instructions"}</span>
-        </div>
-      </div>
-      <div class="schedule-workspace">
-        <div class="schedule-list-panel">
-          <div class="schedule-list-heading">
-            <div>
-              <span class="eyebrow">ROUTINES</span><h2>All schedules</h2>
-            </div>
-            <span class="schedule-list-count">{length(@schedules)} total</span>
-          </div>
-          <div :if={@schedules == []} class="empty-state schedule-empty">
-            <span class="empty-state-icon">✦</span>
-            <strong>No schedules yet</strong>
-            <p>Start with a named routine and your team will take it from there.</p>
-            <button class="button" type="button" phx-click="new-schedule">Create your first schedule</button>
-          </div>
-          <div :if={@schedules != []} class="schedule-table" role="list">
-            <article
-              :for={schedule <- @schedules}
-              class={[
-                "schedule-card",
-                !schedule.enabled && "off",
-                @editing_id == schedule.id && "selected"
-              ]}
-              role="listitem"
-            >
-              <div class="schedule-card-main">
-                <div class="schedule-card-kicker">
-                  <span class="eyebrow">#{schedule.room.name}</span><span class={[
-                    "schedule-status",
-                    schedule.enabled && "active"
-                  ]}>{if schedule.enabled, do: "Running", else: "Off"}</span>
-                </div>
-                <h3>{schedule.name}</h3>
-                <div class="schedule-target">
-                  {schedule.agent.name} · {schedule.at} · {if schedule.days == "",
-                    do: "Every day",
-                    else: "Days " <> schedule.days}
-                </div>
-                <p>{schedule.prompt}</p>
-                <small>{schedule.room.directory} · Last run: {last_run(schedule.last_run_at)}</small>
-              </div>
-              <div class="schedule-card-actions">
-                <button class="text-button" phx-click="edit-schedule" phx-value-id={schedule.id}>Edit</button>
-                <button class="text-button" phx-click="toggle-schedule" phx-value-id={schedule.id}>{if schedule.enabled,
-                  do: "Switch off",
-                  else: "Switch on"}</button>
-                <button
-                  class="text-button danger"
-                  phx-click="delete-schedule"
-                  phx-value-id={schedule.id}
-                  data-confirm="Delete this schedule?"
-                >Delete</button>
-              </div>
-            </article>
-          </div>
-        </div>
-      </div>
-    </section>
+        <button class="button" phx-click="new-schedule">New schedule
+        <.icon name="hero-plus" class="size-4" /></button>
+      </header>
 
-    <div
-      :if={@schedule_modal}
-      class="modal-backdrop"
-      id="schedule-modal"
-      phx-window-keydown="close-schedule-modal"
-      phx-key="Escape"
-    >
-      <section
-        class="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="schedule-modal-title"
-      >
-        <button
-          class="modal-close icon-button"
-          phx-click="close-schedule-modal"
-          aria-label="Close"
-        >
-          <.icon name="hero-x-mark" class="size-4" />
-        </button>
-        <div class="eyebrow">{if @editing_id, do: "UPDATE ROUTINE", else: "NEW ROUTINE"}</div>
-        <h2 id="schedule-modal-title">
-          {if @editing_id, do: "Edit schedule", else: "Create a schedule"}
-        </h2>
-        <p>
-          {if @editing_id,
-            do: "Adjust the instruction, timing, or participant.",
-            else: "Give this recurring instruction a clear name and a reliable time."}
-        </p>
-        <p :if={@form_error} class="form-error" role="alert">{@form_error}</p>
-        <p :if={@agents == []} class="form-note">
-          Add an agent to a room before creating a schedule.
-        </p>
-        <.form
-          :if={@agents != []}
-          for={@schedule_form}
-          id="workspace-schedule-form"
-          phx-submit="save-schedule"
-        >
-          <.input
-            field={@schedule_form[:agent_id]}
-            label="Participant"
-            type="select"
-            options={
-              Enum.map(@agents, fn agent ->
-                {"#{room_name(@rooms, agent.room_id)} · #{agent.name}", agent.id}
-              end)
-            }
-          />
-          <.input
-            field={@schedule_form[:name]}
-            label="Name"
-            placeholder="e.g. Morning review"
-            required
-            maxlength="120"
-          />
-          <.input
-            field={@schedule_form[:prompt]}
-            label="What to say"
-            type="textarea"
-            rows="3"
-            required
-            maxlength="4000"
-            placeholder="Sweep the bug board and report what is worth doing today"
-          />
-          <.input
-            field={@schedule_form[:at]}
-            label="Times of day"
-            required
-            placeholder="09:00 or 09:00,17:30"
-          />
-          <.input
-            field={@schedule_form[:days]}
-            label="Days"
-            type="select"
-            options={days_options(@schedule_form[:days].value)}
-          />
-          <.input
-            field={@schedule_form[:enabled]}
-            label="Running"
-            type="select"
-            options={[{"Yes", "true"}, {"No", "false"}]}
-          />
-          <button class="button full" type="submit" phx-disable-with="Saving…">
-            {if @editing_id, do: "Save changes", else: "Create schedule"}
-          </button>
-        </.form>
+      <section class="management-content">
+        <div class="management-intro">
+          <div>
+            <div class="eyebrow">AUTOMATION</div><h2>Your standing instructions</h2><p>
+              Keep recurring work visible, named, and easy to adjust.
+            </p>
+          </div>
+          <div class="schedule-stats">
+            <strong>{length(@schedules)}</strong><span>{if length(@schedules) == 1,
+              do: "instruction",
+              else: "instructions"}</span>
+          </div>
+        </div>
+        <div class="schedule-workspace">
+          <div class="schedule-list-panel">
+            <div class="schedule-list-heading">
+              <div>
+                <span class="eyebrow">ROUTINES</span><h2>All schedules</h2>
+              </div>
+              <span class="schedule-list-count">{length(@schedules)} total</span>
+            </div>
+            <div :if={@schedules == []} class="empty-state schedule-empty">
+              <span class="empty-state-icon">✦</span>
+              <strong>No schedules yet</strong>
+              <p>Start with a named routine and your team will take it from there.</p>
+              <button class="button" type="button" phx-click="new-schedule">Create your first schedule</button>
+            </div>
+            <div :if={@schedules != []} class="schedule-table" role="list">
+              <article
+                :for={schedule <- @schedules}
+                class={[
+                  "schedule-card",
+                  !schedule.enabled && "off",
+                  @editing_id == schedule.id && "selected"
+                ]}
+                role="listitem"
+              >
+                <div class="schedule-card-main">
+                  <div class="schedule-card-kicker">
+                    <span class="eyebrow">#{schedule.room.name}</span><span class={[
+                      "schedule-status",
+                      schedule.enabled && "active"
+                    ]}>{if schedule.enabled, do: "Running", else: "Off"}</span>
+                  </div>
+                  <h3>{schedule.name}</h3>
+                  <div class="schedule-target">
+                    {schedule.agent.name} · {schedule.at} · {if schedule.days == "",
+                      do: "Every day",
+                      else: "Days " <> schedule.days}
+                  </div>
+                  <p>{schedule.prompt}</p>
+                  <small>{schedule.room.directory} · Last run: {last_run(schedule.last_run_at)}</small>
+                </div>
+                <div class="schedule-card-actions">
+                  <button class="text-button" phx-click="edit-schedule" phx-value-id={schedule.id}>Edit</button>
+                  <button
+                    class="text-button"
+                    phx-click="toggle-schedule"
+                    phx-value-id={schedule.id}
+                  >{if schedule.enabled,
+                    do: "Switch off",
+                    else: "Switch on"}</button>
+                  <button
+                    class="text-button danger"
+                    phx-click="delete-schedule"
+                    phx-value-id={schedule.id}
+                    data-confirm="Delete this schedule?"
+                  >Delete</button>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
       </section>
-    </div>
-  </main>
-</div>
+
+      <div
+        :if={@schedule_modal}
+        class="modal-backdrop"
+        id="schedule-modal"
+        phx-window-keydown="close-schedule-modal"
+        phx-key="Escape"
+      >
+        <section
+          class="modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="schedule-modal-title"
+        >
+          <button
+            class="modal-close icon-button"
+            phx-click="close-schedule-modal"
+            aria-label="Close"
+          >
+            <.icon name="hero-x-mark" class="size-4" />
+          </button>
+          <div class="eyebrow">{if @editing_id, do: "UPDATE ROUTINE", else: "NEW ROUTINE"}</div>
+          <h2 id="schedule-modal-title">
+            {if @editing_id, do: "Edit schedule", else: "Create a schedule"}
+          </h2>
+          <p>
+            {if @editing_id,
+              do: "Adjust the instruction, timing, or participant.",
+              else: "Give this recurring instruction a clear name and a reliable time."}
+          </p>
+          <p :if={@form_error} class="form-error" role="alert">{@form_error}</p>
+          <p :if={@agents == []} class="form-note">
+            Add an agent to a room before creating a schedule.
+          </p>
+          <.form
+            :if={@agents != []}
+            for={@schedule_form}
+            id="workspace-schedule-form"
+            phx-submit="save-schedule"
+          >
+            <.input
+              field={@schedule_form[:agent_id]}
+              label="Participant"
+              type="select"
+              options={
+                Enum.map(@agents, fn agent ->
+                  {"#{room_name(@rooms, agent.room_id)} · #{agent.name}", agent.id}
+                end)
+              }
+            />
+            <.input
+              field={@schedule_form[:name]}
+              label="Name"
+              placeholder="e.g. Morning review"
+              required
+              maxlength="120"
+            />
+            <.input
+              field={@schedule_form[:prompt]}
+              label="What to say"
+              type="textarea"
+              rows="3"
+              required
+              maxlength="4000"
+              placeholder="Sweep the bug board and report what is worth doing today"
+            />
+            <.input
+              field={@schedule_form[:at]}
+              label="Times of day"
+              required
+              placeholder="09:00 or 09:00,17:30"
+            />
+            <.input
+              field={@schedule_form[:days]}
+              label="Days"
+              type="select"
+              options={days_options(@schedule_form[:days].value)}
+            />
+            <.input
+              field={@schedule_form[:enabled]}
+              label="Running"
+              type="select"
+              options={[{"Yes", "true"}, {"No", "false"}]}
+            />
+            <button class="button full" type="submit" phx-disable-with="Saving…">
+              {if @editing_id, do: "Save changes", else: "Create schedule"}
+            </button>
+          </.form>
+        </section>
+      </div>
+    </main>
+  </div>
+</Layouts.app>

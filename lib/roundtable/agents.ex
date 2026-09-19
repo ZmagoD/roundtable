@@ -31,8 +31,8 @@ defmodule Roundtable.Agents do
   its own `--help` documents; it takes full names too. Codex has neither, so it
   gets nothing rather than a list invented here.
 
-  Suggestions only — the field stays free text, because a model added tomorrow
-  should not need a release.
+  CLI listings are cached for one minute. `refresh_models/1` reloads them
+  immediately when provider configuration or locally installed models change.
   """
   def models(provider)
 
@@ -40,6 +40,12 @@ defmodule Roundtable.Agents do
   def models("claude"), do: ["fable", "opus", "sonnet"]
   def models("grok"), do: cached_models("grok", ["models"], &parse_bullets/1)
   def models(_provider), do: []
+
+  @doc "Reload a provider's model list without restarting the service."
+  def refresh_models(provider) do
+    :persistent_term.erase({__MODULE__, :models, provider})
+    models(provider)
+  end
 
   @doc """
   Pulls model names out of a CLI's listing.
@@ -69,17 +75,19 @@ defmodule Roundtable.Agents do
     |> Enum.uniq()
   end
 
-  # Listing 400-odd models means running a CLI; once per boot is plenty.
+  # Avoid a CLI invocation on every form keystroke, but let configuration
+  # changes become visible without restarting a server with active agents.
   defp cached_models(executable, args, parser) do
     key = {__MODULE__, :models, executable}
+    now = System.monotonic_time(:millisecond)
 
     case :persistent_term.get(key, :missing) do
-      :missing ->
-        models = read_models(executable, args, parser)
-        :persistent_term.put(key, models)
+      {expires_at, models} when expires_at > now ->
         models
 
-      models ->
+      _ ->
+        models = read_models(executable, args, parser)
+        :persistent_term.put(key, {now + 60_000, models})
         models
     end
   end

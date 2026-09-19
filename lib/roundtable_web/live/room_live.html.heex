@@ -1,1006 +1,1056 @@
-<div class="app-shell">
-  <aside class="sidebar">
-    <a class="brand" href="/"><span class="brand-mark">r<span>t</span></span><span>roundtable<small>YOUR AGENT WORKSPACE</small></span></a>
-    <div class="sidebar-label">
-      <span>ROOMS</span><button
-        phx-click="panel"
-        phx-value-name="room"
-        class="icon-button"
-        aria-label="Create room"
-      ><.icon name="hero-plus" class="size-4" /></button>
-    </div>
-    <nav aria-label="Rooms">
-      <.link
-        :for={room <- @rooms}
-        patch={~p"/rooms/#{room.id}"}
-        class={["room-link", @room && @room.id == room.id && "selected"]}
-      >
-        <span class="hash">#</span><span>{room.name}</span><span
-          :if={@room && @room.id == room.id}
-          class="selected-dot"
-        ></span>
-      </.link>
-      <p :if={@rooms == []} class="sidebar-empty">A little space for your next big idea.</p>
-    </nav>
-    <button id="build-team-button" class="new-room" phx-click="panel" phx-value-name="team">Build a team</button>
-    <button class="new-room" phx-click="panel" phx-value-name="room">+ New room</button>
-    <button id="model-presets-button" class="new-room" phx-click="panel" phx-value-name="models">Model presets</button>
-    <button id="profiles-button" class="new-room" phx-click="panel" phx-value-name="profiles">Agent profiles</button>
-    <.link class="new-room" navigate={~p"/schedules"}>Schedules</.link>
-    <div class="sidebar-bottom">
-      <span class="online-dot"></span>
-      Local workspace<small>Messages saved on this machine</small>
-      <div class="theme-toggle" role="group" aria-label="Colour theme">
-        <button type="button" data-theme-choice="system" aria-pressed="true">Auto</button>
-        <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
-        <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+<Layouts.app flash={@flash}>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/"><span class="brand-mark">r<span>t</span></span><span>roundtable<small>Your team workspace</small></span></a>
+      <div class="sidebar-label">
+        <span>Team rooms</span><button
+          phx-click="panel"
+          phx-value-name="room"
+          class="icon-button"
+          aria-label="Create room"
+        ><.icon name="hero-plus" class="size-4" /></button>
       </div>
-    </div>
-  </aside>
+      <nav aria-label="Rooms">
+        <.link
+          :for={room <- @rooms}
+          patch={~p"/rooms/#{room.id}"}
+          class={["room-link", @room && @room.id == room.id && "selected"]}
+          aria-current={if @room && @room.id == room.id, do: "page"}
+          title={room.name}
+        >
+          <span class="hash">#</span><span>{room.name}</span><span
+            :if={@room && @room.id == room.id}
+            class="selected-dot"
+          ></span>
+        </.link>
+        <p :if={@rooms == []} class="sidebar-empty">A little space for your next big idea.</p>
+      </nav>
+      <div class="workspace-actions" id="workspace-navigation">
+        <button
+          id="build-team-button"
+          class="sidebar-action primary"
+          phx-click="panel"
+          phx-value-name="team"
+        >
+          <.icon name="hero-user-group" class="size-4" /><span>Build a team</span>
+        </button>
+        <button
+          id="new-room-button"
+          class="sidebar-action"
+          phx-click="panel"
+          phx-value-name="room"
+        >
+          <.icon name="hero-plus" class="size-4" /><span>Create an empty room</span>
+        </button>
+        <.link id="workspace-schedules-link" class="sidebar-action" navigate={~p"/schedules"}>
+          <.icon name="hero-calendar-days" class="size-4" /><span>Schedules</span>
+        </.link>
+      </div>
+      <details class="workspace-setup" id="workspace-setup">
+        <summary>Reusable setup</summary>
+        <p>Optional shortcuts for building teams.</p>
+        <button
+          id="profiles-button"
+          class="sidebar-action setup-action"
+          phx-click="panel"
+          phx-value-name="profiles"
+        >
+          <.icon name="hero-identification" class="size-4" /><span>Saved agent roles<small>Reuse a role in another team</small></span>
+        </button>
+        <button
+          id="model-presets-button"
+          class="sidebar-action setup-action"
+          phx-click="panel"
+          phx-value-name="models"
+        >
+          <.icon name="hero-adjustments-horizontal" class="size-4" /><span>Saved model settings<small>Reuse model and cost choices</small></span>
+        </button>
+      </details>
+      <div class="sidebar-bottom">
+        <span class="online-dot"></span>
+        Local workspace<small>Messages saved on this machine</small>
+        <div class="theme-toggle" role="group" aria-label="Colour theme">
+          <button type="button" data-theme-choice="system" aria-pressed="true">Auto</button>
+          <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+          <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+        </div>
+      </div>
+    </aside>
 
-  <main class="main-panel">
-    <%= if @room do %>
-      <header class="room-header">
-        <div>
-          <div class="eyebrow">SHARED ROOM</div><h1><span>#</span> {@room.name}</h1><p title={
-            @room.directory
-          }>
-            <span :if={@changes} class="branch-badge" title="Current branch">
-              {@changes.branch}
-            </span>
-            {@room.directory}
-          </p>
-        </div>
-        <div class="header-actions">
-          <span class="live-badge"><span class="online-dot"></span> Live</span><button
-            id="edit-room-button"
-            class="button secondary"
-            phx-click="edit-room"
-            title="The brief everyone in this room works to"
-          >Room brief</button><button
-            id="room-notes-button"
-            class="button secondary"
-            phx-click="panel"
-            phx-value-name="notes"
-            title="What this room has learned, given to every participant"
-          >Room notes</button><button
-            id="schedules-button"
-            class="button secondary"
-            phx-click="panel"
-            phx-value-name="schedules"
-            title="Wake a participant at a time of day"
-          >Schedules</button><button
-            id="add-agent-button"
-            class="button secondary"
-            phx-click="panel"
-            phx-value-name="agent"
-          >+ Add agent</button>
-          <button
-            id="remove-room-button"
-            class="button secondary danger"
-            phx-click="remove-room"
-            phx-value-id={@room.id}
-            data-confirm={"Delete #{@room.name}? Its participants, its whole history and any cross-room requests go with it. There is no undo and nothing is exported."}
-          >Delete room</button>
-          <button
-            id="terminal-button"
-            class="button secondary"
-            phx-click={if @terminal, do: "close-terminal", else: "open-terminal"}
-            title="A shell in this room's directory"
-          >
-            {if @terminal, do: "Close terminal", else: "Terminal"}
-          </button>
-        </div>
-      </header>
-      <div class="room-body">
-        <section class="conversation" aria-label="Conversation">
-          <div
-            class="conversation-scroll"
-            id={"conversation-#{@room.id}"}
-            phx-hook="Conversation"
-          >
-            <div class="room-intro">
-              <div class="intro-icon">#</div><h2>Great work starts with a conversation.</h2><p>
-                One room. Different agents. Shared context.<br />Mention an agent to put it to work.
-              </p>
-            </div>
-            <div class="date-divider"><span>Room history</span><span>All times UTC</span></div>
-            <div id="messages" phx-update="stream">
-              <article :for={{dom_id, message} <- @streams.messages} id={dom_id} class="message">
-                <div class={[
-                  "avatar",
-                  message.kind == "human" && "human",
-                  message.kind == "agent" && "agent-avatar"
-                ]}>
-                  {initials(message.sender)}
-                </div>
-                <div class="message-content">
-                  <div class="message-meta">
-                    <strong>{message.sender}</strong><span
-                      :if={message.kind == "agent"}
-                      class="tag"
-                    >AGENT</span><time>{time(message.inserted_at)}</time>
-                  </div>
-                  <div :if={message.metadata != %{}} class="assignment-meta">
-                    <span>{message.metadata["name"]}</span><span>{message.metadata["model"] ||
-                      "Provider default"}</span><span class={[
-                      "cost-tier",
-                      message.metadata["cost_tier"]
-                    ]}>{message.metadata["cost_tier"]}</span><span>{message.metadata["purpose"]}</span>
-                  </div>
-                  <.message body={message.body} /><small
-                    :if={message.depth >= 4}
-                    class="muted"
-                  >Handoff limit reached. Mention an agent to start another round.</small>
-                </div>
-              </article>
-            </div>
-            <article
-              :for={run <- active_runs(@runs)}
-              id={"run-#{run.id}"}
-              class="message live-message"
-            >
-              <div class="avatar agent-avatar">{initials(run.agent.name)}</div><div class="message-content">
-                <div class="message-meta">
-                  <strong>{run.agent.name}</strong><span class={["status", run.status]}>{run.status}</span>
-                </div><div class="assignment-meta">
-                  <span>{run.model || "Provider default"}</span><span class={[
-                    "cost-tier",
-                    run.cost_tier
-                  ]}>{run.cost_tier}</span><span>{run.purpose}</span>
-                </div><.message :if={run.output != ""} body={run.output} /><p
-                  :if={run.output == ""}
-                  class="muted"
-                >
-                  {if run.status == "queued",
-                    do: "Waiting for a turn…",
-                    else: "Working on the assignment…"}
-                </p>
-              </div>
-            </article>
-            <div
-              :for={approval <- @approvals}
-              class="approval-card"
-              id={"approval-#{approval.run_id}-#{approval.request_id}"}
-            >
-              <div class="eyebrow">YOUR APPROVAL NEEDED</div><h3>
-                {approval.agent} wants to use a tool
-              </h3><pre>{Jason.encode!(approval.params, pretty: true)}</pre><div class="actions">
-                <button
-                  class="button"
-                  phx-click="approval"
-                  phx-value-run={approval.run_id}
-                  phx-value-request={Jason.encode!(approval.request_id)}
-                  phx-value-decision="accept"
-                >Allow once</button><button
-                  class="button secondary"
-                  phx-click="always-allow"
-                  phx-value-run={approval.run_id}
-                  phx-value-request={Jason.encode!(approval.request_id)}
-                  phx-value-agent={approval.agent}
-                  data-confirm={"Let #{approval.agent} run tools without asking? It will not stop for approval again until you turn this off."}
-                >Always allow {approval.agent}</button><button
-                  class="button secondary"
-                  phx-click="approval"
-                  phx-value-run={approval.run_id}
-                  phx-value-request={Jason.encode!(approval.request_id)}
-                  phx-value-decision="decline"
-                >Decline</button>
-              </div>
-            </div>
-            <details :if={failed_runs(@runs) != []} class="run-errors">
-              <summary>{length(failed_runs(@runs))} stopped or interrupted assignments</summary><div
-                :for={run <- failed_runs(@runs)}
-                class="run-error"
-              >
-                <strong>{run.agent.name} · {run.status}</strong><p>{run.error}</p><details :if={
-                  run.output != ""
-                }>
-                  <summary>Partial response</summary><pre>{run.output}</pre>
-                </details><button
-                  class="button secondary small"
-                  phx-click="retry"
-                  phx-value-id={run.id}
-                >Retry assignment</button>
-              </div>
-            </details>
-          </div>
-          <section :if={@terminal} class="terminal-panel" aria-label="Terminal">
-            <div class="terminal-bar">
-              <span>Shell in <code>{@room.directory}</code></span>
-              <button class="text-button" phx-click="close-terminal">Close</button>
-            </div>
-            <div
-              class="terminal-host"
-              id={"terminal-#{@room.id}"}
-              phx-hook="Terminal"
-              phx-update="ignore"
-            >
-            </div>
-          </section>
-          <div class="composer-wrap">
-            <.form
-              for={@message_form}
-              id="message-form"
-              phx-submit="send"
-              phx-change="draft"
-              class="composer"
-              phx-hook="Composer"
-              data-mentions={Jason.encode!(["all" | Enum.map(@agents, & &1.name)])}
-            >
-              <div id="mention-menu-container" phx-update="ignore">
-                <ul
-                  id="mention-menu"
-                  class="mention-menu"
-                  role="listbox"
-                  aria-label="Agents in this room"
-                  hidden
-                >
-                </ul>
-              </div>
-              <.input
-                field={@message_form[:body]}
-                type="textarea"
-                id="message-body"
-                placeholder="Share an idea, ask a question, or @mention an agent…"
-                aria-label="Message"
-                aria-autocomplete="list"
-                aria-controls="mention-menu"
-                rows="3"
-                required
-                maxlength="64000"
-              />
-              <div
-                :if={selected_provider(@agents, @message_form[:to].value)}
-                class="assignment-controls"
-              >
-                <.input
-                  field={@message_form[:preset_id]}
-                  label="Model"
-                  type="select"
-                  options={
-                    preset_options(
-                      @model_presets,
-                      selected_provider(@agents, @message_form[:to].value)
-                    )
-                  }
-                />
-                <.input
-                  field={@message_form[:purpose]}
-                  label="Task"
-                  type="select"
-                  options={[
-                    {"General", "general"},
-                    {"Plan", "planning"},
-                    {"Implement", "implementation"},
-                    {"Verify", "verification"}
-                  ]}
-                />
-              </div>
-              <div class="composer-footer">
-                <div>
-                  <span class="muted">To</span><.input
-                    field={@message_form[:to]}
-                    type="select"
-                    aria-label="Recipient"
-                    options={[
-                      {"Everyone in the room", "room"}
-                      | Enum.map(@agents, &{"@#{&1.name}", &1.name})
-                    ]}
-                  />
-                </div><button
-                  class="button send-button"
-                  type="submit"
-                  phx-disable-with="Sending…"
-                >Send <.icon name="hero-arrow-up-right" class="size-4" /></button>
-              </div>
-            </.form>
-            <p class="composer-hint">
-              <span>Everyone shares context. Mentions start a turn.</span><span>@ to mention · Tab to complete · Enter to send · Shift + Enter for a new line</span>
+    <main class="main-panel">
+      <%= if @room do %>
+        <header class="room-header">
+          <div>
+            <div class="eyebrow">TEAM ROOM</div><h1><span>#</span> {@room.name}</h1><p title={
+              @room.directory
+            }>
+              <span :if={@changes} class="branch-badge" title="Current branch">
+                {@changes.branch}
+              </span>
+              {@room.directory}
             </p>
           </div>
-        </section>
-        <aside class="agent-panel">
-          <div class="agent-panel-title">
-            <h2>In this room <span>{length(@agents)}</span></h2><button
+          <div class="header-actions">
+            <span class="live-badge"><span class="online-dot"></span> Live</span><button
+              id="edit-room-button"
+              class="button secondary"
+              phx-click="edit-room"
+              title="The brief everyone in this room works to"
+            >Room brief</button><button
+              id="room-notes-button"
+              class="button secondary"
+              phx-click="panel"
+              phx-value-name="notes"
+              title="What this room has learned, given to every participant"
+            >Room notes</button><button
+              id="schedules-button"
+              class="button secondary"
+              phx-click="panel"
+              phx-value-name="schedules"
+              title="Wake a participant at a time of day"
+            >Schedules</button><button
+              id="add-agent-button"
+              class="button secondary"
               phx-click="panel"
               phx-value-name="agent"
-              class="icon-button"
-              aria-label="Add agent"
-            ><.icon name="hero-plus" class="size-4" /></button>
+            >+ Add agent</button>
+            <button
+              id="remove-room-button"
+              class="button secondary danger"
+              phx-click="remove-room"
+              phx-value-id={@room.id}
+              data-confirm={"Delete #{@room.name}? Its participants, its whole history and any cross-room requests go with it. There is no undo and nothing is exported."}
+            >Delete room</button>
+            <button
+              id="terminal-button"
+              class="button secondary"
+              phx-click={if @terminal, do: "close-terminal", else: "open-terminal"}
+              title="A shell in this room's directory"
+            >
+              {if @terminal, do: "Close terminal", else: "Terminal"}
+            </button>
           </div>
-          <div class="human-card">
-            <div class="avatar human">YO</div><div>
-              <strong>You</strong><small>Orchestrator</small>
-            </div><span class="online-dot"></span>
-          </div>
-          <div :for={agent <- @agents} class="agent-card" id={"agent-#{agent.id}"}>
-            <div class="agent-card-top">
-              <div class={["avatar", agent.provider]}>{initials(agent.name)}</div><div>
-                <strong>{agent.name}</strong><small>{agent.provider}</small>
-              </div><span class={["status-dot", status(agent, @runs)]}></span>
-              <button
-                class="icon-button agent-edit"
-                phx-click="edit-agent"
-                phx-value-id={agent.id}
-                title="Rename, re-role, or pin a model"
-                aria-label={"Edit #{agent.name}"}
-              >
-                <.icon name="hero-pencil-square" class="size-4" />
-              </button>
-            </div>
-            <p :if={agent.role && agent.role != ""}>{agent.role}</p>
-            <p :if={agent.role in [nil, ""]} class="agent-no-role">
-              No role set —
-              <button class="text-button" phx-click="edit-agent" phx-value-id={agent.id}>give it one</button>
-            </p>
-            <div class="agent-model">
-              <span title="Default model for new assignments">{agent.model || "Provider default"}</span><span class={[
-                "cost-tier",
-                agent.cost_tier
-              ]}>{agent.cost_tier}</span>
-            </div>
-            <div class="agent-state">
-              <span class={["status", status(agent, @runs)]}>{status(agent, @runs)}</span><span>{if agent.session_id,
-                do: "Session saved",
-                else: "Fresh session"}</span><span
-                :if={agent.auto_approve}
-                class="auto-approve"
-                title="Runs tools without stopping to ask"
-              >auto-approves</span>
-            </div>
-            <details>
-              <summary>Session details</summary><dl>
-                <dt>Directory</dt><dd>{agent.directory}</dd><dt>Model</dt><dd>
-                  {agent.model || "Provider default"}
-                </dd><dt>Session</dt><dd>{agent.session_id || "Starts on first mention"}</dd>
-              </dl><div class="actions">
-                <button class="text-button" phx-click="stop" phx-value-id={agent.id}>Stop & clear queue</button><button
-                  class="text-button"
-                  phx-click="reset"
-                  phx-value-id={agent.id}
-                  data-confirm="Start a fresh provider session? The room history stays available, and queued turns will be stopped."
-                >New session</button><button
-                  class="text-button danger"
-                  phx-click="remove-agent"
-                  phx-value-id={agent.id}
-                  data-confirm={"Remove @#{agent.name}? Its queue stops and it leaves the room. What it already said stays in the transcript. This cannot be undone."}
-                >Remove</button>
+        </header>
+        <div class="room-body">
+          <section class="conversation" aria-label="Conversation">
+            <div
+              class="conversation-scroll"
+              id={"conversation-#{@room.id}"}
+              phx-hook="Conversation"
+            >
+              <div class="room-intro">
+                <div class="intro-icon">#</div><h2>Give your team a clear next step.</h2><p>
+                  Choose a participant below or mention them in your message.<br />Everyone in this room shares the conversation.
+                </p>
               </div>
-            </details>
-          </div>
-          <button class="add-agent-card" phx-click="panel" phx-value-name="agent"><span>+</span>
-          Bring another agent in</button>
-          <section :if={@changes} class="changes-card">
-            <button class="changes-summary" phx-click="toggle-diff">
-              <span class="changes-title">Changes on <strong>{@changes.branch}</strong></span>
-              <span :if={@changes.entries == []} class="changes-clean">working tree clean</span>
-              <span :if={@changes.entries != []} class="changes-count">
-                {length(@changes.entries)} {if length(@changes.entries) == 1,
-                  do: "file",
-                  else: "files"}
-                <span class="added">+{@changes.added}</span>
-                <span class="removed">-{@changes.removed}</span>
-              </span>
-            </button>
-            <ul :if={@changes.entries != []} class="changes-list">
-              <li :for={entry <- Enum.take(@changes.entries, 12)}>
-                <code class="changes-status">{entry.status}</code>
-                <span class="changes-path" title={entry.path}>{entry.path}</span>
-                <span :if={entry.added + entry.removed > 0} class="changes-lines">
-                  <span class="added">+{entry.added}</span>
-                  <span class="removed">-{entry.removed}</span>
-                </span>
-              </li>
-              <li :if={length(@changes.entries) > 12} class="changes-more">
-                and {length(@changes.entries) - 12} more
-              </li>
-            </ul>
-            <pre :if={@diff} class="changes-diff"><code>{@diff}</code></pre>
+              <div class="date-divider"><span>Room history</span><span>All times UTC</span></div>
+              <div id="messages" phx-update="stream">
+                <article :for={{dom_id, message} <- @streams.messages} id={dom_id} class="message">
+                  <div class={[
+                    "avatar",
+                    message.kind == "human" && "human",
+                    message.kind == "agent" && "agent-avatar"
+                  ]}>
+                    {initials(message.sender)}
+                  </div>
+                  <div class="message-content">
+                    <div class="message-meta">
+                      <strong>{message.sender}</strong><span
+                        :if={message.kind == "agent"}
+                        class="tag"
+                      >AGENT</span><time>{time(message.inserted_at)}</time>
+                    </div>
+                    <div :if={message.metadata != %{}} class="assignment-meta">
+                      <span>{message.metadata["name"]}</span><span>{message.metadata["model"] ||
+                        "Provider default"}</span><span class={[
+                        "cost-tier",
+                        message.metadata["cost_tier"]
+                      ]}>{message.metadata["cost_tier"]}</span><span>{message.metadata["purpose"]}</span>
+                    </div>
+                    <.message body={message.body} /><small
+                      :if={message.depth >= 4}
+                      class="muted"
+                    >Handoff limit reached. Mention an agent to start another round.</small>
+                  </div>
+                </article>
+              </div>
+              <article
+                :for={run <- active_runs(@runs)}
+                id={"run-#{run.id}"}
+                class="message live-message"
+              >
+                <div class="avatar agent-avatar">{initials(run.agent.name)}</div><div class="message-content">
+                  <div class="message-meta">
+                    <strong>{run.agent.name}</strong><span class={["status", run.status]}>{run.status}</span>
+                  </div><div class="assignment-meta">
+                    <span>{run.model || "Provider default"}</span><span class={[
+                      "cost-tier",
+                      run.cost_tier
+                    ]}>{run.cost_tier}</span><span>{run.purpose}</span>
+                  </div><.message :if={run.output != ""} body={run.output} /><p
+                    :if={run.output == ""}
+                    class="muted"
+                  >
+                    {if run.status == "queued",
+                      do: "Waiting for a turn…",
+                      else: "Working on the assignment…"}
+                  </p>
+                </div>
+              </article>
+              <div
+                :for={approval <- @approvals}
+                class="approval-card"
+                id={"approval-#{approval.run_id}-#{approval.request_id}"}
+              >
+                <div class="eyebrow">YOUR APPROVAL NEEDED</div><h3>
+                  {approval.agent} wants to use a tool
+                </h3><pre>{Jason.encode!(approval.params, pretty: true)}</pre><div class="actions">
+                  <button
+                    class="button"
+                    phx-click="approval"
+                    phx-value-run={approval.run_id}
+                    phx-value-request={Jason.encode!(approval.request_id)}
+                    phx-value-decision="accept"
+                  >Allow once</button><button
+                    class="button secondary"
+                    phx-click="always-allow"
+                    phx-value-run={approval.run_id}
+                    phx-value-request={Jason.encode!(approval.request_id)}
+                    phx-value-agent={approval.agent}
+                    data-confirm={"Let #{approval.agent} run tools without asking? It will not stop for approval again until you turn this off."}
+                  >Always allow {approval.agent}</button><button
+                    class="button secondary"
+                    phx-click="approval"
+                    phx-value-run={approval.run_id}
+                    phx-value-request={Jason.encode!(approval.request_id)}
+                    phx-value-decision="decline"
+                  >Decline</button>
+                </div>
+              </div>
+              <details :if={failed_runs(@runs) != []} class="run-errors">
+                <summary>{length(failed_runs(@runs))} stopped or interrupted assignments</summary><div
+                  :for={run <- failed_runs(@runs)}
+                  class="run-error"
+                >
+                  <strong>{run.agent.name} · {run.status}</strong><p>{run.error}</p><details :if={
+                    run.output != ""
+                  }>
+                    <summary>Partial response</summary><pre>{run.output}</pre>
+                  </details><button
+                    class="button secondary small"
+                    phx-click="retry"
+                    phx-value-id={run.id}
+                  >Retry assignment</button>
+                </div>
+              </details>
+            </div>
+            <section :if={@terminal} class="terminal-panel" aria-label="Terminal">
+              <div class="terminal-bar">
+                <span>Shell in <code>{@room.directory}</code></span>
+                <button class="text-button" phx-click="close-terminal">Close</button>
+              </div>
+              <div
+                class="terminal-host"
+                id={"terminal-#{@room.id}"}
+                phx-hook="Terminal"
+                phx-update="ignore"
+              >
+              </div>
+            </section>
+            <div class="composer-wrap">
+              <.form
+                for={@message_form}
+                id="message-form"
+                phx-submit="send"
+                phx-change="draft"
+                class="composer"
+                phx-hook="Composer"
+                data-mentions={Jason.encode!(["all" | Enum.map(@agents, & &1.name)])}
+              >
+                <div id="mention-menu-container" phx-update="ignore">
+                  <ul
+                    id="mention-menu"
+                    class="mention-menu"
+                    role="listbox"
+                    aria-label="Agents in this room"
+                    hidden
+                  >
+                  </ul>
+                </div>
+                <.input
+                  field={@message_form[:body]}
+                  type="textarea"
+                  id="message-body"
+                  placeholder="Share an idea, ask a question, or @mention an agent…"
+                  aria-label="Message"
+                  aria-autocomplete="list"
+                  aria-controls="mention-menu"
+                  rows="3"
+                  required
+                  maxlength="64000"
+                />
+                <div
+                  :if={selected_provider(@agents, @message_form[:to].value)}
+                  class="assignment-controls"
+                >
+                  <.input
+                    field={@message_form[:preset_id]}
+                    label="Model"
+                    type="select"
+                    options={
+                      preset_options(
+                        @model_presets,
+                        selected_provider(@agents, @message_form[:to].value)
+                      )
+                    }
+                  />
+                  <.input
+                    field={@message_form[:purpose]}
+                    label="Task"
+                    type="select"
+                    options={[
+                      {"General", "general"},
+                      {"Plan", "planning"},
+                      {"Implement", "implementation"},
+                      {"Verify", "verification"}
+                    ]}
+                  />
+                </div>
+                <div class="composer-footer">
+                  <div>
+                    <span class="muted">To</span><.input
+                      field={@message_form[:to]}
+                      type="select"
+                      aria-label="Recipient"
+                      options={[
+                        {"Everyone in the room", "room"}
+                        | Enum.map(@agents, &{"@#{&1.name}", &1.name})
+                      ]}
+                    />
+                  </div><button
+                    class="button send-button"
+                    type="submit"
+                    phx-disable-with="Sending…"
+                  >Send <.icon name="hero-arrow-up-right" class="size-4" /></button>
+                </div>
+              </.form>
+              <p class="composer-hint">
+                <span>Everyone shares context. Mentions start a turn.</span><span>@ to mention · Tab to complete · Enter to send · Shift + Enter for a new line</span>
+              </p>
+            </div>
           </section>
-          <div class="room-note">
-            <span>✳</span><h3>A shared place to think and act.</h3><p>
-              Agents receive the room's unread context with their next assignment. Mention one agent to
-              start its turn, or use @all when everyone should see the work.
-            </p><p>
-              Queued work keeps running while the Roundtable service is on, even after you close this tab.
-            </p>
+          <aside class="agent-panel">
+            <div class="agent-panel-title">
+              <h2>Team members <span>{length(@agents)}</span></h2><button
+                phx-click="panel"
+                phx-value-name="agent"
+                class="icon-button"
+                aria-label="Add agent"
+              ><.icon name="hero-plus" class="size-4" /></button>
+            </div>
+            <div class="human-card">
+              <div class="avatar human">YO</div><div>
+                <strong>You</strong><small>Workspace owner</small>
+              </div><span class="online-dot"></span>
+            </div>
+            <div :for={agent <- @agents} class="agent-card" id={"agent-#{agent.id}"}>
+              <div class="agent-card-top">
+                <div class={["avatar", agent.provider]}>{initials(agent.name)}</div><div>
+                  <strong>{agent.name}</strong><small>{agent.provider}</small>
+                </div><span class={["status-dot", status(agent, @runs)]}></span>
+                <button
+                  class="icon-button agent-edit"
+                  phx-click="edit-agent"
+                  phx-value-id={agent.id}
+                  title="Rename, re-role, or pin a model"
+                  aria-label={"Edit #{agent.name}"}
+                >
+                  <.icon name="hero-pencil-square" class="size-4" />
+                </button>
+              </div>
+              <p :if={agent.role && agent.role != ""}>{agent.role}</p>
+              <p :if={agent.role in [nil, ""]} class="agent-no-role">
+                No role set —
+                <button class="text-button" phx-click="edit-agent" phx-value-id={agent.id}>give it one</button>
+              </p>
+              <div class="agent-model">
+                <span title="Default model for new assignments">{agent.model || "Provider default"}</span><span class={[
+                  "cost-tier",
+                  agent.cost_tier
+                ]}>{agent.cost_tier}</span>
+              </div>
+              <div class="agent-state">
+                <span class={["status", status(agent, @runs)]}>{status(agent, @runs)}</span><span>{if agent.session_id,
+                  do: "Session saved",
+                  else: "Fresh session"}</span><span
+                  :if={agent.auto_approve}
+                  class="auto-approve"
+                  title="Runs tools without stopping to ask"
+                >auto-approves</span>
+              </div>
+              <details>
+                <summary>Session details</summary><dl>
+                  <dt>Directory</dt><dd>{agent.directory}</dd><dt>Model</dt><dd>
+                    {agent.model || "Provider default"}
+                  </dd><dt>Session</dt><dd>{agent.session_id || "Starts on first mention"}</dd>
+                </dl><div class="actions">
+                  <button class="text-button" phx-click="stop" phx-value-id={agent.id}>Stop & clear queue</button><button
+                    class="text-button"
+                    phx-click="reset"
+                    phx-value-id={agent.id}
+                    data-confirm="Start a fresh provider session? The room history stays available, and queued turns will be stopped."
+                  >New session</button><button
+                    class="text-button danger"
+                    phx-click="remove-agent"
+                    phx-value-id={agent.id}
+                    data-confirm={"Remove @#{agent.name}? Its queue stops and it leaves the room. What it already said stays in the transcript. This cannot be undone."}
+                  >Remove</button>
+                </div>
+              </details>
+            </div>
+            <button class="add-agent-card" phx-click="panel" phx-value-name="agent"><span>+</span>
+            Bring another agent in</button>
+            <section :if={@changes} class="changes-card">
+              <button class="changes-summary" phx-click="toggle-diff">
+                <span class="changes-title">Changes on <strong>{@changes.branch}</strong></span>
+                <span :if={@changes.entries == []} class="changes-clean">working tree clean</span>
+                <span :if={@changes.entries != []} class="changes-count">
+                  {length(@changes.entries)} {if length(@changes.entries) == 1,
+                    do: "file",
+                    else: "files"}
+                  <span class="added">+{@changes.added}</span>
+                  <span class="removed">-{@changes.removed}</span>
+                </span>
+              </button>
+              <ul :if={@changes.entries != []} class="changes-list">
+                <li :for={entry <- Enum.take(@changes.entries, 12)}>
+                  <code class="changes-status">{entry.status}</code>
+                  <span class="changes-path" title={entry.path}>{entry.path}</span>
+                  <span :if={entry.added + entry.removed > 0} class="changes-lines">
+                    <span class="added">+{entry.added}</span>
+                    <span class="removed">-{entry.removed}</span>
+                  </span>
+                </li>
+                <li :if={length(@changes.entries) > 12} class="changes-more">
+                  and {length(@changes.entries) - 12} more
+                </li>
+              </ul>
+              <pre :if={@diff} class="changes-diff"><code>{@diff}</code></pre>
+            </section>
+            <div class="room-note">
+              <span>✳</span><h3>A shared place to think and act.</h3><p>
+                Agents receive the room's unread context with their next assignment. Mention one agent to
+                start its turn, or use @all when everyone should see the work.
+              </p><p>
+                Queued work keeps running while the Roundtable service is on, even after you close this tab.
+              </p>
+            </div>
+          </aside>
+        </div>
+      <% else %>
+        <div class="welcome">
+          <span class="welcome-label">ROUNDTABLE / LOCAL WORKSPACE</span><div class="welcome-symbol">
+            ✳
+          </div><h1>Your teams.<br />A shared place to work.</h1><p>
+            Start with a team for marketing, sales, product, or engineering.<br />Describe its goal, then work with named agents in a shared room.
+          </p><button class="button" phx-click="panel" phx-value-name="team">Build your first team
+          <.icon name="hero-arrow-up-right" class="size-4" /></button><div class="welcome-providers">
+            <span :for={provider <- @providers}><span class={
+              if provider.installed, do: "online-dot", else: "offline-dot"
+            }></span>{provider.label}</span>
           </div>
-        </aside>
-      </div>
-    <% else %>
-      <div class="welcome">
-        <span class="welcome-label">ROUNDTABLE / LOCAL WORKSPACE</span><div class="welcome-symbol">
-          ✳
-        </div><h1>Your agents.<br />One conversation.</h1><p>
-          Bring Codex, Claude Code, and OpenCode together.<br />Give them names, share a goal, and get to work.
-        </p><button class="button" phx-click="panel" phx-value-name="room">Create your first room
-        <.icon name="hero-arrow-up-right" class="size-4" /></button><div class="welcome-providers">
-          <span :for={provider <- @providers}><span class={
-            if provider.installed, do: "online-dot", else: "offline-dot"
-          }></span>{provider.label}</span>
         </div>
-      </div>
-    <% end %>
-  </main>
+      <% end %>
+    </main>
 
-  <div
-    :if={@panel}
-    class="modal-backdrop"
-    id="setup-panel"
-    phx-window-keydown="close-panel"
-    phx-key="Escape"
-  >
-    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <button class="modal-close icon-button" phx-click="close-panel" aria-label="Close"><.icon
-        name="hero-x-mark"
-        class="size-4"
-      /></button>
-      <div class="eyebrow">
-        {case @panel do
-          "room" -> if(@editing_room, do: "WHAT THIS ROOM IS DOING", else: "A NEW SPACE")
-          "models" -> "CAPABILITY & COST"
-          "team" -> "START WITH A GOAL"
-          "profiles" -> "YOUR PEOPLE"
-          "schedules" -> "STANDING INSTRUCTIONS"
-          "notes" -> "WHAT THIS ROOM HAS LEARNED"
-          _ -> if(@editing_agent, do: "CHANGE A PARTICIPANT", else: "EXPAND YOUR TEAM")
-        end}
-      </div>
-      <h2 id="modal-title">
-        {case @panel do
-          "room" -> if(@editing_room, do: "Edit this room", else: "Create a room")
-          "models" -> "Model presets"
-          "team" -> "Build a team"
-          "profiles" -> "Agent profiles"
-          "schedules" -> "Schedules"
-          "notes" -> "Room notes"
-          _ -> if(@editing_agent, do: "Edit this agent", else: "Invite an agent")
-        end}
-      </h2>
-      <p>
-        {case @panel do
-          "room" ->
-            if(@editing_room,
-              do: "Its name, and the brief everyone in it works to.",
-              else: "Give your project a place to come together."
-            )
-
-          "team" ->
-            "Describe the work. A team builder will help choose roles and add the participants for you."
-
-          "models" ->
-            "Save your models once. Choose the right one for each task."
-
-          "profiles" ->
-            "Define a participant once, then add it to any room."
-
-          "schedules" ->
-            "Say something to one participant at the same times every day."
-
-          "notes" ->
-            "Facts every participant starts its turn with. One line each: where a thing lives, what was settled, what caught someone out."
-
-          _ ->
-            cond do
-              @editing_agent && @editing_renamable ->
-                "Rename it, change what it is for, or pin a model."
-
-              @editing_agent ->
-                "Change what it is for, or pin a model. It has taken a turn, so the room has been addressing it by name."
-
-              true ->
-                "A name, a role, and a fresh session."
-            end
-        end}
-      </p>
-      <p :if={@form_error} class="form-error" role="alert">{@form_error}</p>
-      <.form :if={@panel == "team"} for={@team_form} id="team-form" phx-submit="build-team">
-        <.input
-          field={@team_form[:name]}
-          label="Team name"
-          placeholder="e.g. Billing"
-          required
-          maxlength="80"
-        />
-        <.input
-          field={@team_form[:context]}
-          label="What would you like the team to do?"
-          type="textarea"
-          rows="5"
-          required
-          maxlength="4000"
-          placeholder="Describe your project, the help you need, and any preferences for the team."
-        />
-        <.input field={@team_form[:directory]} label="Project directory" required />
-        <.input
-          field={@team_form[:provider]}
-          label="Team builder"
-          type="select"
-          options={
-            for provider <- @providers,
-                provider.id in ["codex", "claude"],
-                do: {provider.label, provider.id}
-          }
-        />
-        <p class="form-note">
-          Creates a room and starts one agent turn using your chosen provider's account. The team builder uses the provider's default model and asks for approval when its tools need it.
-        </p>
-        <button class="button full" type="submit" phx-disable-with="Starting…">Start building my team</button>
-      </.form>
-      <.form
-        :if={@panel == "room"}
-        for={@room_form}
-        id="room-form"
-        phx-change="room-draft"
-        phx-submit="create-room"
-      >
-        <.input
-          field={@room_form[:name]}
-          label="Room name"
-          placeholder="e.g. checkout-redesign"
-          required
-          maxlength="80"
-          autofocus
-        />
-        <.input
-          field={@room_form[:context]}
-          label="What this room is working on, and how"
-          type="textarea"
-          placeholder="e.g. Elixir/Phoenix checkout service. Tests with every change, mix precommit before anything is called done, never push."
-          rows="4"
-          maxlength="4000"
-        />
-        <p class="form-note">
-          Every participant here opens each turn with this, alongside its own role,
-          so shared goals and conventions belong here rather than being repeated
-          in each role.
-        </p>
-        <div :if={@editing_room} class="input-field">
-          <label>Project directory</label>
-          <p class="fixed-field">{@room_form[:directory].value}</p>
+    <div
+      :if={@panel}
+      class="modal-backdrop"
+      id="setup-panel"
+      phx-window-keydown="close-panel"
+      phx-key="Escape"
+    >
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <button class="modal-close icon-button" phx-click="close-panel" aria-label="Close"><.icon
+          name="hero-x-mark"
+          class="size-4"
+        /></button>
+        <div class="eyebrow">
+          {case @panel do
+            "room" -> if(@editing_room, do: "WHAT THIS ROOM IS DOING", else: "A NEW SPACE")
+            "models" -> "CAPABILITY & COST"
+            "team" -> "START WITH A GOAL"
+            "profiles" -> "YOUR PEOPLE"
+            "schedules" -> "STANDING INSTRUCTIONS"
+            "notes" -> "WHAT THIS ROOM HAS LEARNED"
+            _ -> if(@editing_agent, do: "CHANGE A PARTICIPANT", else: "EXPAND YOUR TEAM")
+          end}
         </div>
-        <.input
-          :if={is_nil(@editing_room)}
-          field={@room_form[:directory]}
-          label="Project directory"
-          required
-          autocomplete="off"
-        />
-        <ul :if={@directory_options != [] and is_nil(@editing_room)} class="directory-picker">
-          <li :for={path <- @directory_options}>
-            <button type="button" phx-click="pick-directory" phx-value-path={path}>
-              <span class="directory-name">{Path.basename(path)}</span>
-              <span :if={Roundtable.Directories.repository?(path)} class="directory-repo">git</span>
-              <span class="directory-path">{path}</span>
-            </button>
-          </li>
-        </ul>
-        <p :if={is_nil(@editing_room)} class="form-note">
-          Type to narrow, or click to go in. An existing absolute path on this machine.
-        </p>
-        <button class="button full" type="submit" phx-disable-with="Saving…">
-          {if @editing_room, do: "Save changes", else: "Create room"}
-          <.icon name="hero-arrow-up-right" class="size-4" />
-        </button>
-      </.form>
-      <.form
-        :if={@panel == "agent" && @room}
-        for={@agent_form}
-        id="agent-form"
-        phx-submit="create-agent"
-        phx-change="agent-draft"
-      >
-        <div class="form-row">
-          <.input
-            :if={@editing_renamable}
-            field={@agent_form[:name]}
-            label="Name"
-            placeholder="e.g. ada"
-            pattern="[a-zA-Z][a-zA-Z0-9_-]{0,29}"
-            required
-            autofocus
-          />
-          <div :if={not @editing_renamable} class="input-field">
-            <label>Name</label>
-            <p class="fixed-field">@{@agent_form[:name].value}</p>
-          </div><.input
-            :if={is_nil(@editing_agent)}
-            field={@agent_form[:provider]}
-            label="Agent"
-            type="select"
-            options={
-              Enum.map(
-                @providers,
-                &{&1.label <> if(&1.installed, do: "", else: " · not installed"), &1.id}
+        <h2 id="modal-title">
+          {case @panel do
+            "room" -> if(@editing_room, do: "Edit this room", else: "Create a room")
+            "models" -> "Saved model settings"
+            "team" -> "Build a team"
+            "profiles" -> "Saved agent roles"
+            "schedules" -> "Schedules"
+            "notes" -> "Room notes"
+            _ -> if(@editing_agent, do: "Edit this agent", else: "Invite an agent")
+          end}
+        </h2>
+        <p>
+          {case @panel do
+            "room" ->
+              if(@editing_room,
+                do: "Its name, and the brief everyone in it works to.",
+                else: "Give your project a place to come together."
               )
-            }
-          />
-          <div :if={@editing_agent} class="input-field">
-            <label>Agent</label>
-            <p class="fixed-field">{@agent_form[:provider].value}</p>
-          </div>
-        </div>
-        <.input
-          field={@agent_form[:role]}
-          label="Role — what it is for and how it should work"
-          type="textarea"
-          placeholder="e.g. Review changes and say what is wrong; never write them yourself"
-          rows="3"
-          maxlength="4000"
-        />
-        <p class="form-note">
-          This is the standing brief every turn opens with, so it is where
-          behaviour belongs, not only the subject. Change it whenever you like:
-          the next turn works to the new one and is told the old one no longer
-          applies.
+
+            "team" ->
+              "Describe the team’s goal and the roles you need, including a team lead if you want one. Submitting starts a team-builder agent that helps set up the room."
+
+            "models" ->
+              "Save a model and its cost tier as a preset you can choose when assigning work. This is optional; provider defaults work without it."
+
+            "profiles" ->
+              "Save an agent’s role, provider, and model as a reusable profile. Add a copy to another team without writing the brief again."
+
+            "schedules" ->
+              "Say something to one participant at the same times every day."
+
+            "notes" ->
+              "Facts every participant starts its turn with. One line each: where a thing lives, what was settled, what caught someone out."
+
+            _ ->
+              cond do
+                @editing_agent && @editing_renamable ->
+                  "Rename it, change what it is for, or pin a model."
+
+                @editing_agent ->
+                  "Change what it is for, or pin a model. It has taken a turn, so the room has been addressing it by name."
+
+                true ->
+                  "A name, a role, and a fresh session."
+              end
+          end}
         </p>
-        <div class="input-field">
-          <label>Working directory</label>
-          <p class="fixed-field">{@room && @room.directory}</p>
-        </div>
-        <p class="form-note">
-          Everyone in a room works on the same tree. For a separate worktree, make a separate room.
-        </p>
-        <.input
-          field={@agent_form[:preset_id]}
-          label="Model preset"
-          type="select"
-          options={preset_options(@model_presets, @agent_form[:provider].value)}
-        />
-        <.input
-          :if={@model_options != []}
-          field={@agent_form[:model]}
-          label="Model"
-          type="select"
-          options={model_options(@model_options, @agent_form[:model].value)}
-        />
-        <.input
-          :if={@model_options == []}
-          field={@agent_form[:model]}
-          label="Model (optional)"
-          placeholder="Use the provider’s default model"
-        />
-        <p :if={@model_options != []} class="form-note">
-          {length(@model_options)} the CLI reports. Not listed? Put it in a model preset.
-        </p>
-        <p :if={@model_options == []} class="form-note">
-          This CLI does not list its models. Type any name it accepts.
-        </p>
-        <.input
-          field={@agent_form[:cost_tier]}
-          label="Relative cost for custom model"
-          type="select"
-          options={cost_options()}
-        />
-        <.input
-          field={@agent_form[:auto_approve]}
-          label="Tool approvals"
-          type="select"
-          options={[{"Ask me before each tool", "false"}, {"Approve automatically", "true"}]}
-        />
-        <p class="form-note">
-          Approving automatically suits an agent that orchestrates or runs long
-          on its own: it never stops for you, and every granted request is
-          written to the server log. Uses your installed CLI and its existing
-          login. Each agent has a separate session. OpenCode uses its configured
-          tool permissions; interactive approvals are currently supported for
-          Codex and Claude.
-        </p>
-        <button class="button full" type="submit" phx-disable-with="Saving…">
-          {if @editing_agent, do: "Save changes", else: "Add agent"}
-          <.icon name="hero-arrow-up-right" class="size-4" />
-        </button>
-      </.form>
-      <div :if={@panel == "schedules"}>
-        <p :if={@agents == []} class="form-note">
-          Nobody is in this room to wake. Add a participant first.
-        </p>
-        <.form
-          :if={@agents != []}
-          for={@schedule_form}
-          id="schedule-form"
-          phx-submit="save-schedule"
-        >
+        <p :if={@form_error} class="form-error" role="alert">{@form_error}</p>
+        <.form :if={@panel == "team"} for={@team_form} id="team-form" phx-submit="build-team">
           <.input
-            field={@schedule_form[:agent_id]}
-            label="Who to wake"
-            type="select"
-            options={Enum.map(@agents, &{&1.name, &1.id})}
-          />
-          <.input
-            field={@schedule_form[:name]}
-            label="Name"
-            placeholder="e.g. Morning review"
+            field={@team_form[:name]}
+            label="Team name"
+            placeholder="e.g. Billing"
             required
-            maxlength="120"
+            maxlength="80"
           />
           <.input
-            field={@schedule_form[:prompt]}
-            label="What to say to it"
+            field={@team_form[:context]}
+            label="What would you like the team to do?"
             type="textarea"
-            rows="3"
-            placeholder="e.g. Sweep the bug board and say what is worth doing today"
+            rows="5"
             required
             maxlength="4000"
+            placeholder="Describe your project, the help you need, and any preferences for the team."
           />
+          <.input field={@team_form[:directory]} label="Project directory" required />
           <.input
-            field={@schedule_form[:at]}
-            label="At — times of day, separated by commas"
-            placeholder="09:00 or 09:00,17:30"
-            required
-          />
-          <.input
-            field={@schedule_form[:days]}
-            label="On"
+            field={@team_form[:provider]}
+            label="Team builder"
             type="select"
-            options={day_options(@schedule_form[:days].value)}
-          />
-          <.input
-            field={@schedule_form[:enabled]}
-            label="Running"
-            type="select"
-            options={[{"Yes", "true"}, {"No", "false"}]}
+            options={
+              for provider <- @providers,
+                  provider.id in ["codex", "claude"],
+                  do: {provider.label, provider.id}
+            }
           />
           <p class="form-note">
-            Times are this machine’s own. What it says arrives as an ordinary mention and starts
-            a turn, so it costs what a turn costs. One missed by more than ten minutes — the
-            machine asleep, the service stopped — is skipped rather than delivered late.
+            Creates a room and starts one agent turn using your chosen provider's account. The team builder uses the provider's default model and asks for approval when its tools need it.
           </p>
-          <button class="button full" type="submit" phx-disable-with="Saving…">
-            {if @editing_schedule, do: "Update schedule", else: "Save schedule"}
-          </button>
-          <button
-            :if={@editing_schedule}
-            class="text-button"
-            type="button"
-            phx-click="panel"
-            phx-value-name="schedules"
-          >Add another schedule</button>
-          <button
-            :if={@editing_schedule}
-            class="text-button danger"
-            type="button"
-            phx-click="delete-schedule"
-            phx-value-id={@editing_schedule}
-            data-confirm="Remove this schedule? Nothing else changes."
-          >Delete this schedule</button>
+          <button class="button full" type="submit" phx-disable-with="Starting…">Start building my team</button>
         </.form>
-      </div>
-      <div :if={@panel == "notes"}>
-        <div :if={@notes != []}>
-          <div
-            :for={note <- @notes}
-            class={["preset-row", "profile-row", note.kind == "scratch" && "off"]}
-            title={"Added by #{note.author} · #{note_kind(note.kind)}"}
-          >
-            <button class="profile-open" phx-click="edit-note" phx-value-id={note.id}>
-              <span><strong>{if note.pinned, do: "Pinned · ", else: ""}{note.kind}</strong><small>{note.body}</small></span>
-            </button>
-            <button class="text-button" phx-click="pin-note" phx-value-id={note.id}>
-              {if note.pinned, do: "Unpin", else: "Pin"}
-            </button>
-          </div>
-        </div>
-        <p :if={@notes == []} class="form-note">
-          Nothing recorded yet. A room with no notes sends its participants nothing extra.
-        </p>
-        <.form for={@note_form} id="note-form" phx-submit="save-note">
+        <.form
+          :if={@panel == "room"}
+          for={@room_form}
+          id="room-form"
+          phx-change="room-draft"
+          phx-submit="create-room"
+        >
           <.input
-            field={@note_form[:body]}
-            label="What the room knows"
+            field={@room_form[:name]}
+            label="Room name"
+            placeholder="e.g. checkout-redesign"
+            required
+            maxlength="80"
+            autofocus
+          />
+          <.input
+            field={@room_form[:context]}
+            label="What this room is working on, and how"
             type="textarea"
-            rows="3"
-            placeholder="e.g. Money is cents everywhere. The legacy adapter is read-only — do not touch it."
-            required
-            maxlength="500"
-          />
-          <.input
-            field={@note_form[:kind]}
-            id={"note-kind-#{@note_seq}"}
-            label="Kind"
-            type="select"
-            options={note_kinds()}
-          />
-          <.input
-            field={@note_form[:pinned]}
-            id={"note-pinned-#{@note_seq}"}
-            label="Keep this one"
-            type="select"
-            options={[{"Only if it fits", "false"}, {"Always, before the rest", "true"}]}
+            placeholder="e.g. Elixir/Phoenix checkout service. Tests with every change, mix precommit before anything is called done, never push."
+            rows="4"
+            maxlength="4000"
           />
           <p class="form-note">
-            Every note here is read on every turn, by everyone, so each one costs what it says
-            for as long as it stands. Conventions, decisions and gotchas are sent; scratch is
-            kept for you and sent to nobody. When there are more than a turn can carry, pinned
-            notes go first and the newest fill what is left.
+            Every participant here opens each turn with this, alongside its own role,
+            so shared goals and conventions belong here rather than being repeated
+            in each role.
+          </p>
+          <div :if={@editing_room} class="input-field">
+            <label>Project directory</label>
+            <p class="fixed-field">{@room_form[:directory].value}</p>
+          </div>
+          <.input
+            :if={is_nil(@editing_room)}
+            field={@room_form[:directory]}
+            label="Project directory"
+            required
+            autocomplete="off"
+          />
+          <ul :if={@directory_options != [] and is_nil(@editing_room)} class="directory-picker">
+            <li :for={path <- @directory_options}>
+              <button type="button" phx-click="pick-directory" phx-value-path={path}>
+                <span class="directory-name">{Path.basename(path)}</span>
+                <span :if={Roundtable.Directories.repository?(path)} class="directory-repo">git</span>
+                <span class="directory-path">{path}</span>
+              </button>
+            </li>
+          </ul>
+          <p :if={is_nil(@editing_room)} class="form-note">
+            Type to narrow, or click to go in. An existing absolute path on this machine.
           </p>
           <button class="button full" type="submit" phx-disable-with="Saving…">
-            {if @editing_note, do: "Update note", else: "Save note"}
+            {if @editing_room, do: "Save changes", else: "Create room"}
+            <.icon name="hero-arrow-up-right" class="size-4" />
           </button>
-          <button
-            :if={@editing_note}
-            class="text-button"
-            type="button"
-            phx-click="panel"
-            phx-value-name="notes"
-          >Add another note</button>
-          <button
-            :if={@editing_note}
-            class="text-button danger"
-            type="button"
-            phx-click="delete-note"
-            phx-value-id={@editing_note}
-            data-confirm="Remove this note? The next turn will not see it."
-          >Delete this note</button>
         </.form>
-      </div>
-      <div :if={@panel == "profiles"}>
-        <div class="preset-list">
-          <div :for={profile <- @agent_profiles} class="preset-row profile-row">
-            <button class="profile-open" phx-click="edit-profile" phx-value-id={profile.id}>
-              <span><strong>{profile.name}</strong><small>{profile.provider} · {profile.model ||
-                "provider default"}</small></span><span class={[
-                "cost-tier",
-                profile.cost_tier
-              ]}>{profile.cost_tier}</span>
-            </button>
-            <button
-              :if={@room}
-              class="text-button"
-              phx-click="add-profile"
-              phx-value-id={profile.id}
-            >Add to {@room.name}</button>
+        <.form
+          :if={@panel == "agent" && @room}
+          for={@agent_form}
+          id="agent-form"
+          phx-submit="create-agent"
+          phx-change="agent-draft"
+        >
+          <div class="form-row">
+            <.input
+              :if={@editing_renamable}
+              field={@agent_form[:name]}
+              label="Name"
+              placeholder="e.g. ada"
+              pattern="[a-zA-Z][a-zA-Z0-9_-]{0,29}"
+              required
+              autofocus
+            />
+            <div :if={not @editing_renamable} class="input-field">
+              <label>Name</label>
+              <p class="fixed-field">@{@agent_form[:name].value}</p>
+            </div><.input
+              :if={is_nil(@editing_agent)}
+              field={@agent_form[:provider]}
+              label="Agent"
+              type="select"
+              options={
+                Enum.map(
+                  @providers,
+                  &{&1.label <> if(&1.installed, do: "", else: " · not installed"), &1.id}
+                )
+              }
+            />
+            <div :if={@editing_agent} class="input-field">
+              <label>Agent</label>
+              <p class="fixed-field">{@agent_form[:provider].value}</p>
+            </div>
           </div>
-          <p :if={@agent_profiles == []} class="form-note">
-            Nobody saved yet. A profile is a participant you want again: its provider,
-            model, role and how it handles tool approvals.
-          </p>
-        </div>
-        <.form for={@profile_form} id="profile-form" phx-submit="save-profile">
           <.input
-            field={@profile_form[:name]}
-            label="Name"
-            placeholder="e.g. reviewer"
-            pattern="[a-zA-Z][a-zA-Z0-9_-]{0,29}"
-            required
-          />
-          <.input
-            field={@profile_form[:provider]}
-            label="Agent"
-            type="select"
-            options={Enum.map(@providers, &{&1.label, &1.id})}
-          />
-          <.input
-            field={@profile_form[:role]}
+            field={@agent_form[:role]}
             label="Role — what it is for and how it should work"
             type="textarea"
             placeholder="e.g. Review changes and say what is wrong; never write them yourself"
             rows="3"
             maxlength="4000"
           />
+          <p class="form-note">
+            This is the standing brief every turn opens with, so it is where
+            behaviour belongs, not only the subject. Change it whenever you like:
+            the next turn works to the new one and is told the old one no longer
+            applies.
+          </p>
+          <div class="input-field">
+            <label>Working directory</label>
+            <p class="fixed-field">{@room && @room.directory}</p>
+          </div>
+          <p class="form-note">
+            Everyone in a room works on the same tree. For a separate worktree, make a separate room.
+          </p>
           <.input
-            field={@profile_form[:model]}
-            label="Model (optional)"
-            placeholder="Use the provider’s default model"
-            maxlength="200"
+            field={@agent_form[:preset_id]}
+            label="Model preset"
+            type="select"
+            options={preset_options(@model_presets, @agent_form[:provider].value)}
           />
           <.input
-            field={@profile_form[:cost_tier]}
-            label="Relative cost"
+            :if={@model_options != []}
+            field={@agent_form[:model]}
+            label="Model"
+            type="select"
+            options={model_options(@model_options, @agent_form[:model].value)}
+          />
+          <.input
+            :if={@model_options == []}
+            field={@agent_form[:model]}
+            label="Model (optional)"
+            placeholder="Use the provider’s default model"
+          />
+          <button
+            :if={@agent_form[:provider].value in ["opencode", "grok"]}
+            id="refresh-models-button"
+            type="button"
+            class="button secondary small"
+            phx-click="refresh-models"
+            phx-disable-with="Refreshing…"
+          >
+            Refresh models
+          </button>
+          <p :if={@model_options != []} class="form-note">
+            {length(@model_options)} the CLI reports. Not listed? Put it in a model preset.
+          </p>
+          <p :if={@model_options == []} class="form-note">
+            This CLI does not list its models. Type any name it accepts.
+          </p>
+          <.input
+            field={@agent_form[:cost_tier]}
+            label="Relative cost for custom model"
             type="select"
             options={cost_options()}
           />
           <.input
-            field={@profile_form[:auto_approve]}
+            field={@agent_form[:auto_approve]}
             label="Tool approvals"
             type="select"
             options={[{"Ask me before each tool", "false"}, {"Approve automatically", "true"}]}
           />
           <p class="form-note">
-            Profiles are templates. Adding one to a room creates a participant there
-            with its own session; changing the profile later leaves it alone.
+            Approving automatically suits an agent that orchestrates or runs long
+            on its own: it never stops for you, and every granted request is
+            written to the server log. Uses your installed CLI and its existing
+            login. Each agent has a separate session. OpenCode uses its configured
+            tool permissions; interactive approvals are currently supported for
+            Codex and Claude.
           </p>
           <button class="button full" type="submit" phx-disable-with="Saving…">
-            {if @editing_profile, do: "Update profile", else: "Save profile"}
+            {if @editing_agent, do: "Save changes", else: "Add agent"}
+            <.icon name="hero-arrow-up-right" class="size-4" />
           </button>
-          <button
-            :if={@editing_profile}
-            class="text-button"
-            type="button"
-            phx-click="panel"
-            phx-value-name="profiles"
-          >Add another profile</button>
-          <button
-            :if={@editing_profile}
-            class="text-button danger"
-            type="button"
-            phx-click="delete-profile"
-            phx-value-id={@editing_profile}
-            data-confirm="Delete this profile? Participants already added from it stay in their rooms."
-          >Delete this profile</button>
         </.form>
-      </div>
-      <div :if={@panel == "models"}>
-        <div class="preset-list">
-          <button
-            :for={preset <- @model_presets}
-            class="preset-row"
-            phx-click="edit-preset"
-            phx-value-id={preset.id}
+        <div :if={@panel == "schedules"}>
+          <p :if={@agents == []} class="form-note">
+            Nobody is in this room to wake. Add a participant first.
+          </p>
+          <.form
+            :if={@agents != []}
+            for={@schedule_form}
+            id="schedule-form"
+            phx-submit="save-schedule"
           >
-            <span><strong>{preset.name}</strong><small>{preset.provider} / {preset.model}</small></span><span class={[
-              "cost-tier",
-              preset.cost_tier
-            ]}>{preset.cost_tier}</span>
-          </button>
-          <p :if={@model_presets == []} class="form-note">
-            Add the model IDs you use with your CLI. Presets are shared across your rooms.
-          </p>
+            <.input
+              field={@schedule_form[:agent_id]}
+              label="Who to wake"
+              type="select"
+              options={Enum.map(@agents, &{&1.name, &1.id})}
+            />
+            <.input
+              field={@schedule_form[:name]}
+              label="Name"
+              placeholder="e.g. Morning review"
+              required
+              maxlength="120"
+            />
+            <.input
+              field={@schedule_form[:prompt]}
+              label="What to say to it"
+              type="textarea"
+              rows="3"
+              placeholder="e.g. Sweep the bug board and say what is worth doing today"
+              required
+              maxlength="4000"
+            />
+            <.input
+              field={@schedule_form[:at]}
+              label="At — times of day, separated by commas"
+              placeholder="09:00 or 09:00,17:30"
+              required
+            />
+            <.input
+              field={@schedule_form[:days]}
+              label="On"
+              type="select"
+              options={day_options(@schedule_form[:days].value)}
+            />
+            <.input
+              field={@schedule_form[:enabled]}
+              label="Running"
+              type="select"
+              options={[{"Yes", "true"}, {"No", "false"}]}
+            />
+            <p class="form-note">
+              Times are this machine’s own. What it says arrives as an ordinary mention and starts
+              a turn, so it costs what a turn costs. One missed by more than ten minutes — the
+              machine asleep, the service stopped — is skipped rather than delivered late.
+            </p>
+            <button class="button full" type="submit" phx-disable-with="Saving…">
+              {if @editing_schedule, do: "Update schedule", else: "Save schedule"}
+            </button>
+            <button
+              :if={@editing_schedule}
+              class="text-button"
+              type="button"
+              phx-click="panel"
+              phx-value-name="schedules"
+            >Add another schedule</button>
+            <button
+              :if={@editing_schedule}
+              class="text-button danger"
+              type="button"
+              phx-click="delete-schedule"
+              phx-value-id={@editing_schedule}
+              data-confirm="Remove this schedule? Nothing else changes."
+            >Delete this schedule</button>
+          </.form>
         </div>
-        <.form for={@preset_form} id="preset-form" phx-submit="save-preset">
-          <.input
-            field={@preset_form[:name]}
-            label="Preset name"
-            placeholder="e.g. Fast implementation"
-            required
-            maxlength="60"
-          />
-          <.input
-            field={@preset_form[:provider]}
-            label="Provider"
-            type="select"
-            options={Enum.map(@providers, &{&1.label, &1.id})}
-          />
-          <.input
-            field={@preset_form[:model]}
-            label="Model ID or alias"
-            placeholder="Exact model ID accepted by your CLI"
-            required
-            maxlength="200"
-          />
-          <.input
-            field={@preset_form[:cost_tier]}
-            label="Relative cost"
-            type="select"
-            options={cost_options()}
-          />
-          <p class="form-note">
-            Tiers are your estimates, not live prices. Agents see model IDs and tiers when deciding whom to ask for help. Use economy for routine work and premium when planning or verification needs it. Changing a participant’s model starts a fresh native session with the room history.
+        <div :if={@panel == "notes"}>
+          <div :if={@notes != []}>
+            <div
+              :for={note <- @notes}
+              class={["preset-row", "profile-row", note.kind == "scratch" && "off"]}
+              title={"Added by #{note.author} · #{note_kind(note.kind)}"}
+            >
+              <button class="profile-open" phx-click="edit-note" phx-value-id={note.id}>
+                <span><strong>{if note.pinned, do: "Pinned · ", else: ""}{note.kind}</strong><small>{note.body}</small></span>
+              </button>
+              <button class="text-button" phx-click="pin-note" phx-value-id={note.id}>
+                {if note.pinned, do: "Unpin", else: "Pin"}
+              </button>
+            </div>
+          </div>
+          <p :if={@notes == []} class="form-note">
+            Nothing recorded yet. A room with no notes sends its participants nothing extra.
           </p>
-          <button class="button full" type="submit" phx-disable-with="Saving…">{if @editing_preset,
-            do: "Update preset",
-            else: "Save preset"}</button>
-          <button
-            :if={@editing_preset}
-            class="text-button"
-            type="button"
-            phx-click="panel"
-            phx-value-name="models"
-          >Add another preset</button>
-        </.form>
+          <.form for={@note_form} id="note-form" phx-submit="save-note">
+            <.input
+              field={@note_form[:body]}
+              label="What the room knows"
+              type="textarea"
+              rows="3"
+              placeholder="e.g. Money is cents everywhere. The legacy adapter is read-only — do not touch it."
+              required
+              maxlength="500"
+            />
+            <.input
+              field={@note_form[:kind]}
+              id={"note-kind-#{@note_seq}"}
+              label="Kind"
+              type="select"
+              options={note_kinds()}
+            />
+            <.input
+              field={@note_form[:pinned]}
+              id={"note-pinned-#{@note_seq}"}
+              label="Keep this one"
+              type="select"
+              options={[{"Only if it fits", "false"}, {"Always, before the rest", "true"}]}
+            />
+            <p class="form-note">
+              Every note here is read on every turn, by everyone, so each one costs what it says
+              for as long as it stands. Conventions, decisions and gotchas are sent; scratch is
+              kept for you and sent to nobody. When there are more than a turn can carry, pinned
+              notes go first and the newest fill what is left.
+            </p>
+            <button class="button full" type="submit" phx-disable-with="Saving…">
+              {if @editing_note, do: "Update note", else: "Save note"}
+            </button>
+            <button
+              :if={@editing_note}
+              class="text-button"
+              type="button"
+              phx-click="panel"
+              phx-value-name="notes"
+            >Add another note</button>
+            <button
+              :if={@editing_note}
+              class="text-button danger"
+              type="button"
+              phx-click="delete-note"
+              phx-value-id={@editing_note}
+              data-confirm="Remove this note? The next turn will not see it."
+            >Delete this note</button>
+          </.form>
+        </div>
+        <div :if={@panel == "profiles"}>
+          <div class="preset-list">
+            <div :for={profile <- @agent_profiles} class="preset-row profile-row">
+              <button class="profile-open" phx-click="edit-profile" phx-value-id={profile.id}>
+                <span><strong>{profile.name}</strong><small>{profile.provider} · {profile.model ||
+                  "provider default"}</small></span><span class={[
+                  "cost-tier",
+                  profile.cost_tier
+                ]}>{profile.cost_tier}</span>
+              </button>
+              <button
+                :if={@room}
+                class="text-button"
+                phx-click="add-profile"
+                phx-value-id={profile.id}
+              >Add to {@room.name}</button>
+            </div>
+            <p :if={@agent_profiles == []} class="form-note">
+              Nobody saved yet. A profile is a participant you want again: its provider,
+              model, role and how it handles tool approvals.
+            </p>
+          </div>
+          <.form for={@profile_form} id="profile-form" phx-submit="save-profile">
+            <.input
+              field={@profile_form[:name]}
+              label="Name"
+              placeholder="e.g. reviewer"
+              pattern="[a-zA-Z][a-zA-Z0-9_-]{0,29}"
+              required
+            />
+            <.input
+              field={@profile_form[:provider]}
+              label="Agent"
+              type="select"
+              options={Enum.map(@providers, &{&1.label, &1.id})}
+            />
+            <.input
+              field={@profile_form[:role]}
+              label="Role — what it is for and how it should work"
+              type="textarea"
+              placeholder="e.g. Review changes and say what is wrong; never write them yourself"
+              rows="3"
+              maxlength="4000"
+            />
+            <.input
+              field={@profile_form[:model]}
+              label="Model (optional)"
+              placeholder="Use the provider’s default model"
+              maxlength="200"
+            />
+            <.input
+              field={@profile_form[:cost_tier]}
+              label="Relative cost"
+              type="select"
+              options={cost_options()}
+            />
+            <.input
+              field={@profile_form[:auto_approve]}
+              label="Tool approvals"
+              type="select"
+              options={[{"Ask me before each tool", "false"}, {"Approve automatically", "true"}]}
+            />
+            <p class="form-note">
+              Profiles are templates. Adding one to a room creates a participant there
+              with its own session; changing the profile later leaves it alone.
+            </p>
+            <button class="button full" type="submit" phx-disable-with="Saving…">
+              {if @editing_profile, do: "Update profile", else: "Save profile"}
+            </button>
+            <button
+              :if={@editing_profile}
+              class="text-button"
+              type="button"
+              phx-click="panel"
+              phx-value-name="profiles"
+            >Add another profile</button>
+            <button
+              :if={@editing_profile}
+              class="text-button danger"
+              type="button"
+              phx-click="delete-profile"
+              phx-value-id={@editing_profile}
+              data-confirm="Delete this profile? Participants already added from it stay in their rooms."
+            >Delete this profile</button>
+          </.form>
+        </div>
+        <div :if={@panel == "models"}>
+          <div class="preset-list">
+            <button
+              :for={preset <- @model_presets}
+              class="preset-row"
+              phx-click="edit-preset"
+              phx-value-id={preset.id}
+            >
+              <span><strong>{preset.name}</strong><small>{preset.provider} / {preset.model}</small></span><span class={[
+                "cost-tier",
+                preset.cost_tier
+              ]}>{preset.cost_tier}</span>
+            </button>
+            <p :if={@model_presets == []} class="form-note">
+              Add the model IDs you use with your CLI. Presets are shared across your rooms.
+            </p>
+          </div>
+          <.form for={@preset_form} id="preset-form" phx-submit="save-preset">
+            <.input
+              field={@preset_form[:name]}
+              label="Preset name"
+              placeholder="e.g. Fast implementation"
+              required
+              maxlength="60"
+            />
+            <.input
+              field={@preset_form[:provider]}
+              label="Provider"
+              type="select"
+              options={Enum.map(@providers, &{&1.label, &1.id})}
+            />
+            <.input
+              field={@preset_form[:model]}
+              label="Model ID or alias"
+              placeholder="Exact model ID accepted by your CLI"
+              required
+              maxlength="200"
+            />
+            <.input
+              field={@preset_form[:cost_tier]}
+              label="Relative cost"
+              type="select"
+              options={cost_options()}
+            />
+            <p class="form-note">
+              Tiers are your estimates, not live prices. Agents see model IDs and tiers when deciding whom to ask for help. Use economy for routine work and premium when planning or verification needs it. Changing a participant’s model starts a fresh native session with the room history.
+            </p>
+            <button class="button full" type="submit" phx-disable-with="Saving…">{if @editing_preset,
+              do: "Update preset",
+              else: "Save preset"}</button>
+            <button
+              :if={@editing_preset}
+              class="text-button"
+              type="button"
+              phx-click="panel"
+              phx-value-name="models"
+            >Add another preset</button>
+          </.form>
+        </div>
+      </section>
+    </div>
+    <div class="flash-container">
+      <div
+        :for={kind <- [:info, :error]}
+        :if={Phoenix.Flash.get(@flash, kind)}
+        class={["app-flash", kind]}
+        role="alert"
+        phx-click="lv:clear-flash"
+        phx-value-key={kind}
+      >
+        {Phoenix.Flash.get(@flash, kind)}
       </div>
-    </section>
-  </div>
-  <div class="flash-container">
+    </div>
     <div
-      :for={kind <- [:info, :error]}
-      :if={Phoenix.Flash.get(@flash, kind)}
-      class={["app-flash", kind]}
-      role="alert"
-      phx-click="lv:clear-flash"
-      phx-value-key={kind}
+      id="connection-status"
+      class="connection-status"
+      phx-disconnected={JS.show()}
+      phx-connected={JS.hide()}
+      hidden
     >
-      {Phoenix.Flash.get(@flash, kind)}
+      Connection lost. Reconnecting…
     </div>
   </div>
-  <div
-    id="connection-status"
-    class="connection-status"
-    phx-disconnected={JS.show()}
-    phx-connected={JS.hide()}
-    hidden
-  >
-    Connection lost. Reconnecting…
-  </div>
-</div>
+</Layouts.app>
