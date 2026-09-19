@@ -408,7 +408,7 @@ defmodule Roundtable.Chat do
   end
 
   @doc """
-  Makes a new model take effect, rather than from some later turn onwards.
+  Makes a new provider or model take effect, rather than from some later turn onwards.
 
   Two things would otherwise keep running on the old one: turns already queued,
   which carry the model they were created with, and the provider's own session,
@@ -420,7 +420,8 @@ defmodule Roundtable.Chat do
   A turn already running is left alone: it is mid-conversation with a provider,
   and the next one picks the new model up.
   """
-  def adopt_model(%{model: same}, %{model: same}), do: :ok
+  def adopt_model(%{provider: provider, model: model}, %{provider: provider, model: model}),
+    do: :ok
 
   def adopt_model(_previous, agent) do
     from(r in Run,

@@ -526,7 +526,7 @@
                   "Rename it, change what it is for, or pin a model."
 
                 @editing_agent ->
-                  "Change what it is for, or pin a model. It has taken a turn, so the room has been addressing it by name."
+                  "Switch provider or model, or change what it is for. It has taken a turn, so its name stays fixed; existing history stays in the room."
 
                 true ->
                   "A name, a role, and a fresh session."
@@ -644,7 +644,6 @@
               <label>Name</label>
               <p class="fixed-field">@{@agent_form[:name].value}</p>
             </div><.input
-              :if={is_nil(@editing_agent)}
               field={@agent_form[:provider]}
               label="Agent"
               type="select"
@@ -655,10 +654,6 @@
                 )
               }
             />
-            <div :if={@editing_agent} class="input-field">
-              <label>Agent</label>
-              <p class="fixed-field">{@agent_form[:provider].value}</p>
-            </div>
           </div>
           <.input
             field={@agent_form[:role]}

@@ -23,16 +23,16 @@ defmodule Roundtable.Chat.Agent do
   @doc """
   The fields that can change after a participant exists.
 
-  Deliberately not provider or directory, and the name only while
-  `renamable?` — see `Roundtable.Chat.update_agent/2`.
+  Directory stays fixed to the room. Provider can change after creation so a
+  human can move a participant to another account when a provider runs out.
   """
   def rename_changeset(agent, attrs, renamable? \\ true) do
     agent
     |> cast(
       attrs,
       if(renamable?,
-        do: ~w(name role model cost_tier auto_approve)a,
-        else: ~w(role model cost_tier auto_approve)a
+        do: ~w(name provider role model cost_tier auto_approve)a,
+        else: ~w(provider role model cost_tier auto_approve)a
       )
     )
     |> update_change(:name, &String.downcase/1)

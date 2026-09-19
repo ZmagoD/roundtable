@@ -696,7 +696,10 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert html =~ "claude-sonnet-5"
     end
 
-    test "editing keeps the provider and directory fixed", %{view: view, agent: agent} do
+    test "editing can switch provider while keeping the directory fixed", %{
+      view: view,
+      agent: agent
+    } do
       html =
         view
         |> element(".agent-edit[phx-value-id='#{agent.id}']")
@@ -704,10 +707,19 @@ defmodule RoundtableWeb.RoomLiveTest do
 
       # A live session is built on the adapter and the working tree, so they are
       # shown as facts rather than controls.
-      refute html =~ ~s(name="agent[provider]")
+      assert html =~ ~s(name="agent[provider]")
       refute html =~ ~s(name="agent[directory]")
       assert html =~ "fixed-field"
       assert html =~ agent.provider
+
+      view
+      |> form("#agent-form", agent: %{provider: "opencode", model: "qwen3-coder:30b"})
+      |> render_submit()
+
+      updated = Chat.agent!(agent.id)
+      assert updated.provider == "opencode"
+      assert updated.model == "qwen3-coder:30b"
+      assert updated.directory == agent.directory
     end
 
     test "a rename to a name already in use is refused with a reason", %{
