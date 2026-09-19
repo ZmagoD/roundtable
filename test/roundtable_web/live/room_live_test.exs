@@ -854,6 +854,53 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert id == agent.id
     end
 
+    test "a note is saved from the room and listed for the next turn", %{
+      view: view,
+      room: room
+    } do
+      view |> element("#room-notes-button") |> render_click()
+
+      html =
+        view
+        |> form("#note-form",
+          note: %{body: "Money is cents everywhere.", kind: "convention", pinned: "true"}
+        )
+        |> render_submit()
+
+      assert html =~ "Money is cents everywhere."
+      assert [%{kind: "convention", pinned: true, author: "you"}] = Chat.room_notes(room.id)
+    end
+
+    test "a note with nothing in it is refused and nothing is recorded", %{
+      view: view,
+      room: room
+    } do
+      view |> element("#room-notes-button") |> render_click()
+
+      html =
+        view
+        |> form("#note-form", note: %{body: "   ", kind: "convention"})
+        |> render_submit()
+
+      assert html =~ "body"
+      assert Chat.room_notes(room.id) == []
+    end
+
+    test "a note can be unpinned and removed from the room", %{view: view, room: room} do
+      {:ok, note} = Chat.create_room_note(room.id, %{"body" => "Keep this", "pinned" => "true"})
+      view |> element("#room-notes-button") |> render_click()
+
+      view |> element("button[phx-click='pin-note'][phx-value-id='#{note.id}']") |> render_click()
+      assert [%{pinned: false}] = Chat.room_notes(room.id)
+
+      view
+      |> element("button[phx-click='edit-note'][phx-value-id='#{note.id}']")
+      |> render_click()
+
+      view |> element("button[phx-click='delete-note']") |> render_click()
+      assert Chat.room_notes(room.id) == []
+    end
+
     test "the room schedule panel leaves schedule management to the schedules page", %{view: view} do
       view |> element("#schedules-button") |> render_click()
 

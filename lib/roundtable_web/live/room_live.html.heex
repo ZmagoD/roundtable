@@ -58,6 +58,12 @@
             phx-click="edit-room"
             title="The brief everyone in this room works to"
           >Room brief</button><button
+            id="room-notes-button"
+            class="button secondary"
+            phx-click="panel"
+            phx-value-name="notes"
+            title="What this room has learned, given to every participant"
+          >Room notes</button><button
             id="schedules-button"
             class="button secondary"
             phx-click="panel"
@@ -437,6 +443,7 @@
           "team" -> "START WITH A GOAL"
           "profiles" -> "YOUR PEOPLE"
           "schedules" -> "STANDING INSTRUCTIONS"
+          "notes" -> "WHAT THIS ROOM HAS LEARNED"
           _ -> if(@editing_agent, do: "CHANGE A PARTICIPANT", else: "EXPAND YOUR TEAM")
         end}
       </div>
@@ -447,6 +454,7 @@
           "team" -> "Build a team"
           "profiles" -> "Agent profiles"
           "schedules" -> "Schedules"
+          "notes" -> "Room notes"
           _ -> if(@editing_agent, do: "Edit this agent", else: "Invite an agent")
         end}
       </h2>
@@ -469,6 +477,9 @@
 
           "schedules" ->
             "Say something to one participant at the same times every day."
+
+          "notes" ->
+            "Facts every participant starts its turn with. One line each: where a thing lives, what was settled, what caught someone out."
 
           _ ->
             cond do
@@ -754,6 +765,74 @@
             phx-value-id={@editing_schedule}
             data-confirm="Remove this schedule? Nothing else changes."
           >Delete this schedule</button>
+        </.form>
+      </div>
+      <div :if={@panel == "notes"}>
+        <div :if={@notes != []}>
+          <div
+            :for={note <- @notes}
+            class={["preset-row", "profile-row", note.kind == "scratch" && "off"]}
+            title={"Added by #{note.author} · #{note_kind(note.kind)}"}
+          >
+            <button class="profile-open" phx-click="edit-note" phx-value-id={note.id}>
+              <span><strong>{if note.pinned, do: "Pinned · ", else: ""}{note.kind}</strong><small>{note.body}</small></span>
+            </button>
+            <button class="text-button" phx-click="pin-note" phx-value-id={note.id}>
+              {if note.pinned, do: "Unpin", else: "Pin"}
+            </button>
+          </div>
+        </div>
+        <p :if={@notes == []} class="form-note">
+          Nothing recorded yet. A room with no notes sends its participants nothing extra.
+        </p>
+        <.form for={@note_form} id="note-form" phx-submit="save-note">
+          <.input
+            field={@note_form[:body]}
+            label="What the room knows"
+            type="textarea"
+            rows="3"
+            placeholder="e.g. Money is cents everywhere. The legacy adapter is read-only — do not touch it."
+            required
+            maxlength="500"
+          />
+          <.input
+            field={@note_form[:kind]}
+            id={"note-kind-#{@note_seq}"}
+            label="Kind"
+            type="select"
+            options={note_kinds()}
+          />
+          <.input
+            field={@note_form[:pinned]}
+            id={"note-pinned-#{@note_seq}"}
+            label="Keep this one"
+            type="select"
+            options={[{"Only if it fits", "false"}, {"Always, before the rest", "true"}]}
+          />
+          <p class="form-note">
+            Every note here is read on every turn, by everyone, so each one costs what it says
+            for as long as it stands. Conventions, decisions and gotchas are sent; scratch is
+            kept for you and sent to nobody. When there are more than a turn can carry, pinned
+            notes go first and the newest fill what is left.
+          </p>
+          <button class="button full" type="submit" phx-disable-with="Saving…">
+            {if @editing_note, do: "Update note", else: "Save note"}
+          </button>
+          <button
+            :if={@editing_note}
+            class="text-button"
+            type="button"
+            phx-click="panel"
+            phx-value-name="notes"
+          >Add another note</button>
+          <button
+            :if={@editing_note}
+            class="text-button danger"
+            type="button"
+            phx-click="delete-note"
+            phx-value-id={@editing_note}
+            data-confirm="Remove this note? The next turn will not see it."
+          >Delete this note</button>
         </.form>
       </div>
       <div :if={@panel == "profiles"}>

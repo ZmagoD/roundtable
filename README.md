@@ -552,6 +552,23 @@ rather than being copied into each role, where the copies drift apart. Where the
 brief and a role both apply an agent follows both, and is told to say so rather
 than choose silently if they genuinely conflict.
 
+### What the room has learned
+
+The brief is what you meant; notes are what the room found out. **Room notes**
+in the header keeps a line each for the things that would otherwise be
+rediscovered — where something lives, what was already settled, what caught
+someone out — and every participant reads them at the top of every turn,
+ahead of its own assumptions about the codebase.
+
+A note is one or two sentences, not a document, because every note is paid for
+on every turn by everyone. `convention`, `decision` and `gotcha` are sent;
+`scratch` is kept for you and sent to nobody. When there are more notes than a
+turn can carry, the pinned ones go first and the newest fill what is left, so a
+room that has been running for months does not spend its prompt on what it
+learned in week one. Notes are written by people, not by participants: an agent
+can say a note looks wrong, and does, but it cannot quietly rewrite what the
+room believes.
+
 ### What a participant knows about itself
 
 ![A participant's role, model and tool approvals](docs/images/agent-setup.png)

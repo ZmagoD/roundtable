@@ -1,6 +1,7 @@
 defmodule RoundtableWeb.RoomLive do
   use RoundtableWeb, :live_view
   alias Roundtable.{Chat, Coordinator}
+  alias Roundtable.Chat.RoomNote
 
   @impl true
   def mount(_, _, socket) do
@@ -28,6 +29,10 @@ defmodule RoundtableWeb.RoomLive do
        schedules: [],
        schedule_form: to_form(%{"days" => "", "at" => "09:00"}, as: :schedule),
        editing_schedule: nil,
+       notes: [],
+       note_form: note_form(),
+       note_seq: 0,
+       editing_note: nil,
        team_form: to_form(%{}, as: :team),
        room_form: to_form(%{}, as: :room),
        agent_form: to_form(%{}, as: :agent),
@@ -110,6 +115,9 @@ defmodule RoundtableWeb.RoomLive do
        editing_profile: nil,
        editing_schedule: nil,
        schedule_form: schedule_form(socket.assigns.agents),
+       editing_note: nil,
+       note_form: note_form(),
+       note_seq: socket.assigns.note_seq + 1,
        profile_form:
          to_form(
            %{
@@ -188,6 +196,68 @@ defmodule RoundtableWeb.RoomLive do
      socket
      |> assign(editing_schedule: nil, schedule_form: schedule_form(socket.assigns.agents))
      |> put_flash(:info, "Schedule removed. Nothing else changes.")
+     |> refresh()}
+  end
+
+  def handle_event("edit-note", %{"id" => id}, socket) do
+    note = Chat.room_note!(String.to_integer(id))
+
+    attrs = %{"body" => note.body, "kind" => note.kind, "pinned" => to_string(note.pinned)}
+
+    {:noreply,
+     assign(socket,
+       panel: "notes",
+       editing_note: note.id,
+       form_error: nil,
+       note_form: to_form(attrs, as: :note)
+     )}
+  end
+
+  def handle_event("save-note", %{"note" => attrs}, %{assigns: %{room: room}} = socket)
+      when not is_nil(room) do
+    # Written here, so the note says who by. Participants get their own byline
+    # if they are ever given the pen.
+    attrs = Map.put_new(attrs, "author", "you")
+
+    saved =
+      case socket.assigns.editing_note do
+        nil -> Chat.create_room_note(room.id, attrs)
+        id -> Chat.update_room_note(id, attrs)
+      end
+
+    case saved do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> assign(
+           editing_note: nil,
+           form_error: nil,
+           note_form: note_form(),
+           note_seq: socket.assigns.note_seq + 1
+         )
+         |> refresh()}
+
+      {:error, changeset} ->
+        {:noreply,
+         assign(socket, form_error: errors(changeset), note_form: to_form(attrs, as: :note))}
+    end
+  end
+
+  def handle_event("save-note", _attrs, socket), do: {:noreply, socket}
+
+  def handle_event("pin-note", %{"id" => id}, socket) do
+    note = Chat.room_note!(String.to_integer(id))
+    {:ok, _} = Chat.update_room_note(note.id, %{"pinned" => !note.pinned})
+    {:noreply, refresh(socket)}
+  end
+
+  def handle_event("delete-note", %{"id" => id}, socket) do
+    Chat.delete_room_note(String.to_integer(id))
+
+    {:noreply,
+     socket
+     |> assign(editing_note: nil, note_form: note_form(), note_seq: socket.assigns.note_seq + 1)
+     |> put_flash(:info, "Note removed. The next turn will not see it.")
      |> refresh()}
   end
 
@@ -703,6 +773,7 @@ defmodule RoundtableWeb.RoomLive do
       rooms: Chat.rooms(),
       agents: Chat.agents(id),
       schedules: Chat.schedules(id),
+      notes: Chat.room_notes(id),
       runs: Chat.runs(id),
       approvals: Coordinator.approvals() |> Map.values() |> Enum.filter(&(&1.room_id == id))
     )
@@ -731,6 +802,21 @@ defmodule RoundtableWeb.RoomLive do
       as: :schedule
     )
   end
+
+  # A new note starts as a convention: the kind a room has most of, and the one
+  # someone reaches for when writing down how things are done here. Its selects
+  # are re-keyed on every save — see `note_seq` — because a browser will not
+  # re-select a dropdown the person has already touched, however the server
+  # re-renders it, and a sticky "Always, before the rest" pins every note after
+  # the first one without saying so.
+  defp note_form, do: to_form(%{"kind" => "convention", "pinned" => "false"}, as: :note)
+
+  defp note_kinds, do: Enum.map(RoomNote.kinds(), &{note_kind(&1), &1})
+
+  defp note_kind("convention"), do: "Convention — how this room works"
+  defp note_kind("decision"), do: "Decision — what was settled, and why"
+  defp note_kind("gotcha"), do: "Gotcha — what caught someone out"
+  defp note_kind("scratch"), do: "Scratch — kept here, not sent to anyone"
 
   defp day_options(days) do
     known = [{"Every day", ""}, {"Weekdays", "1,2,3,4,5"}, {"Weekends", "6,7"}]

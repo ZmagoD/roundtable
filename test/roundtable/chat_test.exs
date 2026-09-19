@@ -91,6 +91,61 @@ defmodule Roundtable.ChatTest do
     assert prompt =~ assigned.body
   end
 
+  test "what a room has learned reaches a turn, and scratch stays here", %{room: room, ada: ada} do
+    {:ok, _} =
+      Chat.create_room_note(room.id, %{
+        "body" => "Money is cents everywhere.",
+        "kind" => "convention"
+      })
+
+    {:ok, _} =
+      Chat.create_room_note(room.id, %{
+        "body" => "The legacy adapter is read-only.",
+        "kind" => "gotcha"
+      })
+
+    {:ok, _} = Chat.create_room_note(room.id, %{"body" => "Buy milk.", "kind" => "scratch"})
+
+    {:ok, assigned} = Chat.post(room.id, "@ada take a look")
+    run = Repo.get_by!(Run, agent_id: ada.id, message_id: assigned.id)
+    {prompt, _} = Chat.prompt(ada, run)
+
+    assert prompt =~ "WHAT THIS ROOM HAS LEARNED"
+    assert prompt =~ "- [convention] Money is cents everywhere."
+    assert prompt =~ "- [gotcha] The legacy adapter is read-only."
+    refute prompt =~ "Buy milk."
+  end
+
+  test "a room with nothing recorded says nothing about it", %{room: room, ada: ada} do
+    {:ok, assigned} = Chat.post(room.id, "@ada take a look")
+    run = Repo.get_by!(Run, agent_id: ada.id, message_id: assigned.id)
+    {prompt, _} = Chat.prompt(ada, run)
+
+    refute prompt =~ "WHAT THIS ROOM HAS LEARNED"
+  end
+
+  test "more notes than a turn can carry keeps the pinned and the newest", %{
+    room: room,
+    ada: ada
+  } do
+    long = String.duplicate("x", 400)
+
+    {:ok, _} =
+      Chat.create_room_note(room.id, %{"body" => "pinned #{long}", "pinned" => "true"})
+
+    for n <- 1..10 do
+      {:ok, _} = Chat.create_room_note(room.id, %{"body" => "note#{n} #{long}"})
+    end
+
+    {:ok, assigned} = Chat.post(room.id, "@ada take a look")
+    run = Repo.get_by!(Run, agent_id: ada.id, message_id: assigned.id)
+    {prompt, _} = Chat.prompt(ada, run)
+
+    assert prompt =~ "pinned x"
+    assert prompt =~ "note10 x"
+    refute prompt =~ "note1 x"
+  end
+
   test "a turn opens with who the participant is and the brief it works to", %{
     room: room,
     ada: ada
