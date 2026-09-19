@@ -325,41 +325,10 @@ defmodule Roundtable.Coordinator do
 
   defp schedule(state) do
     if Application.get_env(:roundtable, :start_agents, true) do
-      # Group queued runs by agent_id to enable fair round-robin scheduling
-      queued =
-        Repo.all(
-          from r in Run,
-            where: r.status == "queued",
-            order_by: r.id
-        )
-        |> Enum.group_by(& &1.agent_id)
-
-      # Round-robin across agents, taking one run from each agent in sequence
-      round_robin_by_agent(queued, state, Map.keys(queued))
+      Repo.all(from r in Run, where: r.status == "queued", order_by: r.id)
+      |> Enum.reduce(state, &start_if_free/2)
     else
       state
-    end
-  end
-
-  defp round_robin_by_agent(_by_agent, state, []), do: state
-
-  defp round_robin_by_agent(by_agent, state, [agent_id | rest]) do
-    case Map.fetch(by_agent, agent_id) do
-      {:ok, [run | remaining]} ->
-        state = start_if_free(run, state)
-
-        updated_by_agent =
-          if Enum.empty?(remaining) do
-            Map.delete(by_agent, agent_id)
-          else
-            Map.put(by_agent, agent_id, remaining)
-          end
-
-        round_robin_by_agent(updated_by_agent, state, rest)
-
-      :error ->
-        # This agent has no more runs
-        round_robin_by_agent(by_agent, state, rest)
     end
   end
 end
