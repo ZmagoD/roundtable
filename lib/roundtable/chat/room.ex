@@ -14,7 +14,7 @@ defmodule Roundtable.Chat.Room do
   def changeset(room, attrs) do
     room
     |> cast(attrs, [:name, :directory, :context, :organization_id])
-    |> validate_required([:name, :directory, :organization_id])
+    |> validate_required([:name, :organization_id])
     |> validate_length(:name, max: 80)
     |> validate_length(:context, max: 4000)
     |> validate_length(:directory, max: 4096)

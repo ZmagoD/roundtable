@@ -16,6 +16,9 @@ defmodule Roundtable.Chat.Agent do
     field :directory, :string
     field :session_id, :string
     field :session_model, :string
+    # The folder the open session was started in. A turn resolving somewhere
+    # else starts a fresh session rather than resuming another tree's.
+    field :session_directory, :string
     # The role the provider session was started under, so a turn can tell the
     # participant when its brief has changed underneath an open session.
     field :session_role, :string
