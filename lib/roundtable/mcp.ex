@@ -322,7 +322,7 @@ defmodule Roundtable.MCP do
       {:ok, room} ->
         done(
           agent,
-          "created room #{room.id}, #{room.name}, working in #{room.directory}. " <>
+          "created room #{room.id}, #{room.name}, working in #{Chat.effective_directory(room)}. " <>
             "It has no participants yet."
         )
 
@@ -544,7 +544,7 @@ defmodule Roundtable.MCP do
     %{
       id: room.id,
       name: room.name,
-      directory: room.directory,
+      directory: Chat.effective_directory(room),
       brief: room.context,
       participants: Enum.map(Chat.agents(room.id), & &1.name)
     }

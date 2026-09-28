@@ -70,7 +70,15 @@ defmodule Roundtable.Coordinator do
   def handle_call({:reset, agent_id}, _, state) do
     state = cancel_agent(state, agent_id)
     agent = Chat.agent!(agent_id)
-    Chat.change(agent, session_id: nil, session_model: nil, session_role: nil, last_seen_id: 0)
+
+    Chat.change(agent,
+      session_id: nil,
+      session_model: nil,
+      session_role: nil,
+      session_directory: nil,
+      last_seen_id: 0
+    )
+
     Chat.broadcast(agent.room_id)
     {:reply, :ok, state}
   end
@@ -131,7 +139,13 @@ defmodule Roundtable.Coordinator do
   end
 
   defp apply_event(state, run, agent, {:session, session}) do
-    Chat.change(agent, session_id: session, session_model: run.model, session_role: agent.role)
+    Chat.change(agent,
+      session_id: session,
+      session_model: run.model,
+      session_role: agent.role,
+      session_directory: agent.directory
+    )
+
     state
   end
 
@@ -259,37 +273,78 @@ defmodule Roundtable.Coordinator do
   end
 
   defp start_worker(run, state) do
-    agent = run.agent_id |> then(&Repo.get!(Agent, &1)) |> reset_stale_session(run)
-    agent = %{agent | model: run.model, cost_tier: run.cost_tier}
-    {prompt, until_id} = Chat.prompt(agent, run)
-    run = Chat.change(run, status: "running", context_until_id: until_id)
-    worker_module = Application.get_env(:roundtable, :agent_worker, Roundtable.Agents.Worker)
+    agent = run.agent_id |> then(&Repo.get!(Agent, &1)) |> resolve_directory()
 
-    case DynamicSupervisor.start_child(
-           Roundtable.AgentSupervisor,
-           {worker_module, {agent, run, prompt}}
-         ) do
-      {:ok, pid} ->
-        Chat.broadcast(agent.room_id)
-        worker = %{pid: pid, ref: Process.monitor(pid), agent_id: agent.id}
-        %{state | workers: Map.put(state.workers, run.id, worker)}
+    if agent.directory do
+      agent = reset_stale_session(agent, run)
+      agent = %{agent | model: run.model, cost_tier: run.cost_tier}
+      {prompt, until_id} = Chat.prompt(agent, run)
+      run = Chat.change(run, status: "running", context_until_id: until_id)
+      worker_module = Application.get_env(:roundtable, :agent_worker, Roundtable.Agents.Worker)
 
-      {:error, reason} ->
-        Chat.change(run, status: "failed", error: inspect(reason))
-        Chat.broadcast(agent.room_id)
-        state
+      case DynamicSupervisor.start_child(
+             Roundtable.AgentSupervisor,
+             {worker_module, {agent, run, prompt}}
+           ) do
+        {:ok, pid} ->
+          Chat.broadcast(agent.room_id)
+          worker = %{pid: pid, ref: Process.monitor(pid), agent_id: agent.id}
+          %{state | workers: Map.put(state.workers, run.id, worker)}
+
+        {:error, reason} ->
+          Chat.change(run, status: "failed", error: inspect(reason))
+          Chat.broadcast(agent.room_id)
+          state
+      end
+    else
+      Chat.change(run,
+        status: "failed",
+        error:
+          "The team has no folder to work in. Give this team or its project a folder, then retry."
+      )
+
+      Chat.broadcast(agent.room_id)
+      state
+    end
+  end
+
+  # A turn works where the team resolves to now: editing the project's folder
+  # takes effect on the next turn, not inside a running one. The participant's
+  # row follows the resolution so events arriving mid-turn read the same folder.
+  defp resolve_directory(agent) do
+    case Chat.effective_directory(agent.room_id) do
+      directory when directory in [nil, ""] ->
+        %{agent | directory: nil}
+
+      directory when directory == agent.directory ->
+        agent
+
+      directory ->
+        Chat.change(agent, directory: directory)
+        %{agent | directory: directory}
     end
   end
 
   # A model change starts a fresh native session, so a resumed one cannot
-  # silently keep running on the model the human moved away from.
+  # silently keep running on the model the human moved away from. The same
+  # goes for the folder: resuming a transcript rooted in another tree would
+  # quietly keep working there.
   defp reset_stale_session(%{session_id: nil} = agent, _run), do: agent
 
-  defp reset_stale_session(%{session_model: model} = agent, %{model: model}), do: agent
-
-  defp reset_stale_session(agent, _run),
-    do:
-      Chat.change(agent, session_id: nil, session_model: nil, session_role: nil, last_seen_id: 0)
+  defp reset_stale_session(agent, %{model: model}) do
+    if agent.session_model == model and agent.session_directory == agent.directory do
+      agent
+    else
+      Chat.change(
+        agent,
+        session_id: nil,
+        session_model: nil,
+        session_role: nil,
+        session_directory: nil,
+        last_seen_id: 0
+      )
+    end
+  end
 
   defp cancel_agent(state, agent_id) do
     state =

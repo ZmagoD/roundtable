@@ -79,7 +79,7 @@ defmodule Roundtable.TUI.Render do
     where =
       case state.room do
         nil -> "no room"
-        room -> "#{room.name}#{branch(state)} · #{room.directory}"
+        room -> "#{room.name}#{branch(state)} · #{State.room_directory(state)}"
       end
 
     left = " roundtable"

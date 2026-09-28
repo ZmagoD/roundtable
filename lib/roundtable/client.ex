@@ -45,6 +45,7 @@ defmodule Roundtable.Client do
   def describe(%__MODULE__{node: node}), do: to_string(node)
 
   def rooms(c), do: call(c, Chat, :rooms, [])
+  def effective_directory(c, room_id), do: call(c, Chat, :effective_directory, [room_id])
   def agents(c, room_id), do: call(c, Chat, :agents, [room_id])
   def messages(c, room_id), do: call(c, Chat, :messages, [room_id])
   def runs(c, room_id), do: call(c, Chat, :runs, [room_id])

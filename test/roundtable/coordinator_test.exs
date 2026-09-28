@@ -238,4 +238,71 @@ defmodule Roundtable.CoordinatorTest do
     _ = :sys.get_state(Coordinator)
     assert Chat.agent!(ada.id).session_model == nil
   end
+
+  test "a turn in a team that inherits works in the project's folder" do
+    {:ok, organization} =
+      Chat.create_organization(%{"name" => "Checkout", "directory" => File.cwd!()})
+
+    {:ok, room} =
+      Chat.create_room(%{"name" => "Engineering", "organization_id" => organization.id})
+
+    {:ok, ada} = Chat.create_agent(room.id, %{"name" => "ada", "provider" => "codex"})
+
+    Coordinator.post(room.id, "@ada take a look")
+
+    assert_receive {:agent_started, _pid, agent, _run, prompt}, 1000
+    assert agent.directory == File.cwd!()
+    assert prompt =~ "Working directory: #{File.cwd!()}"
+    Coordinator.stop(ada.id)
+  end
+
+  test "a turn after the project's folder moved starts a fresh session" do
+    {:ok, organization} =
+      Chat.create_organization(%{"name" => "Checkout", "directory" => File.cwd!()})
+
+    {:ok, room} =
+      Chat.create_room(%{"name" => "Engineering", "organization_id" => organization.id})
+
+    {:ok, ada} = Chat.create_agent(room.id, %{"name" => "ada", "provider" => "codex"})
+
+    Coordinator.post(room.id, "@ada do work")
+    assert_receive {:agent_started, pid, _, _, _}, 1000
+    ref = Process.monitor(pid)
+    GenServer.cast(pid, {:finish, "Done"})
+    assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 1000
+    _ = :sys.get_state(Coordinator)
+    assert Chat.agent!(ada.id).session_id
+    assert Chat.agent!(ada.id).session_directory == File.cwd!()
+
+    # The room keeps no folder of its own, so the project's edit is where this
+    # team works now; a session rooted in the old tree does not resume.
+    {:ok, _} = Chat.update_organization(organization.id, %{"directory" => System.tmp_dir!()})
+    Coordinator.post(room.id, "@ada again")
+
+    assert_receive {:agent_started, _pid, agent, _, _}, 1000
+    assert agent.session_id == nil
+    assert agent.directory == System.tmp_dir!()
+    # The old session is gone; a new one records the new folder when it starts.
+    assert Chat.agent!(ada.id).session_directory == nil
+    Coordinator.stop(ada.id)
+  end
+
+  test "a team whose project lost its folder fails its turn with a reason" do
+    {:ok, organization} =
+      Chat.create_organization(%{"name" => "Checkout", "directory" => File.cwd!()})
+
+    {:ok, room} =
+      Chat.create_room(%{"name" => "Engineering", "organization_id" => organization.id})
+
+    {:ok, ada} = Chat.create_agent(room.id, %{"name" => "ada", "provider" => "codex"})
+
+    {:ok, _} = Chat.update_organization(organization.id, %{"directory" => ""})
+    {:ok, message} = Coordinator.post(room.id, "@ada take a look")
+    _ = :sys.get_state(Coordinator)
+
+    run = Repo.get_by!(Run, message_id: message.id)
+    assert run.status == "failed"
+    assert run.error =~ "no folder"
+    Coordinator.stop(ada.id)
+  end
 end

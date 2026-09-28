@@ -10,6 +10,7 @@ defmodule Roundtable.TUI.State do
 
   defstruct rooms: [],
             room: nil,
+            directory: nil,
             agents: [],
             messages: [],
             runs: [],
@@ -52,6 +53,7 @@ defmodule Roundtable.TUI.State do
       state
       | rooms: Keyword.get(data, :rooms, state.rooms),
         room: Keyword.get(data, :room, state.room),
+        directory: Keyword.get(data, :directory, state.directory),
         agents: Keyword.get(data, :agents, state.agents),
         messages: Keyword.get(data, :messages, state.messages),
         runs: Keyword.get(data, :runs, state.runs),
@@ -59,9 +61,16 @@ defmodule Roundtable.TUI.State do
     }
   end
 
+  @doc "Where this room works: the folder it named, or its project's."
+  def room_directory(%{room: nil}), do: nil
+
+  # A state built without the resolved folder falls back to the room's own;
+  # only an inheriting room needs the resolution.
+  def room_directory(%{directory: nil, room: room}), do: room.directory
+  def room_directory(%{directory: directory}), do: directory
+
   @doc "The directory whose changes the pane watches: the room's."
-  def watched_directory(%{room: nil}), do: nil
-  def watched_directory(state), do: state.room.directory
+  def watched_directory(state), do: room_directory(state)
 
   def put_changes(state, changes), do: %{state | changes: changes}
 

@@ -103,12 +103,12 @@
         <header class="room-header">
           <div>
             <div class="eyebrow">TEAM ROOM</div><h1><span>#</span> {@room.name}</h1><p title={
-              @room.directory
+              @effective_directory
             }>
               <span :if={@changes} class="branch-badge" title="Current branch">
                 {@changes.branch}
               </span>
-              {@room.directory}
+              {@effective_directory}
             </p>
           </div>
           <div class="header-actions">
@@ -270,7 +270,7 @@
             </div>
             <section :if={@terminal} class="terminal-panel" aria-label="Terminal">
               <div class="terminal-bar">
-                <span>Shell in <code>{@room.directory}</code></span>
+                <span>Shell in <code>{@effective_directory}</code></span>
                 <button class="text-button" phx-click="close-terminal">Close</button>
               </div>
               <div
@@ -439,7 +439,7 @@
               </div>
               <details>
                 <summary>Session details</summary><dl>
-                  <dt>Directory</dt><dd>{agent.directory}</dd><dt>Model</dt><dd>
+                  <dt>Directory</dt><dd>{@effective_directory}</dd><dt>Model</dt><dd>
                     {agent.model || "Provider default"}
                   </dd><dt>Session</dt><dd>{agent.session_id || "Starts on first mention"}</dd>
                 </dl><div class="actions">
@@ -605,7 +605,20 @@
             maxlength="4000"
             placeholder="Describe your project, the help you need, and any preferences for the team."
           />
-          <.input field={@team_form[:directory]} label="Project directory" required />
+          <div>
+            <.input
+              field={@team_form[:directory]}
+              label="Project directory"
+              required={not (@organization && @organization.directory != "")}
+              autocomplete="off"
+            />
+            <p :if={@organization && @organization.directory != ""} class="form-note">
+              Leave empty to work in {@organization.name}'s folder, or give this team its own.
+            </p>
+            <p :if={not (@organization && @organization.directory != "")} class="form-note">
+              Where this team's agents work and save files. An existing absolute path on this machine.
+            </p>
+          </div>
           <.input
             field={@team_form[:provider]}
             label="Team builder"
@@ -650,16 +663,53 @@
             in each role.
           </p>
           <div :if={@editing_room} class="input-field">
-            <label>Project directory</label>
-            <p class="fixed-field">{@room_form[:directory].value}</p>
+            <%= if @custom_directory do %>
+              <.input field={@room_form[:directory]} label="Project directory" autocomplete="off" />
+              <ul :if={@directory_options != []} class="directory-picker">
+                <li :for={path <- @directory_options}>
+                  <button type="button" phx-click="pick-directory" phx-value-path={path}>
+                    <span class="directory-name">{Path.basename(path)}</span>
+                    <span :if={Roundtable.Directories.repository?(path)} class="directory-repo">git</span>
+                    <span class="directory-path">{path}</span>
+                  </button>
+                </li>
+              </ul>
+              <p class="form-note">
+                Takes effect on the next turn. Sessions opened elsewhere start fresh rather than resume.
+              </p>
+            <% else %>
+              <label>Project directory</label>
+              <p class="fixed-field">
+                <%= if @room && @room.directory == "" do %>
+                  From {@organization.name}: {@effective_directory}
+                <% else %>
+                  {@room && @room.directory}
+                <% end %>
+              </p>
+              <div class="form-actions">
+                <%= if @room && @room.directory == "" do %>
+                  <button class="text-button" type="button" phx-click="customize-directory">
+                    Use a different folder
+                  </button>
+                <% else %>
+                  <button class="text-button" type="button" phx-click="use-organization-folder">
+                    Use the project's folder
+                  </button>
+                <% end %>
+              </div>
+            <% end %>
           </div>
-          <.input
-            :if={is_nil(@editing_room)}
-            field={@room_form[:directory]}
-            label="Project directory"
-            required
-            autocomplete="off"
-          />
+          <div :if={is_nil(@editing_room)}>
+            <.input
+              field={@room_form[:directory]}
+              label="Project directory"
+              required={not (@organization && @organization.directory != "")}
+              autocomplete="off"
+            />
+            <p :if={@organization && @organization.directory != ""} class="form-note">
+              Leave empty to work in {@organization.name}'s folder, or give this team its own.
+            </p>
+          </div>
           <ul :if={@directory_options != [] and is_nil(@editing_room)} class="directory-picker">
             <li :for={path <- @directory_options}>
               <button type="button" phx-click="pick-directory" phx-value-path={path}>

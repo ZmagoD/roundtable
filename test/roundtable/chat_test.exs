@@ -180,9 +180,13 @@ defmodule Roundtable.ChatTest do
     assert prompt =~ "Tests with every change, mix precommit before done."
     assert prompt =~ "shared brief for everyone here"
 
-    # A room keeps its tree: the brief is not a way to move everyone elsewhere.
-    {:ok, _} = Chat.update_room(room.id, %{"directory" => "/tmp", "name" => "Build"})
+    # A folder that is named has to exist; blank hands the room back to its
+    # project's folder.
+    assert {:error, _} = Chat.update_room(room.id, %{"directory" => "/no/such/place"})
     assert Chat.room!(room.id).directory == room.directory
+
+    {:ok, _} = Chat.update_room(room.id, %{"directory" => ""})
+    assert Chat.room!(room.id).directory == ""
   end
 
   test "a room with no brief says so rather than leaving a blank", %{room: room, ada: ada} do

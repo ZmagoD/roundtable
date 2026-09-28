@@ -395,18 +395,36 @@ defmodule Roundtable.TUI do
         id -> Enum.find(rooms, &(&1.id == id))
       end
 
+    # A team that inherits its project's folder needs one lookup to know where
+    # its git pane points; a team with a folder of its own does not.
+    directory =
+      cond do
+        is_nil(room) -> nil
+        room.directory not in [nil, ""] -> room.directory
+        true -> Client.effective_directory(client, room.id)
+      end
+
     data =
       if room do
         [
           rooms: rooms,
           room: room,
+          directory: directory,
           agents: Client.agents(client, room.id),
           messages: Client.messages(client, room.id),
           runs: Client.runs(client, room.id),
           approvals: Client.approvals(client, room.id)
         ]
       else
-        [rooms: rooms, room: nil, agents: [], messages: [], runs: [], approvals: []]
+        [
+          rooms: rooms,
+          room: nil,
+          directory: nil,
+          agents: [],
+          messages: [],
+          runs: [],
+          approvals: []
+        ]
       end
 
     if Enum.any?(data, &match?({_, {:error, _}}, &1)) do

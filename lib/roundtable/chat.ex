@@ -381,7 +381,7 @@ defmodule Roundtable.Chat do
     changeset =
       new_room()
       |> Room.changeset(attrs)
-      |> valid_directory()
+      |> valid_room_directory()
       |> Ecto.Changeset.validate_required([:context])
 
     changeset =
@@ -432,7 +432,7 @@ defmodule Roundtable.Chat do
   def create_room(attrs) do
     new_room()
     |> Room.changeset(attrs)
-    |> valid_directory()
+    |> valid_room_directory()
     |> Repo.insert()
     |> notify_rooms()
   end
@@ -449,34 +449,40 @@ defmodule Roundtable.Chat do
   end
 
   @doc """
-  Changes a room's name or its shared brief.
+  Changes a room's name, its shared brief, and its folder.
 
-  Not the directory: it is what every participant in the room works on, and
-  moving it under open sessions would point every transcript at another tree.
+  A folder that is named has to exist. Leaving it blank restores
+  inheritance, so future edits to the project's folder apply here; a folder
+  that is named is this team's alone. A change lands on the next turn: a
+  turn already running keeps the folder it started in, and an open session
+  whose folder no longer matches is dropped rather than resumed elsewhere.
   """
   def update_room(room_id, attrs) do
     room = room!(room_id)
+    attrs = normalise(attrs)
 
     room
-    |> Room.changeset(Map.put(normalise(attrs), "directory", room.directory))
+    |> Room.changeset(Map.put(attrs, "directory", Map.get(attrs, "directory", room.directory)))
+    |> valid_room_directory()
     |> Repo.update()
     |> notify_rooms()
   end
 
   @doc """
-  Adds a participant to a room, working in that room's directory.
+  Adds a participant to a room, working in the folder the room resolves to.
 
   The directory is the room's, always. A room is a project: everyone in it
-  works on the same tree, and separate trees are separate rooms. Anything the
-  caller passes for `directory` is ignored rather than honoured, because a
-  participant quietly working somewhere else is the kind of thing you only
-  discover from a diff you did not expect.
+  works on the same tree, and separate trees are separate rooms. A team that
+  inherits its project's folder gives its participants that folder; a team
+  whose project has none cannot add one at all, because a participant quietly
+  working somewhere else is the kind of thing you only discover from a diff
+  you did not expect.
   """
   def create_agent(room_id, attrs) do
     room = room!(room_id)
 
     %Agent{room_id: room_id}
-    |> Agent.changeset(Map.put(normalise(attrs), "directory", room.directory))
+    |> Agent.changeset(Map.put(normalise(attrs), "directory", effective_directory(room)))
     |> valid_directory()
     |> Repo.insert()
     |> tap(fn result -> if match?({:ok, _}, result), do: broadcast(room_id) end)
@@ -484,6 +490,29 @@ defmodule Roundtable.Chat do
 
   defp normalise(attrs) do
     Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
+  end
+
+  @doc """
+  The folder a room's participants work in.
+
+  A team that named no folder works in its project's. A project without a
+  folder leaves the room with none either: adding a participant there is
+  refused rather than quietly falling back to the home directory.
+  """
+  def effective_directory(%Room{} = room), do: effective_directory(room.id)
+
+  def effective_directory(room_id) do
+    case Repo.one!(
+           from(r in Room,
+             where: r.id == ^room_id,
+             join: o in Organization,
+             on: o.id == r.organization_id,
+             select: {r.directory, o.directory}
+           )
+         ) do
+      {own, _organization} when own not in [nil, ""] -> own
+      {_, organization} -> organization
+    end
   end
 
   @doc """
@@ -538,7 +567,14 @@ defmodule Roundtable.Chat do
     )
     |> Repo.update_all(set: [model: agent.model, cost_tier: agent.cost_tier])
 
-    change(agent, session_id: nil, session_model: nil, session_role: nil, last_seen_id: 0)
+    change(agent,
+      session_id: nil,
+      session_model: nil,
+      session_role: nil,
+      session_directory: nil,
+      last_seen_id: 0
+    )
+
     :ok
   end
 
@@ -598,6 +634,26 @@ defmodule Roundtable.Chat do
       do: changeset,
       else:
         Ecto.Changeset.add_error(changeset, :directory, "must be an existing absolute directory")
+  end
+
+  # A team's folder is optional: blank inherits the project's. Inheriting is
+  # spelled "" rather than NULL so the NOT NULL column survives without a
+  # table rebuild, and a folder that is named still has to exist.
+  defp valid_room_directory(changeset) do
+    case Ecto.Changeset.get_field(changeset, :directory) do
+      blank when blank in [nil, ""] ->
+        Ecto.Changeset.put_change(changeset, :directory, "")
+
+      directory ->
+        if Path.type(directory) == :absolute and File.dir?(directory),
+          do: changeset,
+          else:
+            Ecto.Changeset.add_error(
+              changeset,
+              :directory,
+              "must be an existing absolute directory"
+            )
+    end
   end
 
   defp notify_rooms(result) do

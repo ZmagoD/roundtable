@@ -147,6 +147,76 @@ defmodule Roundtable.OrganizationsTest do
     end
   end
 
+  describe "a team inheriting its project's folder" do
+    setup do
+      {:ok, checkout} =
+        Chat.create_organization(%{"name" => "Checkout", "directory" => File.cwd!()})
+
+      {:ok, marketing} = Chat.create_organization(%{"name" => "Marketing"})
+
+      %{
+        checkout: checkout,
+        marketing: marketing,
+        folder: File.cwd!()
+      }
+    end
+
+    test "a team can be created with no folder of its own", %{checkout: checkout} do
+      {:ok, room} =
+        Chat.create_room(%{"name" => "Engineering", "organization_id" => checkout.id})
+
+      assert room.directory == ""
+    end
+
+    test "works in the project's folder", %{checkout: checkout, folder: folder} do
+      {:ok, room} =
+        Chat.create_room(%{"name" => "Engineering", "organization_id" => checkout.id})
+
+      assert Chat.effective_directory(room) == folder
+    end
+
+    test "a team's own folder wins over the project's", %{checkout: checkout, folder: folder} do
+      {:ok, room} =
+        Chat.create_room(%{
+          "name" => "Worktree",
+          "directory" => System.tmp_dir!(),
+          "organization_id" => checkout.id
+        })
+
+      assert Chat.effective_directory(room) == room.directory
+      assert room.directory != folder
+    end
+
+    test "a project without a folder leaves its teams with none", %{marketing: marketing} do
+      {:ok, room} =
+        Chat.create_room(%{"name" => "Copywriting", "organization_id" => marketing.id})
+
+      assert Chat.effective_directory(room) == nil
+    end
+
+    test "a participant lands in the folder the team resolves to", %{
+      checkout: checkout,
+      folder: folder
+    } do
+      {:ok, room} =
+        Chat.create_room(%{"name" => "Engineering", "organization_id" => checkout.id})
+
+      {:ok, agent} = Chat.create_agent(room.id, %{"name" => "ada", "provider" => "codex"})
+      assert agent.directory == folder
+    end
+
+    test "a team with nowhere to work cannot take a participant", %{marketing: marketing} do
+      {:ok, room} =
+        Chat.create_room(%{"name" => "Copywriting", "organization_id" => marketing.id})
+
+      assert {:error, changeset} =
+               Chat.create_agent(room.id, %{"name" => "ada", "provider" => "codex"})
+
+      assert %{directory: errors} = errors_on(changeset)
+      assert "must be an existing absolute directory" in errors
+    end
+  end
+
   describe "teams talking to each other" do
     setup do
       {:ok, alpha} = Chat.create_organization(%{"name" => "Alpha"})

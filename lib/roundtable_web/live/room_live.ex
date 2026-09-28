@@ -75,18 +75,27 @@ defmodule RoundtableWeb.RoomLive do
     {:noreply,
      socket
      |> close_terminal()
-     |> assign(
-       room: room,
-       organization_id: organization_id,
-       organizations: Chat.organizations(),
-       panel: nil,
-       form_error: nil,
-       last_message_id: 0,
-       diff: nil
-     )
+     |> assign(room: room, organization_id: organization_id)
+     |> assign_project(room)
+     |> assign(panel: nil, form_error: nil, last_message_id: 0, diff: nil)
      |> stream(:messages, [], reset: true)
      |> refresh()
      |> poll_git()}
+  end
+
+  # The project a team belongs to, and the folder its work resolves to.
+  defp assign_project(socket, room) do
+    organizations = Chat.organizations()
+
+    organization =
+      (room && Enum.find(organizations, &(&1.id == room.organization_id))) ||
+        Enum.find(organizations, &(&1.id == showing_organization(socket)))
+
+    assign(socket,
+      organizations: organizations,
+      organization: organization,
+      effective_directory: room && Chat.effective_directory(room)
+    )
   end
 
   @impl true
@@ -132,15 +141,23 @@ defmodule RoundtableWeb.RoomLive do
   def handle_event("clear-team-head", _params, socket), do: {:noreply, socket}
 
   def handle_event("panel", %{"name" => name}, socket) do
-    socket = assign(socket, editing_agent: nil, editing_renamable: true, editing_room: nil)
-    room_form = to_form(%{"directory" => socket.assigns.directory}, as: :room)
+    socket =
+      assign(socket,
+        editing_agent: nil,
+        editing_renamable: true,
+        editing_room: nil,
+        custom_directory: false
+      )
+
+    room_form = to_form(%{"directory" => team_default_directory(socket)}, as: :room)
     socket = assign(socket, directory_options: Roundtable.Directories.suggest(""))
 
     agent_form =
       to_form(
         %{
           "directory" =>
-            (socket.assigns.room && socket.assigns.room.directory) || socket.assigns.directory,
+            (socket.assigns.room && Chat.effective_directory(socket.assigns.room)) ||
+              socket.assigns.directory,
           "provider" => default_provider(),
           "cost_tier" => "unknown"
         },
@@ -153,7 +170,7 @@ defmodule RoundtableWeb.RoomLive do
        team_form:
          to_form(
            %{
-             "directory" => socket.assigns.directory,
+             "directory" => team_default_directory(socket),
              "provider" => team_provider(socket.assigns.providers)
            },
            as: :team
@@ -440,6 +457,7 @@ defmodule RoundtableWeb.RoomLive do
        panel: "room",
        editing_room: room.id,
        editing_agent: nil,
+       custom_directory: false,
        form_error: nil,
        directory_options: [],
        room_form: to_form(attrs, as: :room)
@@ -481,7 +499,10 @@ defmodule RoundtableWeb.RoomLive do
     if socket.assigns.terminal do
       {:noreply, socket}
     else
-      case Roundtable.Terminal.start_link(owner: self(), directory: room.directory) do
+      case Roundtable.Terminal.start_link(
+             owner: self(),
+             directory: socket.assigns.effective_directory
+           ) do
         {:ok, terminal} ->
           {:noreply, assign(socket, terminal: terminal)}
 
@@ -518,7 +539,52 @@ defmodule RoundtableWeb.RoomLive do
   def handle_event("close-panel", _, socket),
     do:
       {:noreply,
-       assign(socket, panel: nil, form_error: nil, editing_agent: nil, editing_room: nil)}
+       assign(socket,
+         panel: nil,
+         form_error: nil,
+         effective_directory: nil,
+         organization: nil,
+         custom_directory: false,
+         editing_agent: nil,
+         editing_room: nil,
+         custom_directory: false
+       )}
+
+  # A team on the project's folder follows its edits from here on; nothing is
+  # copied, so the folder this team works in stays the project's own.
+  def handle_event("use-organization-folder", _, %{assigns: %{room: room}} = socket)
+      when not is_nil(room) do
+    case Chat.update_room(room.id, %{"directory" => ""}) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "This team works in the project's folder now.")
+         |> reload_room()}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, form_error: errors(changeset))}
+    end
+  end
+
+  def handle_event("use-organization-folder", _, socket), do: {:noreply, socket}
+
+  # Keeping a folder of one's own is the exception, so the picker only shows
+  # after the human asks for it.
+  def handle_event("customize-directory", _, socket) do
+    attrs =
+      Map.put(
+        socket.assigns.room_form.params,
+        "directory",
+        socket.assigns.effective_directory || ""
+      )
+
+    {:noreply,
+     assign(socket,
+       custom_directory: true,
+       room_form: to_form(attrs, as: :room),
+       directory_options: Roundtable.Directories.suggest(socket.assigns.effective_directory || "")
+     )}
+  end
 
   def handle_event("create-room", %{"room" => attrs}, %{assigns: %{editing_room: id}} = socket)
       when not is_nil(id) do
@@ -796,7 +862,7 @@ defmodule RoundtableWeb.RoomLive do
   defp poll_git(%{assigns: %{room: nil}} = socket), do: socket
 
   defp poll_git(socket) do
-    case Roundtable.Git.status(socket.assigns.room.directory) do
+    case Roundtable.Git.status(socket.assigns.effective_directory) do
       {:ok, changes} -> assign(socket, changes: changes)
       {:error, _} -> assign(socket, changes: nil)
     end
@@ -805,7 +871,7 @@ defmodule RoundtableWeb.RoomLive do
   defp read_diff(%{assigns: %{room: nil}}), do: nil
 
   defp read_diff(socket) do
-    case Roundtable.Git.diff(socket.assigns.room.directory) do
+    case Roundtable.Git.diff(socket.assigns.effective_directory) do
       {:ok, ""} -> "No changes yet."
       {:ok, patch} -> patch
       {:error, reason} -> reason
@@ -842,6 +908,9 @@ defmodule RoundtableWeb.RoomLive do
       schedules: Chat.schedules(id),
       notes: Chat.room_notes(id),
       runs: Chat.runs(id),
+      effective_directory: Chat.effective_directory(socket.assigns.room),
+      organization:
+        Enum.find(Chat.organizations(), &(&1.id == socket.assigns.room.organization_id)),
       approvals: Coordinator.approvals() |> Map.values() |> Enum.filter(&(&1.room_id == id))
     )
   end
@@ -859,6 +928,20 @@ defmodule RoundtableWeb.RoomLive do
         nil -> nil
         organization -> organization.id
       end
+  end
+
+  # A new team in a project that has a folder inherits it by default: the
+  # field starts empty and the note says so. A project without a folder
+  # pre-fills the workspace default, because inherit would leave the team
+  # with nowhere to work.
+  defp team_default_directory(socket) do
+    organization =
+      Enum.find(socket.assigns.organizations, &(&1.id == showing_organization(socket)))
+
+    case organization && organization.directory do
+      directory when is_binary(directory) and directory != "" -> ""
+      _ -> socket.assigns.directory
+    end
   end
 
   defp errors(changeset) do
