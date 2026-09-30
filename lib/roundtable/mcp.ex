@@ -110,6 +110,45 @@ defmodule Roundtable.MCP do
   def tools do
     [
       %{
+        name: "read_work_document",
+        description: "Read this room's current work document and revision before editing it.",
+        inputSchema: object(%{})
+      },
+      %{
+        name: "update_work_document",
+        description:
+          "Replace this room's work document (up to 8,000 characters). Only the primary contact may edit when one is selected. Merge stale edits after reading again.",
+        inputSchema:
+          object(
+            %{
+              "body" =>
+                string(
+                  "Current goal, decisions, tasks with owners and status, blockers and checks."
+                ),
+              "revision" => %{
+                type: "integer",
+                description: "Revision returned by read_work_document."
+              }
+            },
+            ["body", "revision"]
+          )
+      },
+      %{
+        name: "read_room_history",
+        description:
+          "Retrieve up to 10 earlier messages from your own room, oldest first, with bodies capped at 2,000 characters. Use the first returned id as before_id for the previous page. Ask the author for details when truncated.",
+        inputSchema:
+          object(
+            %{
+              "before_id" => %{
+                type: "integer",
+                description: "Exclusive message id; use your assigned message id to start."
+              }
+            },
+            ["before_id"]
+          )
+      },
+      %{
         name: "list_rooms",
         description:
           "Every room here: its name, working directory, shared brief, and who is in it.",
@@ -296,6 +335,29 @@ defmodule Roundtable.MCP do
   it can act on — a tool failing is an answer, not a transport error.
   """
   def call(agent, name, args \\ %{})
+
+  def call(agent, "read_work_document", _args),
+    do: {:ok, json(Chat.work_document(agent.room_id))}
+
+  def call(agent, "update_work_document", args) do
+    head = Chat.team_head(agent.room_id)
+
+    if head == nil or head.id == agent.id do
+      case Chat.update_work_document(agent.room_id, args["body"], args["revision"]) do
+        {:ok, _room} -> {:ok, json(Chat.work_document(agent.room_id))}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      {:error, "Send your result to @#{head.name}; they maintain the work document."}
+    end
+  end
+
+  def call(agent, "read_room_history", %{"before_id" => before_id})
+      when is_integer(before_id) and before_id > 0,
+      do: {:ok, json(Chat.context_messages(agent.room_id, before_id))}
+
+  def call(_agent, "read_room_history", _args),
+    do: {:error, "Provide a positive before_id message id."}
 
   def call(_agent, "list_rooms", _args),
     do: {:ok, json(Enum.map(Chat.rooms(), &room_view/1))}

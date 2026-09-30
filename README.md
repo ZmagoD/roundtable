@@ -13,7 +13,10 @@ Provider CLIs connect to their configured services to run the models.
 - **Participants are named and briefed.** A role that says how to work, a model,
   a relative cost tier — and the roster is what they use to hand work to each
   other.
-- **Mentions are the unit of work.** `@builder` starts a turn; a mention inside
+- **Choose a primary contact.** Make one participant the team head and ordinary
+  messages go to them. Specialists receive the shared work document and their
+  assignment, with fresh sessions to avoid accumulating unrelated context.
+- **Mentions assign work directly.** `@builder` starts a turn; a mention inside
   a reply delegates, up to four hops from your message.
 - **You can watch and stop it.** Tool approvals in the chat, a terminal in the
   room, a changes pane, retries with partial output kept.
@@ -200,6 +203,8 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/help`, or `?` on an empty line | the full help screen |
 | `/rooms`, `/room <name>` | list rooms, switch to one |
 | `/new-room <name> <dir>` | create a room; `.` is the directory you started the client in |
+| `/head <agent\|off>` | choose the primary contact, or restore mention-only routing |
+| `/work [text]` | show the shared work document, or replace it |
 | `/context [text]` | show the room's shared brief, or set it |
 | `/schedules` | list this room's schedules and their ids |
 | `/schedule <agent> <times> <text> [--days 1,2,3,4,5]` | send a recurring prompt at selected times and weekdays |
@@ -438,8 +443,8 @@ that to decide who to hand work to:
 ```
 
 **Give the work to someone.** A message with an `@name` starts that
-participant's turn; a message without one is shared context everyone reads
-next turn:
+participant's turn. Without a mention, it goes to the selected team head;
+without a head, it is saved as shared context for the next turn:
 
 ```
 @architect we need a percentage discount on the cart total.
@@ -511,11 +516,14 @@ The **Terminal** button opens a shell in the room's directory, in the page.
    Multiple participants can use the same provider. Optionally choose a model,
    and give each participant a role.
 3. Write a message or select a recipient. `@ada` starts Ada's turn;
-   `@all` schedules everyone. Unaddressed messages are saved as shared context.
-4. Agents receive unread room messages before their next assignment. Their final
-   replies go into the room. A mention in a reply can delegate to another agent.
+   `@all` schedules everyone. Select **Make team head** on one participant to
+   route unaddressed messages to them automatically.
+4. With a head, agents receive the work document and their assigned message.
+   Without one, they receive unread room messages. Final replies go into the
+   room; a mention in a reply can delegate to another agent.
 5. Open **Session details** to stop a participant and its queue, or start a new
-   native session. New sessions receive room history. Stopped and failed work
+   native session. New sessions receive the work document in teams with a head,
+   or bounded room history otherwise. Stopped and failed work
    can be retried explicitly.
 
 There is one active turn per participant, up to four active turns overall,
@@ -540,6 +548,69 @@ in that room, with its own provider session and its own queue, so the same
 seeing each other's transcript. Give it a different name to add the same profile
 twice in one room. Editing or deleting a profile leaves participants already
 added from it exactly as they are.
+
+### A primary contact and a shared work document
+
+Select **Make team head** on the participant you want to talk to most, or type
+`/head lead` in the terminal. Ordinary human messages now start that agent's
+turn. Explicit `@name` and `@all` mentions still choose recipients directly.
+Unknown mentions do not fall back to the head; system notices and unaddressed
+agent replies do not wake them either. Remove the designation on the card or
+use `/head off` to return to mention-only routing.
+
+Open **Work document** in the room header to view and edit the current plan.
+This is stored in SQLite with the room, separately from the transcript. Keep it
+short and current, for example:
+
+```text
+Goal: Add password reset
+
+Decisions:
+- Reset links expire after 30 minutes.
+
+Tasks:
+- T1 | builder | implementing | Endpoint and form; expired links must fail
+- T2 | reviewer | waiting on T1 | Verify expiry and token reuse
+
+Blockers: None
+Verification: Pending
+```
+
+The document is limited to 8,000 characters. Replace outdated entries instead of
+appending a running log. Each edit includes a revision: if somebody changed it
+while you were editing, your save is rejected and your browser draft remains.
+Copy the draft before **Reload latest**, then merge it into the new version.
+In the terminal, `/work` shows the document and `/work <text>` replaces it;
+use the browser editor for multiline plans. After a stale terminal edit, use
+`/refresh`, read `/work`, and merge before trying again.
+
+When a head is selected, prompts include the current work document, room brief,
+carried notes, roster, and assigned message, without automatically including
+unread chat. The primary agent is instructed to maintain the document, delegate
+bounded tasks with file references and acceptance criteria, and consolidate
+results for you. Specialists are instructed to return concise results, changed
+files, checks, and blockers to the head. These instructions encourage concise
+handoffs; they do not impose a hard limit on an agent's reply.
+
+Specialists start a fresh provider session on every assignment, including
+retries. Put everything needed to continue in the assignment or work document.
+The head retains its session for conversational continuity; its private history
+can still grow. Use **New session** or `/reset lead` after ensuring the work
+document captures the current state. Selecting a head does not erase existing
+provider transcripts or change a turn already running.
+
+Codex and Claude participants with room tools enabled can use
+`read_work_document`, `update_work_document`, and `read_room_history`. With a
+head selected, only that agent can update the document through those tools;
+you can always edit it. History retrieval is scoped to the caller's room,
+returning at most ten messages per page and 2,000 characters per message.
+Long messages are marked truncated; agents can ask their author for details.
+OpenCode, Grok, or installations with room tools disabled still receive the
+document, but must ask for missing context and propose document updates for you
+to apply. Choose a participant with room tools as the head for automatic upkeep.
+
+Chat remains the visible activity record. The existing four-hop delegation cap
+still applies, so the primary contact cannot run an unlimited chain of turns.
 
 ### The room's brief
 
@@ -788,7 +859,7 @@ Clients (LiveView, terminal) → Chat/Coordinator → supervised agent workers �
 provider CLIs. `Roundtable.Client` is the seam: it calls the coordination core
 directly in-node, or over distributed Erlang from a terminal, so a client never
 opens the database itself.
-SQLite stores rooms, participants, messages, native session IDs, durable run
+SQLite stores rooms and their revisioned work documents, participants, messages, native session IDs, durable run
 records, agent profiles, model presets, schedules and room knowledge notes.
 Message insertion and delivery creation are transactional; PubSub
 updates connected browsers. A coordinator serializes queue transitions.

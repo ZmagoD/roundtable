@@ -118,6 +118,11 @@
               phx-click="edit-room"
               title="The brief everyone in this room works to"
             >Room brief</button><button
+              id="work-document-button"
+              class="button secondary"
+              phx-click="open-work"
+              title="Current goal, tasks, decisions and verification"
+            >Work document</button><button
               id="room-notes-button"
               class="button secondary"
               phx-click="panel"
@@ -348,7 +353,10 @@
                       type="select"
                       aria-label="Recipient"
                       options={[
-                        {"Everyone in the room", "room"}
+                        {if(Enum.any?(@agents, & &1.head),
+                           do: "Primary contact (unless @mentioned)",
+                           else: "Room (use @mentions to assign)"
+                         ), "room"}
                         | Enum.map(@agents, &{"@#{&1.name}", &1.name})
                       ]}
                     />
@@ -360,7 +368,7 @@
                 </div>
               </.form>
               <p class="composer-hint">
-                <span>Everyone shares context. Mentions start a turn.</span><span>@ to mention · Tab to complete · Enter to send · Shift + Enter for a new line</span>
+                <span>Messages go to the team head when selected. @mentions choose someone else.</span><span>@ to mention · Tab to complete · Enter to send · Shift + Enter for a new line</span>
               </p>
             </div>
           </section>
@@ -488,7 +496,7 @@
             </section>
             <div class="room-note">
               <span>✳</span><h3>A shared place to think and act.</h3><p>
-                Agents receive the room's unread context with their next assignment. Mention one agent to
+                With a team head, agents receive the work document and their assignment. Otherwise they receive unread room context. Mention one agent to
                 start its turn, or use @all when everyone should see the work.
               </p><p>
                 Queued work keeps running while the Roundtable service is on, even after you close this tab.
@@ -536,6 +544,7 @@
             "team" -> "START WITH A GOAL"
             "profiles" -> "YOUR PEOPLE"
             "schedules" -> "STANDING INSTRUCTIONS"
+            "work" -> "CURRENT WORK"
             "notes" -> "WHAT THIS ROOM HAS LEARNED"
             _ -> if(@editing_agent, do: "CHANGE A PARTICIPANT", else: "EXPAND YOUR TEAM")
           end}
@@ -547,6 +556,7 @@
             "team" -> "Build a team"
             "profiles" -> "Saved agent roles"
             "schedules" -> "Schedules"
+            "work" -> "Work document"
             "notes" -> "Room notes"
             _ -> if(@editing_agent, do: "Edit this agent", else: "Invite an agent")
           end}
@@ -570,6 +580,9 @@
 
             "schedules" ->
               "Say something to one participant at the same times every day."
+
+            "work" ->
+              "Keep the goal, decisions, task owners, blockers and checks here. Every agent receives this document with its assignment."
 
             "notes" ->
               "Facts every participant starts its turn with. One line each: where a thing lives, what was settled, what caught someone out."
@@ -913,6 +926,38 @@
               phx-value-id={@editing_schedule}
               data-confirm="Remove this schedule? Nothing else changes."
             >Delete this schedule</button>
+          </.form>
+        </div>
+        <div :if={@panel == "work"}>
+          <.form for={@work_form} id="work-document-form" phx-submit="save-work">
+            <.input
+              field={@work_form[:body]}
+              type="textarea"
+              label="Current work"
+              rows="18"
+              maxlength="8000"
+              placeholder="Goal
+
+Decisions
+
+Tasks — ID, owner, status, acceptance criteria
+
+Blockers
+
+Verification"
+            />
+            <p class="form-note">
+              Up to 8,000 characters. Replace outdated entries to keep context small.
+              The primary agent maintains this document when its provider supports room tools.
+            </p>
+            <button id="save-work-document" class="button" type="submit">Save document</button>
+            <button
+              id="reload-work-document"
+              class="button secondary"
+              type="button"
+              phx-click="open-work"
+              data-confirm="Discard your draft and load the latest work document?"
+            >Reload latest</button>
           </.form>
         </div>
         <div :if={@panel == "notes"}>

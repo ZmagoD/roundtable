@@ -26,6 +26,8 @@ defmodule Roundtable.TUI.Commands do
     {"rooms", "", "list the rooms"},
     {"room", "<name>", "switch to one"},
     {"new-room", "<name> <dir>", "create one; . is where you started the client"},
+    {"head", "<agent|off>", "choose the primary contact, or restore mention-only routing"},
+    {"work", "[text]", "show the work document, or replace it"},
     {"context", "[text]", "show the room's shared brief, or set it"},
     {"schedules", "", "standing instructions in this room"},
     {"schedule", "<agent> <times> <text> [--days 1,2,3,4,5]", "wake it at those times of day"},

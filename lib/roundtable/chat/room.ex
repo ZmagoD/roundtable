@@ -7,6 +7,8 @@ defmodule Roundtable.Chat.Room do
     field :directory, :string
     # The room's shared brief: what this team is doing and how it works.
     field :context, :string, default: ""
+    field :work_document, :string, default: ""
+    field :work_revision, :integer, default: 0
     belongs_to :organization, Roundtable.Chat.Organization
     timestamps(type: :utc_datetime)
   end

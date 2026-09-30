@@ -35,6 +35,19 @@ defmodule Roundtable.TUI.EffectsTest do
     %{room: room, agent: agent, context: context}
   end
 
+  test "terminal can select a primary contact and maintain the work document", ctx do
+    context = TUI.perform({:set_team_head, ctx.agent.id}, ctx.context)
+    assert Chat.team_head(ctx.room.id).id == ctx.agent.id
+    context = TUI.perform({:update_work_document, ctx.room.id, "T1 ready", 0}, context)
+    assert context.state.room.work_revision == 1
+    context = TUI.perform({:work_document, ctx.room.id}, context)
+    assert context.state.status =~ "T1 ready"
+    context = TUI.perform({:update_work_document, ctx.room.id, "stale", 0}, context)
+    assert context.state.status =~ "changed"
+    TUI.perform({:clear_team_head, ctx.room.id}, context)
+    assert Chat.team_head(ctx.room.id) == nil
+  end
+
   test "posting a message reaches the room", %{context: context, room: room} do
     context = TUI.perform({:post, "@ada look at this"}, context)
 

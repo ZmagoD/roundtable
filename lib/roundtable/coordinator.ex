@@ -332,7 +332,11 @@ defmodule Roundtable.Coordinator do
   defp reset_stale_session(%{session_id: nil} = agent, _run), do: agent
 
   defp reset_stale_session(agent, %{model: model}) do
-    if agent.session_model == model and agent.session_directory == agent.directory do
+    head = Chat.team_head(agent.room_id)
+    fresh_assignment = head != nil and head.id != agent.id
+
+    if not fresh_assignment and agent.session_model == model and
+         agent.session_directory == agent.directory do
       agent
     else
       Chat.change(

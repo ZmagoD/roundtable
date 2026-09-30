@@ -49,6 +49,14 @@ defmodule Roundtable.Client do
   def agents(c, room_id), do: call(c, Chat, :agents, [room_id])
   def messages(c, room_id), do: call(c, Chat, :messages, [room_id])
   def runs(c, room_id), do: call(c, Chat, :runs, [room_id])
+  def work_document(c, room_id), do: call(c, Chat, :work_document, [room_id])
+
+  def update_work_document(c, room_id, body, revision),
+    do: call(c, Chat, :update_work_document, [room_id, body, revision], @write_timeout)
+
+  def set_team_head(c, agent_id), do: call(c, Chat, :set_team_head, [agent_id], @write_timeout)
+  def clear_team_head(c, room_id), do: call(c, Chat, :clear_team_head, [room_id], @write_timeout)
+
   def model_presets(c), do: call(c, Chat, :model_presets, [])
 
   def approvals(c, room_id) do

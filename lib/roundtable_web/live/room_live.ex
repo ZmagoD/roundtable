@@ -31,6 +31,8 @@ defmodule RoundtableWeb.RoomLive do
        schedules: [],
        schedule_form: to_form(%{"days" => "", "at" => "09:00"}, as: :schedule),
        editing_schedule: nil,
+       work_form: to_form(%{}, as: :work),
+       work_revision: 0,
        notes: [],
        note_form: note_form(),
        note_seq: 0,
@@ -139,6 +141,29 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   def handle_event("clear-team-head", _params, socket), do: {:noreply, socket}
+
+  def handle_event("open-work", _, %{assigns: %{room: room}} = socket) do
+    document = Chat.work_document(room.id)
+
+    {:noreply,
+     assign(socket,
+       panel: "work",
+       form_error: nil,
+       work_revision: document.revision,
+       work_form: to_form(%{"body" => document.body}, as: :work)
+     )}
+  end
+
+  def handle_event("save-work", %{"work" => %{"body" => body}}, socket) do
+    case Chat.update_work_document(socket.assigns.room.id, body, socket.assigns.work_revision) do
+      {:ok, _room} ->
+        {:noreply, socket |> assign(panel: nil) |> put_flash(:info, "Work document updated.")}
+
+      {:error, reason} ->
+        {:noreply,
+         assign(socket, form_error: reason, work_form: to_form(%{"body" => body}, as: :work))}
+    end
+  end
 
   def handle_event("panel", %{"name" => name}, socket) do
     socket =

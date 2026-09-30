@@ -261,6 +261,37 @@ defmodule Roundtable.TUI do
     end
   end
 
+  def perform({:work_document, room_id}, context) do
+    case Client.work_document(context.client, room_id) do
+      %{body: body, revision: revision} ->
+        status(context, "Work document (revision #{revision}):\n#{body}")
+
+      {:error, reason} ->
+        status(context, describe(reason))
+    end
+  end
+
+  def perform({:update_work_document, room_id, body, revision}, context) do
+    case Client.update_work_document(context.client, room_id, body, revision) do
+      {:ok, _} -> refresh(context) |> status("Work document updated.")
+      {:error, reason} -> status(context, describe(reason))
+    end
+  end
+
+  def perform({:set_team_head, agent_id}, context) do
+    case Client.set_team_head(context.client, agent_id) do
+      {:ok, agent} -> refresh(context) |> status("@#{agent.name} is the primary contact.")
+      {:error, reason} -> status(context, describe(reason))
+    end
+  end
+
+  def perform({:clear_team_head, room_id}, context) do
+    case Client.clear_team_head(context.client, room_id) do
+      :ok -> refresh(context) |> status("Address participants with @mentions.")
+      {:error, reason} -> status(context, describe(reason))
+    end
+  end
+
   def perform({:update_room, room_id, attrs}, context) do
     case Client.update_room(context.client, room_id, attrs) do
       {:ok, room} -> refresh(context) |> status("Brief set for #{room.name}.")

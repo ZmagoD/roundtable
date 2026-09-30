@@ -3,6 +3,23 @@ defmodule RoundtableWeb.RoomLiveTest do
   import Phoenix.LiveViewTest
   alias Roundtable.Chat
 
+  test "work document can be edited and stale drafts are preserved", %{conn: conn} do
+    {:ok, room} = Chat.create_room(%{name: "Work", directory: File.cwd!()})
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+    view |> element("#work-document-button") |> render_click()
+    view |> form("#work-document-form", work: %{body: "T1 | builder | ready"}) |> render_submit()
+    assert Chat.work_document(room.id).body == "T1 | builder | ready"
+
+    view |> element("#work-document-button") |> render_click()
+    Chat.update_work_document(room.id, "Newer plan", 1)
+    view |> form("#work-document-form", work: %{body: "My draft"}) |> render_submit()
+    assert has_element?(view, "[role=alert]")
+    assert has_element?(view, "#work-document-form textarea", "My draft")
+    assert Chat.work_document(room.id).body == "Newer plan"
+    view |> element("#reload-work-document") |> render_click()
+    assert has_element?(view, "#work-document-form textarea", "Newer plan")
+  end
+
   test "build a team creates its helper and queues the request", %{conn: conn} do
     {:ok, view, _} = live(conn, "/")
     view |> element("#build-team-button") |> render_click()

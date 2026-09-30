@@ -448,6 +448,54 @@ defmodule Roundtable.Chat do
     end
   end
 
+  @doc "Replaces current work only if the caller has the latest revision."
+  def update_work_document(room_id, body, revision)
+      when is_binary(body) and is_integer(revision) do
+    if String.length(body) <= 8000 do
+      query = from r in Room, where: r.id == ^room_id and r.work_revision == ^revision
+
+      case Repo.update_all(query,
+             set: [work_document: body, updated_at: DateTime.utc_now(:second)],
+             inc: [work_revision: 1]
+           ) do
+        {1, _} ->
+          broadcast(room_id)
+          {:ok, room!(room_id)}
+
+        _ ->
+          {:error, "The work document changed. Reload it and merge your changes."}
+      end
+    else
+      {:error, "Keep the work document within 8,000 characters. Replace outdated entries."}
+    end
+  end
+
+  def update_work_document(_room_id, _body, _revision),
+    do: {:error, "Provide a work document and its current revision."}
+
+  def work_document(room_id) do
+    room = room!(room_id)
+    %{body: room.work_document, revision: room.work_revision}
+  end
+
+  def context_messages(room_id, before_id) when is_integer(before_id) and before_id > 0 do
+    Repo.all(
+      from m in Message,
+        where: m.room_id == ^room_id and m.id < ^before_id,
+        order_by: [desc: m.id],
+        limit: 10
+    )
+    |> Enum.reverse()
+    |> Enum.map(fn m ->
+      %{
+        id: m.id,
+        sender: m.sender,
+        body: String.slice(m.body, 0, 2000),
+        truncated: String.length(m.body) > 2000
+      }
+    end)
+  end
+
   @doc """
   Changes a room's name, its shared brief, and its folder.
 
@@ -705,7 +753,7 @@ defmodule Roundtable.Chat do
   defp schedule_turns(%{depth: depth}, _body, _opts) when depth >= @max_depth, do: :ok
 
   defp schedule_turns(message, body, opts) do
-    for agent <- recipients(body, agents(message.room_id)), agent.id != message.agent_id do
+    for agent <- turn_recipients(message, body), agent.id != message.agent_id do
       assignment = assignment_for(agent, opts[:assignment])
 
       Repo.insert!(%Run{
@@ -719,6 +767,19 @@ defmodule Roundtable.Chat do
     end
 
     :ok
+  end
+
+  defp turn_recipients(message, body) do
+    members = agents(message.room_id)
+    addressed = recipients(body, members)
+
+    # An unknown or cross-room mention must not accidentally wake the default agent.
+    if message.kind == "human" and addressed == [] and
+         not Regex.match?(~r/(?<![\w@])@[a-z][a-z0-9_-]*/i, body) do
+      Enum.filter(members, & &1.head)
+    else
+      addressed
+    end
   end
 
   defp assignment_for(agent, %{agent_id: agent_id} = assignment) when agent_id == agent.id,
@@ -1088,15 +1149,16 @@ defmodule Roundtable.Chat do
 
   def prompt(agent, run) do
     room = room!(agent.room_id)
-    history = messages(agent.room_id)
+    head = team_head(room.id)
+    until_id = Repo.one(from m in Message, where: m.room_id == ^room.id, select: max(m.id)) || 0
 
-    until_id =
-      case List.last(history) do
-        nil -> 0
-        m -> m.id
+    {unread, omitted} =
+      if head do
+        {[], 0}
+      else
+        recent_unread(messages_after(room.id, agent.last_seen_id))
       end
 
-    {unread, omitted} = recent_unread(Enum.filter(history, &(&1.id > agent.last_seen_id)))
     # The assigned message is always explicit, even when an earlier turn read it.
     task = Repo.get!(Message, run.message_id)
 
@@ -1118,6 +1180,7 @@ defmodule Roundtable.Chat do
     What this room is working on, and how: #{context(room)}
     That is the shared brief for everyone here. Where it and your own role both apply, follow both;
     where they genuinely conflict, say so rather than quietly picking one.#{learned(room.id)}
+    #{working_context(room, agent, head)}
 
     THIS ASSIGNMENT
     Model for this assignment: #{run.model || agent.model || "provider default"}. Relative cost tier: #{run.cost_tier}.
@@ -1144,6 +1207,32 @@ defmodule Roundtable.Chat do
     """
 
     {prompt, until_id}
+  end
+
+  defp working_context(room, agent, head) do
+    document = """
+    SHARED WORK DOCUMENT (revision #{room.work_revision})
+    #{if room.work_document == "", do: "No work recorded yet.", else: room.work_document}
+    Keep this document current: goal, constraints, decisions, task IDs, owners, status,
+    blockers, and verification. Replace outdated entries; do not append a running transcript.
+    """
+
+    if head do
+      document <>
+        """
+        FOCUSED TEAM WORK
+        @#{head.name} is the primary contact for the human. Ordinary human messages go to them.
+        Room history is not automatically included. Work from this document and your assigned message.
+        Use read_room_history for missing context when available, or ask for the specific information.
+        #{if agent.id == head.id,
+          do: "Maintain the work document with update_work_document. Delegate bounded tasks with task IDs, relevant files, constraints and acceptance criteria. Consolidate results and report to the human.",
+          else: "Work only on your assigned task. Each assignment starts a fresh session. Return a short result to @#{head.name}, including task ID, files changed, checks and blockers. The primary contact merges your result into the work document."}
+        Do not repeat conversation history, quote entire reports, or send acknowledgement-only replies.
+        If work-document tools are unavailable, give the human a concise proposed document update.
+        """
+    else
+      document
+    end
   end
 
   # Notes accumulate and a prompt does not grow, so the pinned ones go in first
@@ -1237,7 +1326,9 @@ defmodule Roundtable.Chat do
 
 
       THE ROOMS THEMSELVES
-      You have tools for the rooms here. Use them to see who is where, and — when the human asks for
+      Read the work document and retrieve specific older messages as needed. Maintaining the work
+      document is part of the primary contact's assignment; use its revision to avoid overwriting edits.
+      You also have setup tools for the rooms here. Use them to see who is where, and — when the human asks for
       it — to make a room, give it its brief, add participants to it from the saved profiles or from
       scratch, and set standing instructions that wake a participant at a time of day. Only when
       asked: never to give yourself help, and never to start the work in a room you have just made.

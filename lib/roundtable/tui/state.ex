@@ -409,6 +409,27 @@ defmodule Roundtable.TUI.State do
     end
   end
 
+  defp dispatch(state, "head", args) do
+    case {state.room, String.trim(args)} do
+      {nil, _} -> {put_status(state, "Join a room first: /room <name>"), []}
+      {room, "off"} -> {state, [{:clear_team_head, room.id}]}
+      {_, name} -> with_agent(state, name, &{state, [{:set_team_head, &1.id}]})
+    end
+  end
+
+  defp dispatch(state, "work", args) do
+    case {state.room, String.trim(args)} do
+      {nil, _} ->
+        {put_status(state, "Join a room first: /room <name>"), []}
+
+      {room, ""} ->
+        {state, [{:work_document, room.id}]}
+
+      {room, text} ->
+        {state, [{:update_work_document, room.id, unquote_value(text), room.work_revision}]}
+    end
+  end
+
   defp dispatch(state, "context", args) do
     case {state.room, String.trim(args)} do
       {nil, _} ->

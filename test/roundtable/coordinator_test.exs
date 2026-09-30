@@ -32,6 +32,34 @@ defmodule Roundtable.CoordinatorTest do
     %{room: room, ada: ada, linus: linus}
   end
 
+  test "specialists start fresh while the primary contact keeps its session", ctx do
+    Chat.set_team_head(ctx.ada.id)
+
+    for agent <- [ctx.ada, ctx.linus] do
+      Chat.change(agent,
+        session_id: "existing",
+        session_model: agent.model,
+        session_directory: agent.directory
+      )
+    end
+
+    Coordinator.post(ctx.room.id, "@linus Check T1")
+    assert_receive {:agent_started, worker_pid, worker, run, _}, 1000
+    assert worker.session_id == nil
+    ref = Process.monitor(worker_pid)
+    GenServer.cast(worker_pid, {:finish, "Checked"})
+    assert_receive {:DOWN, ^ref, :process, ^worker_pid, :normal}, 1000
+    _ = :sys.get_state(Coordinator)
+    assert Repo.get!(Run, run.id).status == "completed"
+    Coordinator.post(ctx.room.id, "Summarize progress")
+    assert_receive {:agent_started, lead_pid, lead, _, _}, 1000
+    assert lead.id == ctx.ada.id
+    assert lead.session_id == "existing"
+    Coordinator.stop(lead.id)
+    ref = Process.monitor(lead_pid)
+    assert_receive {:DOWN, ^ref, :process, ^lead_pid, _}, 1000
+  end
+
   test "team builder starts, requests approval, and completes through the normal worker" do
     assert {:ok, room} =
              Coordinator.build_team(%{

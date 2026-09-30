@@ -22,6 +22,18 @@ defmodule Roundtable.TUI.StateTest do
     end)
   end
 
+  test "work and primary contact commands produce service effects" do
+    assert {_, [{:set_team_head, 7}]} = state() |> type("/head ada") |> State.handle_key(:enter)
+    assert {_, [{:clear_team_head, 1}]} = state() |> type("/head off") |> State.handle_key(:enter)
+    assert {_, [{:work_document, 1}]} = state() |> type("/work") |> State.handle_key(:enter)
+
+    assert {_, [{:update_work_document, 1, "T1 ready", 0}]} =
+             state() |> type("/work T1 ready") |> State.handle_key(:enter)
+
+    assert {_, []} = state(room: nil) |> type("/work") |> State.handle_key(:enter)
+    assert {_, []} = state(room: nil) |> type("/head ada") |> State.handle_key(:enter)
+  end
+
   test "typing and editing the input line" do
     state = state() |> type("hello")
     assert state.input == "hello"
