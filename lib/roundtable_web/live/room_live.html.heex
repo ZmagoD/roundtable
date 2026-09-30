@@ -178,11 +178,16 @@
               <div class="date-divider"><span>Room history</span><span>All times UTC</span></div>
               <div id="messages" phx-update="stream">
                 <article :for={{dom_id, message} <- @streams.messages} id={dom_id} class="message">
-                  <div class={[
-                    "avatar",
-                    message.kind == "human" && "human",
-                    message.kind == "agent" && "agent-avatar"
-                  ]}>
+                  <.agent_avatar
+                    :if={message.kind == "agent"}
+                    name={message.sender}
+                    role={role_of(@agents, message.sender)}
+                    provider={provider_of(@agents, message.sender)}
+                  />
+                  <div
+                    :if={message.kind != "agent"}
+                    class={["avatar", message.kind == "human" && "human"]}
+                  >
                     {initials(message.sender)}
                   </div>
                   <div class="message-content">
@@ -214,7 +219,11 @@
                 id={"run-#{run.id}"}
                 class="message live-message"
               >
-                <div class="avatar agent-avatar">{initials(run.agent.name)}</div><div class="message-content">
+                <.agent_avatar
+                  name={run.agent.name}
+                  role={run.agent.role}
+                  provider={run.agent.provider}
+                /><div class="message-content">
                   <div class="message-meta">
                     <strong>{run.agent.name}</strong><span class={["status", run.status]}>{status_label(
                       run.status
@@ -412,7 +421,7 @@
             </div>
             <div :for={agent <- @agents} class="agent-card" id={"agent-#{agent.id}"}>
               <div class="agent-card-top">
-                <div class={["avatar", agent.provider]}>{initials(agent.name)}</div><div>
+                <.agent_avatar name={agent.name} role={agent.role} provider={agent.provider} /><div>
                   <strong>{agent.name}</strong><small>{agent.provider}</small>
                 </div><span :if={agent.head} class="team-head-badge">Team head</span><span class={[
                   "status-dot",

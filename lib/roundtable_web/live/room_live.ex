@@ -3,6 +3,7 @@ defmodule RoundtableWeb.RoomLive do
   alias Roundtable.{Chat, Coordinator}
   alias Roundtable.Chat.RoomNote
   alias RoundtableWeb.ComposerCommands
+  import RoundtableWeb.AgentAvatar, only: [agent_avatar: 1]
 
   @impl true
   def mount(_, _, socket) do
@@ -1154,6 +1155,14 @@ defmodule RoundtableWeb.RoomLive do
     ]
 
   defp initials(name), do: name |> String.slice(0, 2) |> String.upcase()
+
+  # A message keeps only its sender's name. Someone since removed, or writing
+  # from another room, still gets their pattern, just without a role mark.
+  defp role_of(agents, name),
+    do: agents |> Enum.find(&(&1.name == name)) |> then(&(&1 && &1.role))
+
+  defp provider_of(agents, name),
+    do: agents |> Enum.find(&(&1.name == name)) |> then(&(&1 && &1.provider))
 
   def time(datetime) do
     format =

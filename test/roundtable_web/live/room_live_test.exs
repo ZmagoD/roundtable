@@ -22,6 +22,25 @@ defmodule RoundtableWeb.RoomLiveTest do
     assert has_element?(view, "#work-document-form")
   end
 
+  test "agents are shown by their generated avatar, including senders no longer here", %{
+    conn: conn
+  } do
+    {:ok, room} = Chat.create_room(%{name: "Avatars", directory: File.cwd!()})
+    {:ok, agent} = Chat.create_agent(room.id, %{name: "ada", provider: "claude", role: "QA"})
+    Chat.post(room.id, "Checked", kind: "agent", sender: "ada", agent_id: agent.id)
+    Chat.post(room.id, "From elsewhere", kind: "agent", sender: "other-room/grace")
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+
+    assert has_element?(view, "#agent-#{agent.id} .agent-avatar[aria-label=ada] svg")
+    assert has_element?(view, "#messages .agent-avatar[aria-label=ada] .avatar-mark")
+    assert has_element?(view, "#messages .agent-avatar[aria-label='other-room/grace'] svg")
+
+    refute has_element?(
+             view,
+             "#messages .agent-avatar[aria-label='other-room/grace'] .avatar-mark"
+           )
+  end
+
   test "clear-history command requires confirmation and cancellation preserves messages", %{
     conn: conn
   } do

@@ -528,6 +528,17 @@ h1, h2, h3, p { margin: 0; }
 .avatar.human { background: var(--warm-surface-10); color: var(--warm-mid-2); border-color: var(--warm-surface-1); }
 .avatar.claude { background: var(--warm-surface-7); color: var(--warm-mid-5); border-color: var(--warm-surface-9); }
 .avatar.opencode { background: var(--blue-surface-5); color: var(--blue-mid-1); border-color: var(--blue-surface-4); }
+/* The frame is the provider's; the pattern takes one of a few hues from the
+   name, so two agents on the same provider still look different. */
+.agent-avatar { position: relative; }
+.avatar-pattern { width: 19px; height: 19px; fill: currentColor; shape-rendering: crispEdges; }
+.avatar-hue-0 { color: var(--green-mid-14); }
+.avatar-hue-1 { color: var(--blue-mid-2); }
+.avatar-hue-2 { color: var(--red-mid-1); }
+.avatar-hue-3 { color: var(--warm-mid-5); }
+.avatar-hue-4 { color: var(--green-mid-20); }
+.avatar-hue-5 { color: var(--blue-mid-1); }
+.avatar-mark { position: absolute; right: -4px; bottom: -4px; display: grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; background: var(--green-surface-9); border: 1px solid var(--green-surface-19); color: var(--green-ink-12); }
 .message-content { flex: 1; min-width: 0; padding-top: 1px; }
 .message-meta { display: flex; align-items: center; gap: 9px; margin-bottom: 7px; }
 .message-meta strong { font-size: 12px; font-weight: 650; }
