@@ -117,6 +117,21 @@ Typing `@` in the composer offers the people in the room — arrow keys or
 filters as you type, and includes `@all` to address everyone in the room.
 `Enter` sends; `Shift + Enter` starts a new line.
 
+In the browser, type `/` at the start of the chat field for command autocomplete.
+Use `↑`/`↓` to select, then `Tab` or `Enter` to complete, or click a suggestion.
+Completing a command does not run it: submit the completed line to execute it.
+Participant names and `on`/`off` values are suggested as you type arguments.
+`Escape` closes the menu, and `Shift + Enter` still inserts a newline.
+
+Browser commands are `/clear-history`, `/quota-retry <agent> on|off`,
+`/head <agent|off>`, `/work`, `/context`, `/schedules`, `/stop <agent>`, and `/help`.
+`/work` and `/context` open their editors. `/clear-history` opens a confirmation;
+selecting it never immediately deletes messages. Commands act locally on the
+current room and are not posted to agents, regardless of the recipient selector.
+Use `//` to send ordinary text beginning with `/`. The terminal's larger command
+palette remains available in the terminal client.
+
+
 The room header shows the current branch and the working directory, and a panel
 lists what has changed in it — file by file, with line counts — updating while a
 turn runs. Click it for the patch itself. A participant can be removed from its card and a room from its header, both
@@ -212,6 +227,7 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/agent <name> <provider>` | add a participant; `--model`, `--role`, `--tier` |
 | `/role <agent> <text>` | set what a participant is for |
 | `/model <agent> <id\|default>` | pin a model, or hand the choice back |
+| `/quota-retry <agent> on\|off` | automatically resume assignments after quota resets |
 | `/auto <agent> on\|off` | let it approve its own tool use |
 | `/rename <agent> <new name>` | rename a participant, before its first turn |
 | `/providers` | which agent CLIs are installed |
@@ -220,6 +236,7 @@ cycles the recipient. Lines beginning with `/` are commands:
 | `/who` | show every participant, their model, tier and role |
 | `/stop <agent>`, `/reset <agent>` | stop a participant's queue, clear its session |
 | `/remove <agent>` | remove a participant; what it said stays |
+| `/clear-history <exact current room name>` | clear chat and runs, stop turns, and reset sessions |
 | `/remove-room <name>` | delete a room and everything in it |
 | `/retry [run]` | retry the newest failed run, or one by id |
 | `/approve accept\|decline [n]` | answer a pending tool approval |
@@ -549,6 +566,77 @@ seeing each other's transcript. Give it a different name to add the same profile
 twice in one room. Editing or deleting a profile leaves participants already
 added from it exactly as they are.
 
+### Continuing after provider quota limits
+
+Enable **Resume after quota resets** on each participant that should wait and
+continue automatically. In the terminal:
+
+```text
+/quota-retry lead on
+/quota-retry builder on
+/quota-retry reviewer on
+```
+
+This is off by default. Enable it before starting work; for an assignment that
+has already failed, enable it and use **Retry assignment** or `/retry <run>`.
+A recognized provider quota failure becomes **Waiting for quota**, with the
+next attempt shown in the browser and terminal. The assignment, partial output,
+provider session, and queued work stay saved. A waiting participant holds its
+queue, while other participants can carry on.
+
+A supervised Elixir process checks persisted deadlines every 30 seconds. When
+the provider supplies a future reset timestamp, Roundtable waits until 15
+seconds after it. Otherwise it tries again after 15 minutes, then 30 minutes,
+one hour, two hours, four hours, and at most every six hours. Local-time phrases
+such as “resets at 5pm” are not guessed; they use this fallback. Retries can
+continue over several days, until the assignment succeeds, another kind of
+error occurs, or you cancel them. The wait survives a service restart or a
+sleeping laptop and is picked up once Roundtable runs again.
+
+Automatic retries continue the same assignment and saved session, including for
+specialists that normally start fresh sessions. They carry a bounded excerpt of
+partial progress and tell the agent to inspect completed actions before
+continuing. Retry attempts do not add chat messages or consume delegation hops.
+Provider sessions help continuation, but cannot guarantee that an agent will
+never repeat a tool action. The work document is the durable summary of progress.
+
+Use **Retry now** or `/retry <run>` to bypass a wait. **Stop & clear queue**,
+`/stop <agent>`, resetting a session, clearing history, and removing a participant
+or room cancel its pending retry. Turning `/quota-retry <agent> off` stops its
+waiting assignment and queued work. It does not interrupt a turn already running.
+
+Quota retry does not grant tool approvals. For unattended work, configure
+**Approve automatically** separately on the participants you trust to act without
+asking. Authentication failures, insufficient credits, full context windows,
+crashes, and the 30-minute turn timeout still require attention. Only recognized
+quota errors are retried; a provider reporting quota exhaustion as ordinary
+successful text may require a manual retry. Claude and Codex structured quota
+events are supported, along with recognizable quota errors from other adapters.
+
+This resumes interrupted assignments; it is not a separate goal-completion
+engine. The four-hop handoff cap still applies, and an agent that finishes its
+turn without completing the broader goal is not automatically prompted again.
+Roundtable coordinates the named participants in its rooms; provider-internal
+subagents are managed by their provider session.
+
+### Clearing a room's chat
+
+Use **Clear chat history** in the room header and accept the confirmation, or
+enter `/clear-history <exact current room name>` in the terminal. The command
+requires the full name of the room you currently have open.
+
+This permanently deletes the room's messages and run records, stops its active
+and queued turns, and resets its agents' provider sessions. Cross-room request
+links involving the room are removed, so outstanding replies cannot return to
+the cleared chat. Messages and work already running in other rooms stay there.
+All connected clients refresh the transcript.
+
+The room, participants, primary contact, work document, notes, brief, and
+schedules remain. Enabled schedules can start new turns later. There is no undo.
+This clears Roundtable's history; old transcripts managed by provider CLIs and
+files created in the project directory are not deleted. To remove retained
+project context, edit the work document, notes, and brief separately.
+
 ### A primary contact and a shared work document
 
 Select **Make team head** on the participant you want to talk to most, or type
@@ -592,8 +680,8 @@ results for you. Specialists are instructed to return concise results, changed
 files, checks, and blockers to the head. These instructions encourage concise
 handoffs; they do not impose a hard limit on an agent's reply.
 
-Specialists start a fresh provider session on every assignment, including
-retries. Put everything needed to continue in the assignment or work document.
+Specialists start a fresh provider session on new assignments. Quota retries
+resume the saved session for the interrupted assignment. Put everything needed to continue in the assignment or work document.
 The head retains its session for conversational continuity; its private history
 can still grow. Use **New session** or `/reset lead` after ensuring the work
 document captures the current state. Selecting a head does not erase existing
@@ -863,8 +951,8 @@ SQLite stores rooms and their revisioned work documents, participants, messages,
 records, agent profiles, model presets, schedules and room knowledge notes.
 Message insertion and delivery creation are transactional; PubSub
 updates connected browsers. A coordinator serializes queue transitions.
-Its runtime supervisor restarts the workers, the coordinator and the scheduler
-that runs a room's standing instructions together if any of them fails. On startup, active runs become interrupted, so they
+Its runtime supervisor restarts the workers, the coordinator and the schedulers
+that run a room's standing instructions together if any of them fails. On startup, active runs become interrupted, so they
 are not silently repeated. Queued runs are eligible to resume.
 
 The web server binds **only to loopback** and the app is designed for a single
@@ -899,6 +987,7 @@ shell commands.
 ```sh
 mix test
 mix test --only pty
+node --test assets/test/*.test.mjs
 mix test --cover
 mix format --check-formatted
 mix compile --warnings-as-errors

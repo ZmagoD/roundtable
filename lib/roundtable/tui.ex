@@ -239,6 +239,16 @@ defmodule Roundtable.TUI do
     end
   end
 
+  def perform({:clear_history, room_id}, context) do
+    case Client.clear_history(context.client, room_id) do
+      {:ok, :ok} ->
+        refresh(context) |> status("Chat history cleared. Agents will start fresh sessions.")
+
+      {:error, reason} ->
+        status(context, describe(reason))
+    end
+  end
+
   def perform({:remove_room, room_id, name}, context) do
     case Client.remove_room(context.client, room_id) do
       {:ok, _} ->

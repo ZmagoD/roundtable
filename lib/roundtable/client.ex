@@ -77,6 +77,9 @@ defmodule Roundtable.Client do
   def remove_agent(c, agent_id),
     do: call(c, Coordinator, :remove_agent, [agent_id], @write_timeout)
 
+  def clear_history(c, room_id),
+    do: call(c, Coordinator, :clear_history, [room_id], @write_timeout)
+
   def remove_room(c, room_id), do: call(c, Coordinator, :remove_room, [room_id], @write_timeout)
 
   def update_agent(c, agent_id, attrs),

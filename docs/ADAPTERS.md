@@ -81,6 +81,37 @@ Tests should cover session creation/resume, fragmented streaming, final output,
 permissions, errors, unknown events, and shutdown. Never include real credentials
 or proprietary room history in fixtures.
 
+## Quota exhaustion
+
+Adapters can finish a turn with a normalized temporary quota failure:
+
+```elixir
+%{state | finished: {"rate_limited", %{
+  message: "Provider usage limit reached.",
+  resets_at: unix_seconds_or_nil
+}}}
+```
+
+`resets_at` is an absolute Unix timestamp in seconds. Do not emit this for a
+quota warning that still allows work, context-window exhaustion, session budgets,
+missing credentials, or insufficient credits. `Roundtable.Quota.failure/1`
+normalizes known error codes and a conservative set of quota-error phrases.
+Unsupported failures remain ordinary failures. Only participants whose human
+has enabled `auto_retry` will wait and resume.
+
+Claude's rejected `rate_limit_event` carries `rate_limit_info.resetsAt`; an
+assistant `error: "rate_limit"` is also supported. Codex's terminal turn error
+uses `codexErrorInfo` (`usageLimitExceeded` or `rateLimitExceeded`), with reset
+times from exhausted windows in `account/rateLimits/updated`. These contracts
+were checked against the installed CLIs, including Codex's generated JSON
+schema. Update the synthetic contract tests when provider events change.
+
+The worker exits normally after reporting this event. A separate supervised
+clock wakes the same durable run when due; workers themselves remain temporary.
+The coordinator does not publish partial output or fail cross-room requests
+while waiting. Ordinary worker crashes are still interrupted and need an explicit
+retry, so a process restart does not silently repeat arbitrary side effects.
+
 ## The rooms as tools
 
 A participant whose CLI takes an MCP server on the command line *and* can ask

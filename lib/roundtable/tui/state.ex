@@ -38,13 +38,13 @@ defmodule Roundtable.TUI.State do
 
   @doc "Status shown for an agent, mirroring the web UI's rules."
   def agent_status(agent, runs) do
-    runs
-    |> Enum.filter(&(&1.agent_id == agent.id))
-    |> Enum.find(&(&1.status in ["running", "approval", "queued"]))
-    |> case do
-      nil -> "idle"
-      run -> run.status
-    end
+    own = Enum.filter(runs, &(&1.agent_id == agent.id))
+
+    active =
+      Enum.find(own, &(&1.status == "waiting_quota")) ||
+        Enum.find(own, &(&1.status in ["running", "approval", "queued"]))
+
+    if active, do: active.status, else: "idle"
   end
 
   @doc "Applies freshly fetched room data without disturbing the input line."
@@ -371,6 +371,20 @@ defmodule Roundtable.TUI.State do
     with_agent(state, args, &{state, [{:remove_agent, &1.id, &1.name}]})
   end
 
+  defp dispatch(state, "clear-history", args) do
+    case state.room do
+      %{name: name, id: id} when name == args ->
+        {state, [{:clear_history, id}]}
+
+      _ ->
+        {put_status(
+           state,
+           "Permanently delete this room's chat and runs, stop turns and reset sessions. " <>
+             "Keep agents, work document, notes, brief and schedules. Confirm with /clear-history <exact current room name>."
+         ), []}
+    end
+  end
+
   defp dispatch(state, "remove-room", args) do
     name = String.trim(args)
 
@@ -487,6 +501,20 @@ defmodule Roundtable.TUI.State do
     end
   end
 
+  defp dispatch(state, "quota-retry", args) do
+    case String.split(String.trim(args), " ", parts: 2) do
+      [name, setting] when setting in ~w(on off) ->
+        with_agent(
+          state,
+          name,
+          &{state, [{:update_agent, &1.id, %{"auto_retry" => setting == "on"}}]}
+        )
+
+      _ ->
+        {put_status(state, "Usage: /quota-retry <agent> on|off"), []}
+    end
+  end
+
   defp dispatch(state, "auto", args) do
     case String.split(String.trim(args), " ", parts: 2) do
       [name, setting] when setting in ~w(on off) ->
@@ -549,8 +577,14 @@ defmodule Roundtable.TUI.State do
   defp dispatch(state, "retry", args) do
     run =
       case Integer.parse(args) do
-        {id, _} -> Enum.find(state.runs, &(&1.id == id))
-        :error -> Enum.find(state.runs, &(&1.status in ["failed", "interrupted", "stopped"]))
+        {id, _} ->
+          Enum.find(state.runs, &(&1.id == id))
+
+        :error ->
+          Enum.find(
+            state.runs,
+            &(&1.status in ["failed", "interrupted", "stopped", "waiting_quota"])
+          )
       end
 
     case run do

@@ -38,6 +38,19 @@ defmodule Roundtable.Agents.Messages do
     {:ok, put_output(state, state.output <> text)}
   end
 
+  def handle(
+        %{"type" => "rate_limit_event", "rate_limit_info" => %{"status" => "rejected"} = info},
+        state
+      ) do
+    quota = %{message: "Provider usage limit reached.", resets_at: info["resetsAt"]}
+    {:ok, %{state | finished: {"rate_limited", quota}}}
+  end
+
+  def handle(%{"type" => "assistant", "error" => "rate_limit"} = event, state) do
+    message = Protocol.text_blocks(get_in(event, ["message", "content"]))
+    {:ok, %{state | finished: {"rate_limited", %{message: message, resets_at: nil}}}}
+  end
+
   # Whole assistant messages are the fallback when partial events aren't
   # available; they must not clobber text the deltas already produced.
   def handle(%{"type" => "assistant", "message" => message}, state) do
@@ -53,7 +66,8 @@ defmodule Roundtable.Agents.Messages do
       if event["is_error"],
         do: Enum.join(event["errors"] || [event["result"] || "The turn failed"], "\n")
 
-    {:ok, %{state | finished: {if(error, do: "failed", else: "completed"), error}}}
+    {:ok,
+     %{state | finished: if(error, do: Roundtable.Quota.failure(error), else: {"completed", nil})}}
   end
 
   def handle(_event, _state), do: :unhandled

@@ -35,6 +35,15 @@ defmodule Roundtable.TUI.EffectsTest do
     %{room: room, agent: agent, context: context}
   end
 
+  test "clearing chat refreshes the terminal while preserving its room", ctx do
+    Chat.post(ctx.room.id, "@ada previous task")
+    context = TUI.perform({:clear_history, ctx.room.id}, ctx.context)
+    assert context.state.messages == []
+    assert context.state.runs == []
+    assert context.state.room.id == ctx.room.id
+    assert context.state.status =~ "Chat history cleared"
+  end
+
   test "terminal can select a primary contact and maintain the work document", ctx do
     context = TUI.perform({:set_team_head, ctx.agent.id}, ctx.context)
     assert Chat.team_head(ctx.room.id).id == ctx.agent.id

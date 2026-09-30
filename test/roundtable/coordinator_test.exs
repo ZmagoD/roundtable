@@ -32,6 +32,30 @@ defmodule Roundtable.CoordinatorTest do
     %{room: room, ada: ada, linus: linus}
   end
 
+  test "clearing history stops workers, queued turns and approvals and ignores late output",
+       ctx do
+    Coordinator.post(ctx.room.id, "@ada active work")
+    assert_receive {:agent_started, pid, _, run, _}, 1000
+    Coordinator.event(run.id, {:session, "old-session"})
+    Coordinator.event(run.id, {:approval, "tool", %{"command" => "check"}})
+    assert map_size(Coordinator.approvals()) == 1
+    Coordinator.post(ctx.room.id, "@ada queued work")
+    ref = Process.monitor(pid)
+    assert {:ok, :ok} = Coordinator.clear_history(ctx.room.id)
+    assert_receive {:DOWN, ^ref, :process, ^pid, _}, 1000
+    assert Coordinator.approvals() == %{}
+    assert Chat.runs(ctx.room.id) == []
+    assert Chat.agent!(ctx.ada.id).session_id == nil
+    Coordinator.event(run.id, {:output, "late output"})
+    _ = :sys.get_state(Coordinator)
+    assert Chat.messages(ctx.room.id) == []
+    Coordinator.post(ctx.room.id, "@ada start again")
+    assert_receive {:agent_started, _, agent, _, prompt}, 1000
+    assert agent.session_id == nil
+    refute prompt =~ "active work"
+    Coordinator.stop(agent.id)
+  end
+
   test "specialists start fresh while the primary contact keeps its session", ctx do
     Chat.set_team_head(ctx.ada.id)
 

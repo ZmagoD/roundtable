@@ -8,7 +8,6 @@ defmodule Roundtable.Agents.Codex do
   """
   @behaviour Roundtable.Agents.Adapter
   import Roundtable.Agents.Worker, only: [write: 2, put_output: 2, joined: 1, approval: 3]
-  alias Roundtable.Agents.Protocol
   alias Roundtable.Coordinator
   def id, do: "codex"
   def label, do: "Codex"
@@ -60,7 +59,7 @@ defmodule Roundtable.Agents.Codex do
   end
 
   def handle_event(%{"error" => error, "id" => _}, state),
-    do: %{state | finished: {"failed", Protocol.error_message(error)}}
+    do: %{state | finished: quota_failure(error, state)}
 
   def handle_event(%{"method" => "item/agentMessage/delta", "params" => p}, state) do
     items = Map.update(state.items, p["itemId"], p["delta"], &(&1 <> p["delta"]))
@@ -93,10 +92,31 @@ defmodule Roundtable.Agents.Codex do
     put_output(state, joined(state))
   end
 
+  def handle_event(
+        %{"method" => "account/rateLimits/updated", "params" => %{"rateLimits" => limits}},
+        state
+      ) do
+    resets =
+      for key <- ["primary", "secondary"],
+          %{"usedPercent" => used, "resetsAt" => reset} <- [limits[key]],
+          is_number(used) and used >= 100 and is_integer(reset),
+          do: reset
+
+    case resets do
+      [] -> state
+      _ -> Map.put(state, :quota_reset_at, Enum.max(resets))
+    end
+  end
+
   def handle_event(%{"method" => "turn/completed", "params" => %{"turn" => turn}}, state) do
     state = if state.final_output, do: put_output(state, state.final_output), else: state
-    status = if turn["status"] == "completed", do: "completed", else: "failed"
-    %{state | finished: {status, get_in(turn, ["error", "message"])}}
+
+    finished =
+      if turn["status"] == "completed",
+        do: {"completed", nil},
+        else: quota_failure(turn["error"], state)
+
+    %{state | finished: finished}
   end
 
   def handle_event(%{"id" => id, "method" => method, "params" => params}, state)
@@ -117,4 +137,14 @@ defmodule Roundtable.Agents.Codex do
   end
 
   def handle_event(_, state), do: state
+
+  defp quota_failure(error, state) do
+    case Roundtable.Quota.failure(error) do
+      {"rate_limited", quota} ->
+        {"rate_limited", %{quota | resets_at: quota.resets_at || Map.get(state, :quota_reset_at)}}
+
+      failed ->
+        failed
+    end
+  end
 end

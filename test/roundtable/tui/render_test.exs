@@ -34,6 +34,23 @@ defmodule Roundtable.TUI.RenderTest do
     }
   end
 
+  test "quota waits display the next attempt and cancellation command" do
+    run = %Run{
+      id: 9,
+      agent_id: 7,
+      agent: %Agent{name: "ada"},
+      status: "waiting_quota",
+      retry_at: ~U[2026-09-30 12:00:00Z]
+    }
+
+    output = state(runs: [run]) |> screen() |> Enum.join("\n")
+    assert output =~ "waiting for quota until 30 Sep 12:00 UTC"
+    assert output =~ "/stop ada"
+
+    assert State.agent_status(%Agent{id: 7}, [%Run{agent_id: 7, status: "queued"}, run]) ==
+             "waiting_quota"
+  end
+
   test "the frame is exactly the size of the terminal" do
     for size <- [{24, 80}, {40, 120}, {8, 40}, {31, 97}] do
       {rows, cols} = size

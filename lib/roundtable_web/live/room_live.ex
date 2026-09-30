@@ -2,6 +2,7 @@ defmodule RoundtableWeb.RoomLive do
   use RoundtableWeb, :live_view
   alias Roundtable.{Chat, Coordinator}
   alias Roundtable.Chat.RoomNote
+  alias RoundtableWeb.ComposerCommands
 
   @impl true
   def mount(_, _, socket) do
@@ -453,6 +454,35 @@ defmodule RoundtableWeb.RoomLive do
     end
   end
 
+  def handle_event("toggle-quota-retry", %{"id" => id}, socket) do
+    case Enum.find(socket.assigns.agents, &(to_string(&1.id) == id)) do
+      nil ->
+        {:noreply, socket}
+
+      agent ->
+        case Chat.update_agent(agent.id, %{"auto_retry" => not agent.auto_retry}) do
+          {:ok, _} -> {:noreply, refresh(socket)}
+          {:error, _} -> {:noreply, put_flash(socket, :error, "Could not change quota retries.")}
+        end
+    end
+  end
+
+  def handle_event("clear-history", _, %{assigns: %{room: room}} = socket)
+      when not is_nil(room) do
+    case Coordinator.clear_history(room.id) do
+      {:ok, :ok} ->
+        {:noreply,
+         socket
+         |> assign(panel: nil)
+         |> put_flash(:info, "Chat history cleared. Agents will start fresh sessions.")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not clear the chat history.")}
+    end
+  end
+
+  def handle_event("clear-history", _, socket), do: {:noreply, socket}
+
   def handle_event("remove-room", %{"id" => id}, socket) do
     case Enum.find(socket.assigns.rooms, &(to_string(&1.id) == id)) do
       nil ->
@@ -770,28 +800,11 @@ defmodule RoundtableWeb.RoomLive do
 
   def handle_event("send", %{"message" => attrs}, socket) do
     body = String.trim(attrs["body"] || "")
-    target = Enum.find(socket.assigns.agents, &(&1.name == attrs["to"]))
-    body = if target && body != "", do: "@#{target.name} " <> body, else: body
 
-    assignment =
-      if target,
-        do: Chat.assignment(target, attrs["preset_id"], attrs["purpose"] || "general"),
-        else: {:ok, nil}
-
-    result =
-      with {:ok, options} <- assignment,
-           do: Coordinator.post(socket.assigns.room.id, body, assignment: options)
-
-    case result do
-      {:ok, _} ->
-        {:noreply,
-         socket
-         |> assign(message_form: to_form(Map.put(attrs, "body", ""), as: :message))
-         |> refresh()
-         |> push_event("sent", %{})}
-
-      {:error, error} ->
-        {:noreply, put_flash(socket, :error, to_string(error))}
+    cond do
+      String.starts_with?(body, "//") -> post_message(socket, attrs, String.slice(body, 1..-1//1))
+      String.starts_with?(body, "/") -> run_command(socket, body)
+      true -> post_message(socket, attrs, body)
     end
   end
 
@@ -862,6 +875,15 @@ defmodule RoundtableWeb.RoomLive do
 
   def handle_info(:poll_git, socket), do: {:noreply, poll_git(socket)}
 
+  def handle_info({:history_cleared, room_id}, socket) do
+    if socket.assigns.room && socket.assigns.room.id == room_id do
+      {:noreply,
+       socket |> stream(:messages, [], reset: true) |> assign(last_message_id: 0) |> refresh()}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info(:room_updated, socket), do: {:noreply, refresh(socket)}
 
   def handle_info(:rooms_updated, socket),
@@ -872,6 +894,58 @@ defmodule RoundtableWeb.RoomLive do
          organizations: Chat.organizations(),
          model_presets: Chat.model_presets()
        )}
+
+  defp run_command(socket, body) do
+    case ComposerCommands.parse(body, socket.assigns.agents) do
+      {:error, message} ->
+        {:noreply, put_flash(socket, :error, message)}
+
+      {:quota_retry, id, enabled} ->
+        case Chat.update_agent(id, %{auto_retry: enabled}) do
+          {:ok, _} -> {:noreply, socket |> refresh() |> command_sent()}
+          {:error, _} -> {:noreply, put_flash(socket, :error, "Could not update quota retries.")}
+        end
+
+      {:panel, panel} ->
+        {:noreply, socket |> assign(panel: panel, form_error: nil) |> command_sent()}
+
+      {:event, event, params} ->
+        {:noreply, socket} = handle_event(event, params, socket)
+        {:noreply, command_sent(socket)}
+    end
+  end
+
+  defp command_sent(socket) do
+    socket
+    |> assign(message_form: to_form(%{"body" => "", "to" => "room"}, as: :message))
+    |> push_event("sent", %{})
+  end
+
+  defp post_message(socket, attrs, body) do
+    target = Enum.find(socket.assigns.agents, &(&1.name == attrs["to"]))
+    body = if target && body != "", do: "@#{target.name} " <> body, else: body
+
+    assignment =
+      if target,
+        do: Chat.assignment(target, attrs["preset_id"], attrs["purpose"] || "general"),
+        else: {:ok, nil}
+
+    result =
+      with {:ok, options} <- assignment,
+           do: Coordinator.post(socket.assigns.room.id, body, assignment: options)
+
+    case result do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> assign(message_form: to_form(Map.put(attrs, "body", ""), as: :message))
+         |> refresh()
+         |> push_event("sent", %{})}
+
+      {:error, error} ->
+        {:noreply, put_flash(socket, :error, to_string(error))}
+    end
+  end
 
   defp close_terminal(%{assigns: %{terminal: nil}} = socket), do: socket
 
@@ -1018,7 +1092,11 @@ defmodule RoundtableWeb.RoomLive do
 
   defp status(agent, runs) do
     own = Enum.filter(runs, &(&1.agent_id == agent.id))
-    active = Enum.find(own, &(&1.status in ["running", "approval", "queued"]))
+
+    active =
+      Enum.find(own, &(&1.status == "waiting_quota")) ||
+        Enum.find(own, &(&1.status in ["running", "approval", "queued"]))
+
     if active, do: active.status, else: "idle"
   end
 
@@ -1085,7 +1163,12 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   defp active_runs(runs),
-    do: Enum.filter(runs, &(&1.status in ["running", "approval", "queued"])) |> Enum.reverse()
+    do:
+      Enum.filter(runs, &(&1.status in ["running", "approval", "queued", "waiting_quota"]))
+      |> Enum.reverse()
+
+  defp status_label("waiting_quota"), do: "Waiting for quota"
+  defp status_label(status), do: status
 
   defp failed_runs(runs),
     do: Enum.filter(runs, &(&1.status in ["failed", "interrupted", "stopped"]))

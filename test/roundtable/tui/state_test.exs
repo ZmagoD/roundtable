@@ -22,6 +22,28 @@ defmodule Roundtable.TUI.StateTest do
     end)
   end
 
+  test "quota retry commands select the named participant and validate the switch" do
+    assert {_, [{:update_agent, 7, %{"auto_retry" => true}}]} =
+             state() |> type("/quota-retry ada on") |> State.handle_key(:enter)
+
+    assert {_, [{:update_agent, 7, %{"auto_retry" => false}}]} =
+             state() |> type("/quota-retry ada off") |> State.handle_key(:enter)
+
+    assert {_, []} = state() |> type("/quota-retry ada maybe") |> State.handle_key(:enter)
+  end
+
+  test "clearing history requires the exact current room name" do
+    for command <- ["/clear-history", "/clear-history Check", "/clear-history other"] do
+      assert {_, []} = state() |> type(command) |> State.handle_key(:enter)
+    end
+
+    assert {_, [{:clear_history, 1}]} =
+             state() |> type("/clear-history Checkout") |> State.handle_key(:enter)
+
+    assert {_, []} =
+             state(room: nil) |> type("/clear-history Checkout") |> State.handle_key(:enter)
+  end
+
   test "work and primary contact commands produce service effects" do
     assert {_, [{:set_team_head, 7}]} = state() |> type("/head ada") |> State.handle_key(:enter)
     assert {_, [{:clear_team_head, 1}]} = state() |> type("/head off") |> State.handle_key(:enter)

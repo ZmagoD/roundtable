@@ -141,6 +141,12 @@
               phx-value-name="agent"
             >+ Add agent</button>
             <button
+              id="clear-history-button"
+              class="button secondary danger"
+              phx-click="clear-history"
+              data-confirm={"Clear all chat history in #{@room.name}? This stops its active and queued turns, deletes messages, run records and cross-room request links, and resets agent sessions. Agents, the work document, notes, brief and schedules stay. There is no undo."}
+            >Clear chat history</button>
+            <button
               id="remove-room-button"
               class="button secondary danger"
               phx-click="remove-room"
@@ -210,14 +216,30 @@
               >
                 <div class="avatar agent-avatar">{initials(run.agent.name)}</div><div class="message-content">
                   <div class="message-meta">
-                    <strong>{run.agent.name}</strong><span class={["status", run.status]}>{run.status}</span>
+                    <strong>{run.agent.name}</strong><span class={["status", run.status]}>{status_label(
+                      run.status
+                    )}</span>
                   </div><div class="assignment-meta">
                     <span>{run.model || "Provider default"}</span><span class={[
                       "cost-tier",
                       run.cost_tier
                     ]}>{run.cost_tier}</span><span>{run.purpose}</span>
-                  </div><.message :if={run.output != ""} body={run.output} /><p
-                    :if={run.output == ""}
+                  </div>
+                  <p :if={run.status == "waiting_quota"} id={"quota-wait-#{run.id}"} class="muted">
+                    Quota limit reached. Next attempt: {Calendar.strftime(
+                      run.retry_at,
+                      "%d %b %Y at %H:%M UTC"
+                    )}.
+                    Attempt {run.retry_count + 1} will continue this assignment.
+                    <button
+                      id={"quota-retry-now-#{run.id}"}
+                      class="text-button"
+                      phx-click="retry"
+                      phx-value-id={run.id}
+                    >Retry now</button>
+                  </p>
+                  <.message :if={run.output != ""} body={run.output} /><p
+                    :if={run.output == "" and run.status != "waiting_quota"}
                     class="muted"
                   >
                     {if run.status == "queued",
@@ -294,6 +316,7 @@
                 phx-change="draft"
                 class="composer"
                 phx-hook="Composer"
+                data-commands={Jason.encode!(ComposerCommands.suggestions(@agents))}
                 data-mentions={Jason.encode!(["all" | Enum.map(@agents, & &1.name)])}
               >
                 <div id="mention-menu-container" phx-update="ignore">
@@ -301,7 +324,7 @@
                     id="mention-menu"
                     class="mention-menu"
                     role="listbox"
-                    aria-label="Agents in this room"
+                    aria-label="Commands and participants"
                     hidden
                   >
                   </ul>
@@ -311,9 +334,10 @@
                   type="textarea"
                   id="message-body"
                   phx-debounce="350"
-                  placeholder="Share an idea, ask a question, or @mention an agent…"
+                  placeholder="Write a message, / for commands, or @mention an agent…"
                   aria-label="Message"
                   aria-autocomplete="list"
+                  aria-expanded="false"
                   aria-controls="mention-menu"
                   rows="3"
                   required
@@ -368,7 +392,7 @@
                 </div>
               </.form>
               <p class="composer-hint">
-                <span>Messages go to the team head when selected. @mentions choose someone else.</span><span>@ to mention · Tab to complete · Enter to send · Shift + Enter for a new line</span>
+                <span>Messages go to the team head when selected. @mentions choose someone else.</span><span>/ for commands · @ to mention · Tab to complete · Enter to send · Shift + Enter for a new line</span>
               </p>
             </div>
           </section>
@@ -437,7 +461,7 @@
                 ]}>{agent.cost_tier}</span>
               </div>
               <div class="agent-state">
-                <span class={["status", status(agent, @runs)]}>{status(agent, @runs)}</span><span>{if agent.session_id,
+                <span class={["status", status(agent, @runs)]}>{status_label(status(agent, @runs))}</span><span>{if agent.session_id,
                   do: "Session saved",
                   else: "Fresh session"}</span><span
                   :if={agent.auto_approve}
@@ -445,6 +469,17 @@
                   title="Runs tools without stopping to ask"
                 >auto-approves</span>
               </div>
+              <p>
+                <button
+                  id={"quota-retry-toggle-#{agent.id}"}
+                  class="text-button"
+                  phx-click="toggle-quota-retry"
+                  phx-value-id={agent.id}
+                  aria-pressed={to_string(agent.auto_retry)}
+                >
+                  Resume after quota resets: {if agent.auto_retry, do: "on", else: "off"}
+                </button>
+              </p>
               <details>
                 <summary>Session details</summary><dl>
                   <dt>Directory</dt><dd>{@effective_directory}</dd><dt>Model</dt><dd>
@@ -544,6 +579,8 @@
             "team" -> "START WITH A GOAL"
             "profiles" -> "YOUR PEOPLE"
             "schedules" -> "STANDING INSTRUCTIONS"
+            "commands" -> "ROOM CONTROLS"
+            "clear-history" -> "CLEAR THIS ROOM"
             "work" -> "CURRENT WORK"
             "notes" -> "WHAT THIS ROOM HAS LEARNED"
             _ -> if(@editing_agent, do: "CHANGE A PARTICIPANT", else: "EXPAND YOUR TEAM")
@@ -556,6 +593,8 @@
             "team" -> "Build a team"
             "profiles" -> "Saved agent roles"
             "schedules" -> "Schedules"
+            "commands" -> "Chat commands"
+            "clear-history" -> "Clear chat history"
             "work" -> "Work document"
             "notes" -> "Room notes"
             _ -> if(@editing_agent, do: "Edit this agent", else: "Invite an agent")
@@ -581,6 +620,12 @@
             "schedules" ->
               "Say something to one participant at the same times every day."
 
+            "commands" ->
+              "Type / in the chat field to find a command. Use the arrows, then Tab or Enter to complete it. Submit the completed command to run it."
+
+            "clear-history" ->
+              "Permanently delete this room’s messages and run records, stop its turns, and reset agent sessions. Agents, work document, notes, brief and schedules stay. There is no undo."
+
             "work" ->
               "Keep the goal, decisions, task owners, blockers and checks here. Every agent receives this document with its assignment."
 
@@ -601,6 +646,16 @@
           end}
         </p>
         <p :if={@form_error} class="form-error" role="alert">{@form_error}</p>
+        <div :if={@panel == "commands"} id="chat-command-help">
+          <p :for={command <- ComposerCommands.suggestions(@agents)}>
+            <code>/{command.name} {command.usage}</code><br />{command.description}
+          </p>
+          <p>To send a message that starts with a slash, type // instead.</p>
+        </div>
+        <div :if={@panel == "clear-history"} class="actions">
+          <button id="confirm-clear-history" class="button danger" phx-click="clear-history">Clear chat history</button>
+          <button id="cancel-clear-history" class="button secondary" phx-click="close-panel">Keep history</button>
+        </div>
         <.form :if={@panel == "team"} for={@team_form} id="team-form" phx-submit="build-team">
           <.input
             field={@team_form[:name]}

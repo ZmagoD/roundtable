@@ -251,6 +251,7 @@ defmodule Roundtable.TUI.Render do
 
         # Its own line: a headline narrow enough to truncate would hide it.
         notes = if agent.auto_approve, do: ["   approves its own tools"], else: []
+        notes = if agent.auto_retry, do: notes ++ ["   resumes after quota resets"], else: notes
 
         [[colour, pad(headline, width), @reset]] ++
           Enum.map(role ++ notes, &[@dim, pad(&1, width), @reset]) ++
@@ -355,6 +356,7 @@ defmodule Roundtable.TUI.Render do
 
   defp agent_dot("running"), do: {"●", @green}
   defp agent_dot("approval"), do: {"◆", @yellow}
+  defp agent_dot("waiting_quota"), do: {"◷", @yellow}
   defp agent_dot("queued"), do: {"◌", @dim}
   defp agent_dot(_), do: {"○", @dim}
 
@@ -419,7 +421,22 @@ defmodule Roundtable.TUI.Render do
           Enum.map(continued, &[indent, &1])
       end)
 
-    messages ++ approval_lines(state, width) ++ failure_lines(state, width)
+    messages ++
+      quota_lines(state, width) ++ approval_lines(state, width) ++ failure_lines(state, width)
+  end
+
+  defp quota_lines(state, width) do
+    state.runs
+    |> Enum.filter(&(&1.status == "waiting_quota"))
+    |> Enum.flat_map(fn run ->
+      at = Calendar.strftime(run.retry_at, "%d %b %H:%M UTC")
+
+      Markdown.wrap(
+        "#{run.agent.name}: waiting for quota until #{at}. /retry #{run.id} now, or /stop #{run.agent.name} to cancel.",
+        width - 2
+      )
+      |> Enum.map(&[@yellow, pad(" " <> &1, width), @reset])
+    end)
   end
 
   defp approval_lines(state, width) do

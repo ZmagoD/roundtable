@@ -27,7 +27,8 @@ defmodule RoundtableWeb.StatusControllerTest do
              "participants" => 1,
              "queued" => 1,
              "running" => 0,
-             "waiting_for_approval" => 0
+             "waiting_for_approval" => 0,
+             "waiting_for_quota" => 0
            }
   end
 

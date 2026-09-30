@@ -10,6 +10,9 @@ defmodule Roundtable.Chat.Run do
     field :model_pinned, :boolean, default: false
     field :cost_tier, :string, default: "unknown"
     field :purpose, :string, default: "general"
+    field :retry_at, :utc_datetime
+    field :retry_count, :integer, default: 0
+    field :retry_context, :string, default: ""
     field :status, :string, default: "queued"
     field :output, :string, default: ""
     field :error, :string

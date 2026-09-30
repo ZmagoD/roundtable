@@ -4,7 +4,7 @@ defmodule Roundtable.Agents.Worker do
 
   Owns the port for a single turn and translates the adapter's decisions into
   coordinator events. Every worker is temporary — a turn that dies stays dead
-  until a human retries it, rather than restarting and repeating side effects
+  until a human retries it or an opted-in quota wait expires, avoiding automatic restarts that repeat side effects
   the agent has already performed.
   """
   use GenServer, restart: :temporary
@@ -79,13 +79,7 @@ defmodule Roundtable.Agents.Worker do
     parts = String.split(state.buffer <> data, "\n")
     {lines, [buffer]} = Enum.split(parts, -1)
 
-    state =
-      Enum.reduce(lines, %{state | buffer: buffer}, fn line, acc ->
-        case Jason.decode(line) do
-          {:ok, event} when is_map(event) -> acc.adapter.handle_event(event, acc)
-          _ -> %{acc | diagnostics: String.slice(acc.diagnostics <> line <> "\n", -8000, 8000)}
-        end
-      end)
+    state = Enum.reduce(lines, %{state | buffer: buffer}, &consume_line/2)
 
     cond do
       state.finished ->
@@ -145,6 +139,15 @@ defmodule Roundtable.Agents.Worker do
 
   def close_stdin(state),
     do: Port.command(state.port, Jason.encode!(%{close_stdin: true}) <> "\n")
+
+  defp consume_line(_line, %{finished: finished} = state) when finished != false, do: state
+
+  defp consume_line(line, state) do
+    case Jason.decode(line) do
+      {:ok, event} when is_map(event) -> state.adapter.handle_event(event, state)
+      _ -> %{state | diagnostics: String.slice(state.diagnostics <> line <> "\n", -8000, 8000)}
+    end
+  end
 
   defp finish(state, status, error) do
     Coordinator.event(state.run.id, {:output, state.output})

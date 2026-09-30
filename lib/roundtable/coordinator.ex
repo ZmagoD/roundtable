@@ -25,6 +25,8 @@ defmodule Roundtable.Coordinator do
 
   def stop(agent_id), do: GenServer.call(__MODULE__, {:stop, agent_id})
   def reset(agent_id), do: GenServer.call(__MODULE__, {:reset, agent_id})
+  def clear_history(room_id), do: GenServer.call(__MODULE__, {:clear_history, room_id})
+  def resume_due(now), do: GenServer.call(__MODULE__, {:resume_due, now})
   def retry(run_id), do: GenServer.call(__MODULE__, {:retry, run_id})
 
   @doc "Stops a participant's queue, then removes it."
@@ -98,11 +100,33 @@ defmodule Roundtable.Coordinator do
     {:reply, Chat.delete_room(room_id), state}
   end
 
+  def handle_call({:clear_history, room_id}, _, state) do
+    state =
+      room_id
+      |> Chat.agents()
+      |> Enum.reduce(state, &cancel_agent(&2, &1.id))
+
+    result = Chat.clear_history(room_id)
+    {:reply, result, schedule(state)}
+  end
+
+  def handle_call({:resume_due, now}, _, state) do
+    for run <- Chat.due_quota_retries(now) do
+      if Chat.resume_quota_retry(run, current_model(run)),
+        do: Chat.broadcast(Chat.agent!(run.agent_id).room_id)
+    end
+
+    {:reply, :ok, schedule(state)}
+  end
+
   def handle_call({:retry, run_id}, _, state) do
     run = Repo.get!(Run, run_id)
 
-    if run.status in ["failed", "interrupted", "stopped"] do
-      Chat.change(run, [status: "queued", error: nil, output: ""] ++ current_model(run))
+    if run.status in ["failed", "interrupted", "stopped", "waiting_quota"] do
+      Chat.change(
+        run,
+        [status: "queued", error: nil, output: "", retry_at: nil] ++ current_model(run)
+      )
     end
 
     {:reply, :ok, schedule(state)}
@@ -172,7 +196,26 @@ defmodule Roundtable.Coordinator do
     end
   end
 
-  defp apply_event(state, run, agent, {:done, status, error}) do
+  defp apply_event(state, run, agent, {:done, "failed", error}) do
+    case Roundtable.Quota.failure(error) do
+      {"rate_limited", quota} -> apply_event(state, run, agent, {:done, "rate_limited", quota})
+      {"failed", message} -> complete_event(state, run, agent, "failed", message)
+    end
+  end
+
+  defp apply_event(state, run, agent, {:done, "rate_limited", quota}) do
+    if agent.auto_retry &&
+         Chat.wait_for_quota(run, quota.message, quota[:resets_at], DateTime.utc_now(:second)) do
+      state |> forget(run.id) |> schedule()
+    else
+      complete_event(state, run, agent, "failed", quota.message)
+    end
+  end
+
+  defp apply_event(state, run, agent, {:done, status, error}),
+    do: complete_event(state, run, agent, status, error)
+
+  defp complete_event(state, run, agent, status, error) do
     Repo.transaction(fn ->
       Chat.change(run, status: status, error: error)
       finish_turn(status, run, agent, error)
@@ -267,9 +310,10 @@ defmodule Roundtable.Coordinator do
   defp start_if_free(run, state) do
     busy = Enum.any?(state.workers, fn {_, w} -> w.agent_id == run.agent_id end)
 
-    if map_size(state.workers) < @max_workers and not busy,
-      do: start_worker(run, state),
-      else: state
+    if map_size(state.workers) < @max_workers and not busy and
+         not Chat.waiting_for_quota?(run.agent_id),
+       do: start_worker(run, state),
+       else: state
   end
 
   defp start_worker(run, state) do
@@ -279,7 +323,10 @@ defmodule Roundtable.Coordinator do
       agent = reset_stale_session(agent, run)
       agent = %{agent | model: run.model, cost_tier: run.cost_tier}
       {prompt, until_id} = Chat.prompt(agent, run)
-      run = Chat.change(run, status: "running", context_until_id: until_id)
+
+      run =
+        Chat.change(run, status: "running", context_until_id: until_id, output: "", error: nil)
+
       worker_module = Application.get_env(:roundtable, :agent_worker, Roundtable.Agents.Worker)
 
       case DynamicSupervisor.start_child(
@@ -331,9 +378,9 @@ defmodule Roundtable.Coordinator do
   # quietly keep working there.
   defp reset_stale_session(%{session_id: nil} = agent, _run), do: agent
 
-  defp reset_stale_session(agent, %{model: model}) do
+  defp reset_stale_session(agent, %{model: model, retry_count: retries}) do
     head = Chat.team_head(agent.room_id)
-    fresh_assignment = head != nil and head.id != agent.id
+    fresh_assignment = head != nil and head.id != agent.id and retries == 0
 
     if not fresh_assignment and agent.session_model == model and
          agent.session_directory == agent.directory do
@@ -363,9 +410,15 @@ defmodule Roundtable.Coordinator do
 
     Repo.update_all(
       from(r in Run,
-        where: r.agent_id == ^agent_id and r.status in ["queued", "running", "approval"]
+        where:
+          r.agent_id == ^agent_id and
+            r.status in ["queued", "running", "approval", "waiting_quota"]
       ),
-      set: [status: "stopped", error: "Stopped. Retry to continue this assignment."]
+      set: [
+        status: "stopped",
+        retry_at: nil,
+        error: "Stopped. Retry to continue this assignment."
+      ]
     )
 
     Chat.broadcast(Chat.agent!(agent_id).room_id)

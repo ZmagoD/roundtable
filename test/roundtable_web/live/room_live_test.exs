@@ -3,6 +3,91 @@ defmodule RoundtableWeb.RoomLiveTest do
   import Phoenix.LiveViewTest
   alias Roundtable.Chat
 
+  test "composer offers and runs commands without posting them to agents", %{conn: conn} do
+    {:ok, room} = Chat.create_room(%{name: "Commands", directory: File.cwd!()})
+    {:ok, agent} = Chat.create_agent(room.id, %{name: "ada", provider: "claude"})
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+    assert has_element?(view, "#message-form[data-commands*=clear-history]")
+    view |> form("#message-form", message: %{body: "/quota-retry ada on"}) |> render_submit()
+    assert Chat.agent!(agent.id).auto_retry
+    view |> form("#message-form", message: %{body: "/quota-retry ada off"}) |> render_submit()
+    refute Chat.agent!(agent.id).auto_retry
+    view |> form("#message-form", message: %{body: "/head ada"}) |> render_submit()
+    assert Chat.team_head(room.id).id == agent.id
+    view |> form("#message-form", message: %{body: "/quota-retry absent on"}) |> render_submit()
+    assert has_element?(view, "[role=alert]", "No participant")
+    assert Chat.messages(room.id) == []
+    assert Chat.runs(room.id) == []
+    view |> form("#message-form", message: %{body: "/work"}) |> render_submit()
+    assert has_element?(view, "#work-document-form")
+  end
+
+  test "clear-history command requires confirmation and cancellation preserves messages", %{
+    conn: conn
+  } do
+    {:ok, room} = Chat.create_room(%{name: "Commands", directory: File.cwd!()})
+    {:ok, message} = Chat.post(room.id, "Keep until confirmed")
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+    view |> form("#message-form", message: %{body: "/clear-history"}) |> render_submit()
+    assert has_element?(view, "#confirm-clear-history")
+    assert [^message] = Chat.messages(room.id)
+    view |> element("#cancel-clear-history") |> render_click()
+    assert [^message] = Chat.messages(room.id)
+    view |> form("#message-form", message: %{body: "/clear-history"}) |> render_submit()
+    view |> element("#confirm-clear-history") |> render_click()
+    assert Chat.messages(room.id) == []
+    refute has_element?(view, "#messages article")
+    refute has_element?(view, "#confirm-clear-history")
+  end
+
+  test "help and invalid commands stay local, and double slash sends literal text", %{conn: conn} do
+    {:ok, room} = Chat.create_room(%{name: "Commands", directory: File.cwd!()})
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+    view |> form("#message-form", message: %{body: "/missing"}) |> render_submit()
+    assert has_element?(view, "[role=alert]", "Unknown or incomplete")
+    assert Chat.messages(room.id) == []
+    view |> form("#message-form", message: %{body: "//a/path"}) |> render_submit()
+    assert [%{body: "/a/path"}] = Chat.messages(room.id)
+    view |> form("#message-form", message: %{body: "/help"}) |> render_submit()
+    assert has_element?(view, "#chat-command-help")
+  end
+
+  test "quota retries can be enabled, inspected and cancelled", %{conn: conn} do
+    {:ok, room} = Chat.create_room(%{name: "Quota UI", directory: File.cwd!()})
+    {:ok, agent} = Chat.create_agent(room.id, %{name: "ada", provider: "claude"})
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+    toggle = "#quota-retry-toggle-#{agent.id}"
+    assert has_element?(view, toggle <> "[aria-pressed=false]")
+    view |> element(toggle) |> render_click()
+    assert Chat.agent!(agent.id).auto_retry
+    Chat.post(room.id, "@ada Work")
+    [run] = Chat.runs(room.id)
+    Chat.wait_for_quota(run, "Usage limit reached", nil, DateTime.utc_now(:second))
+    Chat.broadcast(room.id)
+    assert has_element?(view, "#quota-wait-#{run.id}")
+    assert has_element?(view, "#quota-retry-now-#{run.id}")
+    view |> element(toggle) |> render_click()
+    refute Chat.agent!(agent.id).auto_retry
+    refute has_element?(view, "#quota-wait-#{run.id}")
+    assert hd(Chat.runs(room.id)).status == "stopped"
+  end
+
+  test "clearing chat resets the transcript in every open browser", %{conn: conn} do
+    {:ok, room} = Chat.create_room(%{name: "Clear chat", directory: File.cwd!()})
+    {:ok, message} = Chat.post(room.id, "Old chat")
+    {:ok, first, _} = live(conn, "/rooms/#{room.id}")
+    {:ok, second, _} = live(conn, "/rooms/#{room.id}")
+    assert has_element?(first, "#messages-#{message.id}")
+    assert has_element?(first, "#clear-history-button[data-confirm]")
+    first |> element("#clear-history-button") |> render_click()
+    refute has_element?(first, "#messages article")
+    refute has_element?(second, "#messages article")
+    assert has_element?(first, "#work-document-button")
+    {:ok, next} = Chat.post(room.id, "New chat")
+    assert has_element?(first, "#messages-#{next.id}")
+    assert has_element?(second, "#messages-#{next.id}")
+  end
+
   test "work document can be edited and stale drafts are preserved", %{conn: conn} do
     {:ok, room} = Chat.create_room(%{name: "Work", directory: File.cwd!()})
     {:ok, view, _} = live(conn, "/rooms/#{room.id}")

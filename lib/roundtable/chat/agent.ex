@@ -9,6 +9,7 @@ defmodule Roundtable.Chat.Agent do
     field :role, :string, default: ""
     field :model, :string
     field :cost_tier, :string, default: "unknown"
+    field :auto_retry, :boolean, default: false
     field :auto_approve, :boolean, default: false
     # The one participant in this team the human talks to, who hands work to
     # the rest. Set through Chat.set_team_head/1, never cast from a form.
@@ -37,8 +38,8 @@ defmodule Roundtable.Chat.Agent do
     |> cast(
       attrs,
       if(renamable?,
-        do: ~w(name provider role model cost_tier auto_approve)a,
-        else: ~w(provider role model cost_tier auto_approve)a
+        do: ~w(name provider role model cost_tier auto_approve auto_retry)a,
+        else: ~w(provider role model cost_tier auto_approve auto_retry)a
       )
     )
     |> update_change(:name, &String.downcase/1)
@@ -69,7 +70,7 @@ defmodule Roundtable.Chat.Agent do
 
   def changeset(agent, attrs) do
     agent
-    |> cast(attrs, ~w(name provider role model directory cost_tier auto_approve)a)
+    |> cast(attrs, ~w(name provider role model directory cost_tier auto_approve auto_retry)a)
     |> update_change(:name, &String.downcase/1)
     |> validate_required([:room_id, :name, :provider, :directory])
     |> validate_format(:name, ~r/^[a-z][a-z0-9_-]{0,29}$/)
