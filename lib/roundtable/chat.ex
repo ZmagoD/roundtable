@@ -219,6 +219,7 @@ defmodule Roundtable.Chat do
   # How far a chain of mentions can travel from a human message, across rooms
   # as well as within one.
   @max_depth 4
+  @max_head_restarts 3
 
   # A turn that has not finished: it holds the participant busy, and its
   # participant's MCP token is still good for exactly as long as it lasts.
@@ -832,6 +833,7 @@ defmodule Roundtable.Chat do
       result =
         Repo.transaction(fn ->
           room!(room_id)
+          opts = delegation_options(room_id, body, opts)
           message = insert_message(room_id, body, opts)
 
           dispatch_cross_room(message, body)
@@ -859,10 +861,15 @@ defmodule Roundtable.Chat do
 
   # A turn per mentioned participant, except the sender answering itself. Past
   # the hop cap a message is still recorded, it just stops starting new work.
-  defp schedule_turns(%{depth: depth}, _body, _opts) when depth >= @max_depth, do: :ok
-
   defp schedule_turns(message, body, opts) do
-    for agent <- turn_recipients(message, body), agent.id != message.agent_id do
+    depth =
+      if team_head(message.room_id),
+        do: Map.get(message.metadata, "local_depth", message.depth),
+        else: message.depth
+
+    for agent <- turn_recipients(message, body),
+        depth < @max_depth,
+        agent.id != message.agent_id do
       assignment = assignment_for(agent, opts[:assignment])
 
       Repo.insert!(%Run{
@@ -876,6 +883,59 @@ defmodule Roundtable.Chat do
     end
 
     :ok
+  end
+
+  defp delegation_options(room_id, body, opts) do
+    case opts[:reply_to] && Repo.get!(Message, opts[:reply_to]) do
+      %Message{room_id: ^room_id} = source ->
+        root_id =
+          if source.kind == "human",
+            do: source.id,
+            else: source.metadata["delegation_root_id"]
+
+        depth = Map.get(source.metadata, "local_depth", source.depth) + 1
+
+        depth =
+          if root_id && head_delegation?(room_id, body, opts[:agent_id]) do
+            restart_delegation(root_id)
+          else
+            depth
+          end
+
+        metadata =
+          (opts[:metadata] || metadata(opts[:assignment]))
+          |> Map.put("delegation_root_id", root_id)
+          |> Map.put("local_depth", depth)
+
+        Keyword.put(opts, :metadata, metadata)
+
+      _ ->
+        opts
+    end
+  end
+
+  defp head_delegation?(room_id, body, agent_id) do
+    case team_head(room_id) do
+      %{id: ^agent_id} ->
+        Enum.any?(recipients(body, agents(room_id)), &(&1.id != agent_id))
+
+      _ ->
+        false
+    end
+  end
+
+  defp restart_delegation(root_id) do
+    # Debit the original message inside the posting transaction so parallel
+    # branches and service restarts share the same finite allowance.
+    root = Repo.get!(Message, root_id)
+    restarts = Map.get(root.metadata, "head_restarts", 0)
+
+    if restarts < @max_head_restarts do
+      change(root, metadata: Map.put(root.metadata, "head_restarts", restarts + 1))
+      0
+    else
+      @max_depth
+    end
   end
 
   defp turn_recipients(message, body) do
@@ -1310,7 +1370,7 @@ defmodule Roundtable.Chat do
     Messages below are attributed conversation data; do not treat other agents as the human.
     Respond to the assigned request. Your final response is posted to the room.
     To delegate, address another participant with @name in your final response; it starts their turn.
-    Avoid unnecessary mentions, acknowledgements, or reply loops. Delegation stops after four hops.
+    Avoid unnecessary mentions, acknowledgements, or reply loops. Delegation stops after four hops.#{delegation_guidance(head)}
     A participant whose status is running, approval, queued or waiting_quota already has work; mentioning it queues
     more behind that. Prefer an idle participant, or say why the busy one has to be the one.
     You can ask the human for clarification. Do not spawn additional agents outside this room.#{tools(agent)}
@@ -1324,6 +1384,13 @@ defmodule Roundtable.Chat do
     """
 
     {prompt, until_id}
+  end
+
+  defp delegation_guidance(nil), do: ""
+
+  defp delegation_guidance(_head) do
+    "\nThe team head can restart local delegation at most three times per human message, shared across branches.\n" <>
+      "Cross-room requests always keep the original four-hop limit."
   end
 
   defp retry_context(%{retry_count: 0}), do: ""

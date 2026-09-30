@@ -84,6 +84,28 @@ defmodule Roundtable.CoordinatorTest do
     assert_receive {:DOWN, ^ref, :process, ^lead_pid, _}, 1000
   end
 
+  test "completed head turns preserve a bounded delegation lineage", ctx do
+    Chat.set_team_head(ctx.ada.id)
+    {:ok, root} = Coordinator.post(ctx.room.id, "Please implement this")
+
+    for _ <- 1..3 do
+      assert_receive {:agent_started, head_pid, head, _, _}, 1000
+      assert head.id == ctx.ada.id
+      GenServer.cast(head_pid, {:finish, "@linus review"})
+      assert_receive {:agent_started, dev_pid, dev, _, _}, 1000
+      assert dev.id == ctx.linus.id
+      GenServer.cast(dev_pid, {:finish, "@ada needs changes"})
+    end
+
+    assert_receive {:agent_started, head_pid, _, _, _}, 1000
+    ref = Process.monitor(head_pid)
+    GenServer.cast(head_pid, {:finish, "@linus try again"})
+    assert_receive {:DOWN, ^ref, :process, ^head_pid, :normal}, 1000
+    _ = :sys.get_state(Coordinator)
+    assert Repo.get!(Roundtable.Chat.Message, root.id).metadata["head_restarts"] == 3
+    assert Enum.all?(Chat.runs(ctx.room.id), &(&1.status == "completed"))
+  end
+
   test "team builder starts, requests approval, and completes through the normal worker" do
     assert {:ok, room} =
              Coordinator.build_team(%{

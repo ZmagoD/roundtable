@@ -286,6 +286,7 @@ defmodule Roundtable.Coordinator do
           "purpose" => run.purpose
         },
         broadcast: false,
+        reply_to: source.id,
         depth: source.depth + 1
       )
     end

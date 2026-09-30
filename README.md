@@ -697,8 +697,12 @@ OpenCode, Grok, or installations with room tools disabled still receive the
 document, but must ask for missing context and propose document updates for you
 to apply. Choose a participant with room tools as the head for automatic upkeep.
 
-Chat remains the visible activity record. The existing four-hop delegation cap
-still applies, so the primary contact cannot run an unlimited chain of turns.
+Chat remains the visible activity record. The head can restart the local
+four-hop delegation count up to three times per human message, allowing review
+and correction rounds. That allowance is shared across all branches and survives
+a service restart. After it is spent, head replies are recorded without starting
+more local turns. Rooms without a head and cross-room requests retain the original
+four-hop limit.
 
 ### The room's brief
 
