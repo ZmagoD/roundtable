@@ -24,7 +24,7 @@ defmodule Roundtable.DelegationRestartTest do
     %{room: room, head: head, dev: dev, qa: qa, root: root}
   end
 
-  test "three head restarts allow review rounds, then stop, with a fresh human allowance", ctx do
+  test "three head restarts allow review rounds, then fall back to the ordinary count", ctx do
     last =
       Enum.reduce(1..3, ctx.root, fn round, source ->
         delegated = reply(source, ctx.head, ctx.dev)
@@ -38,10 +38,14 @@ defmodule Roundtable.DelegationRestartTest do
         returned
       end)
 
-    stopped = reply(last, ctx.head, ctx.dev)
-    assert recipient_ids(stopped) == []
-    assert Repo.get!(Message, stopped.id).body == "@dev continue"
+    unrestarted = reply(last, ctx.head, ctx.dev)
+    assert recipient_ids(unrestarted) == [ctx.dev.id]
+    assert unrestarted.metadata["local_depth"] == 3
     assert Repo.get!(Message, ctx.root.id).metadata["head_restarts"] == 3
+
+    stopped = reply(unrestarted, ctx.dev, ctx.qa)
+    assert recipient_ids(stopped) == []
+    assert Repo.get!(Message, stopped.id).body == "@qa continue"
 
     {:ok, fresh} = Chat.post(ctx.room.id, "Try a new approach")
     assert recipient_ids(reply(fresh, ctx.head, ctx.dev)) == [ctx.dev.id]
@@ -49,7 +53,10 @@ defmodule Roundtable.DelegationRestartTest do
 
   test "branches share the persisted allowance even when callers retain stale messages", ctx do
     for _ <- 1..3, do: assert(recipient_ids(reply(ctx.root, ctx.head, ctx.dev)) == [ctx.dev.id])
-    assert recipient_ids(reply(ctx.root, ctx.head, ctx.qa)) == []
+    # A spent allowance leaves the head its ordinary hops, not none.
+    fallback = reply(ctx.root, ctx.head, ctx.qa)
+    assert recipient_ids(fallback) == [ctx.qa.id]
+    assert fallback.metadata["local_depth"] == 1
     assert Repo.get!(Message, ctx.root.id).metadata["head_restarts"] == 3
   end
 

@@ -897,7 +897,7 @@ defmodule Roundtable.Chat do
 
         depth =
           if root_id && head_delegation?(room_id, body, opts[:agent_id]) do
-            restart_delegation(root_id)
+            restart_delegation(root_id, depth)
           else
             depth
           end
@@ -924,17 +924,19 @@ defmodule Roundtable.Chat do
     end
   end
 
-  defp restart_delegation(root_id) do
+  defp restart_delegation(root_id, depth) do
     # Debit the original message inside the posting transaction so parallel
     # branches and service restarts share the same finite allowance.
     root = Repo.get!(Message, root_id)
     restarts = Map.get(root.metadata, "head_restarts", 0)
 
+    # A spent allowance falls back to the ordinary count rather than cutting the
+    # head off: without a head it would still have had its four hops.
     if restarts < @max_head_restarts do
       change(root, metadata: Map.put(root.metadata, "head_restarts", restarts + 1))
       0
     else
-      @max_depth
+      depth
     end
   end
 

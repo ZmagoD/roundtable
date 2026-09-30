@@ -97,10 +97,14 @@ defmodule Roundtable.CoordinatorTest do
       GenServer.cast(dev_pid, {:finish, "@ada needs changes"})
     end
 
+    # The spent allowance falls back to the ordinary count, so this still runs.
     assert_receive {:agent_started, head_pid, _, _, _}, 1000
-    ref = Process.monitor(head_pid)
     GenServer.cast(head_pid, {:finish, "@linus try again"})
-    assert_receive {:DOWN, ^ref, :process, ^head_pid, :normal}, 1000
+    assert_receive {:agent_started, dev_pid, dev, _, _}, 1000
+    assert dev.id == ctx.linus.id
+    ref = Process.monitor(dev_pid)
+    GenServer.cast(dev_pid, {:finish, "done"})
+    assert_receive {:DOWN, ^ref, :process, ^dev_pid, :normal}, 1000
     _ = :sys.get_state(Coordinator)
     assert Repo.get!(Roundtable.Chat.Message, root.id).metadata["head_restarts"] == 3
     assert Enum.all?(Chat.runs(ctx.room.id), &(&1.status == "completed"))

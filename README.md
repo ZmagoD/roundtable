@@ -700,8 +700,8 @@ to apply. Choose a participant with room tools as the head for automatic upkeep.
 Chat remains the visible activity record. The head can restart the local
 four-hop delegation count up to three times per human message, allowing review
 and correction rounds. That allowance is shared across all branches and survives
-a service restart. After it is spent, head replies are recorded without starting
-more local turns. Rooms without a head and cross-room requests retain the original
+a service restart. After it is spent, head replies fall back to the ordinary
+four-hop count rather than stopping outright. Rooms without a head and cross-room requests retain the original
 four-hop limit.
 
 ### The room's brief
