@@ -135,11 +135,12 @@ defmodule Roundtable.Chat do
 
   @doc """
   Adds a profile to a room as a participant, optionally under another name.
+  Room tools pass `auto_approve: false` so a template cannot grant tool approval.
 
   Another name is what lets one profile be in a room twice — two reviewers on
   different parts of the same tree — without the two sharing anything.
   """
-  def add_profile_to_room(room_id, profile_id, name \\ nil) do
+  def add_profile_to_room(room_id, profile_id, name \\ nil, opts \\ []) do
     profile = agent_profile!(profile_id)
 
     create_agent(room_id, %{
@@ -148,7 +149,7 @@ defmodule Roundtable.Chat do
       "model" => profile.model,
       "cost_tier" => profile.cost_tier,
       "role" => profile.role,
-      "auto_approve" => profile.auto_approve
+      "auto_approve" => Keyword.get(opts, :auto_approve, profile.auto_approve)
     })
   end
 

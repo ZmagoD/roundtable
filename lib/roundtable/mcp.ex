@@ -8,7 +8,7 @@ defmodule Roundtable.MCP do
   the service over MCP and the room appears.
 
   Everything goes through `Roundtable.Chat`, so a participant building a room is
-  held to exactly the rules the browser form is held to. Nothing here removes
+  held to the browser form’s validation, with narrower permissions for agents. Nothing here removes
   anything: a room that should not have been made is one the human deletes,
   rather than history an agent can lose on a misreading.
 
@@ -153,7 +153,7 @@ defmodule Roundtable.MCP do
       %{
         name: "list_rooms",
         description:
-          "Every room here: its name, working directory, shared brief, and who is in it.",
+          "Every room in your project: its name, working directory, shared brief, and who is in it.",
         inputSchema: object(%{})
       },
       %{
@@ -179,7 +179,7 @@ defmodule Roundtable.MCP do
         name: "create_room",
         description:
           "Makes a room: a working tree, a brief, and the participants you then add to it. " <>
-            "The room starts empty; add_participant fills it.",
+            "The folder must be inside your project. The room starts empty; add_participant fills it.",
         inputSchema:
           object(
             %{
@@ -208,7 +208,7 @@ defmodule Roundtable.MCP do
         name: "add_participant",
         description:
           "Adds a participant to a room, from a saved profile or from scratch. It works in " <>
-            "the room's directory and gets its own session.",
+            "the room's directory and gets its own session, with automatic approval off. Only Claude and Codex can be added here.",
         inputSchema:
           object(%{
             "room" => room_property(),
@@ -230,7 +230,7 @@ defmodule Roundtable.MCP do
         name: "update_participant",
         description:
           "Changes what a participant is for and what it runs on. Its provider and directory " <>
-            "stay fixed, and it can only be renamed before its first turn.",
+            "stay fixed, and it can only be renamed before its first turn. With automatic approval on, role and model changes require the browser.",
         inputSchema:
           object(
             %{
@@ -271,7 +271,7 @@ defmodule Roundtable.MCP do
         name: "create_schedule",
         description:
           "Wakes a participant at times of day with a message, every day or on chosen " <>
-            "weekdays. The message arrives in the room as an ordinary mention and starts a turn.",
+            "weekdays. It starts switched off; the human must enable it in the browser.",
         inputSchema:
           object(
             %{
@@ -294,7 +294,7 @@ defmodule Roundtable.MCP do
         name: "update_schedule",
         description:
           "Changes a standing instruction, or switches it off. Switching off is how a " <>
-            "schedule stops: they are never deleted from here.",
+            "schedule stops: they are never deleted from here. Edits switch it off for human review in the browser.",
         inputSchema:
           object(
             %{
@@ -361,8 +361,8 @@ defmodule Roundtable.MCP do
   def call(_agent, "read_room_history", _args),
     do: {:error, "Provide a positive before_id message id."}
 
-  def call(_agent, "list_rooms", _args),
-    do: {:ok, json(Enum.map(Chat.rooms(), &room_view/1))}
+  def call(agent, "list_rooms", _args),
+    do: {:ok, json(Enum.map(Chat.rooms(Chat.room!(agent.room_id).organization_id), &room_view/1))}
 
   def call(agent, "list_participants", args) do
     with {:ok, room} <- room(agent, args),
@@ -376,22 +376,23 @@ defmodule Roundtable.MCP do
     do: {:ok, json(Enum.map(Agents.providers(), &Map.put(&1, :models, Agents.models(&1.id))))}
 
   def call(agent, "create_room", args) do
-    attrs = %{
-      "name" => args["name"],
-      "directory" => args["directory"] || Chat.room!(agent.room_id).directory,
-      "context" => args["brief"] || ""
-    }
+    caller_room = Chat.room!(agent.room_id)
 
-    case Chat.create_room(attrs) do
-      {:ok, room} ->
-        done(
-          agent,
-          "created room #{room.id}, #{room.name}, working in #{Chat.effective_directory(room)}. " <>
-            "It has no participants yet."
-        )
-
-      {:error, changeset} ->
-        {:error, invalid(changeset)}
+    with {:ok, directory} <- room_directory(caller_room, args["directory"]),
+         {:ok, room} <-
+           write(
+             Chat.create_room(%{
+               "name" => args["name"],
+               "directory" => directory,
+               "context" => args["brief"] || "",
+               "organization_id" => caller_room.organization_id
+             })
+           ) do
+      done(
+        agent,
+        "created room #{room.id}, #{room.name}, working in #{Chat.effective_directory(room)}. " <>
+          "It has no participants yet."
+      )
     end
   end
 
@@ -419,6 +420,7 @@ defmodule Roundtable.MCP do
     with :ok <- refuse_approvals(args),
          {:ok, room} <- room(agent, args),
          {:ok, target} <- participant_in(room, args["participant"]),
+         :ok <- protect_approved_participant(target, args),
          attrs = take(args, participant_fields()),
          {:ok, updated} <- write(Chat.update_agent(target.id, attrs)) do
       done(agent, "updated #{updated.name} in room #{room.id}: #{changed(attrs)}.")
@@ -453,12 +455,17 @@ defmodule Roundtable.MCP do
   def call(agent, "create_schedule", args) do
     with {:ok, room} <- room(agent, args),
          {:ok, target} <- participant_in(room, args["participant"]),
-         attrs = args |> take(schedule_fields()) |> Map.put("agent_id", target.id),
+         attrs =
+           args
+           |> take(schedule_fields())
+           |> Map.put("agent_id", target.id)
+           |> Map.put("enabled", false),
          {:ok, saved} <- write(Chat.create_schedule(room.id, attrs)) do
       done(
         agent,
-        "will wake #{target.name} in room #{room.id}, #{room.name}, at " <>
-          "#{Schedule.describe(saved)}, saying: #{saved.prompt}"
+        "saved schedule #{saved.id} for #{target.name} in room #{room.id}, #{room.name}, at " <>
+          "#{Schedule.describe(saved)}, saying: #{saved.prompt}. " <>
+          "It is switched off. The human must enable it in the browser’s Schedules page."
       )
     end
   end
@@ -466,12 +473,14 @@ defmodule Roundtable.MCP do
   def call(agent, "update_schedule", args) do
     with {:ok, room} <- room(agent, args),
          {:ok, existing} <- schedule_in(room, args["schedule"]),
-         attrs = take(args, schedule_fields()),
+         :ok <- refuse_schedule_enable(args),
+         attrs = args |> take(schedule_fields()) |> Map.put("enabled", false),
          {:ok, updated} <- write(Chat.update_schedule(existing.id, attrs)) do
       done(
         agent,
         "changed schedule #{updated.id} in room #{room.id}: #{changed(attrs)}. " <>
-          "It now runs at #{Schedule.describe(updated)}#{if updated.enabled, do: "", else: ", switched off"}."
+          "It is switched off, set for #{Schedule.describe(updated)}. " <>
+          "The human must enable it in the browser’s Schedules page."
       )
     end
   end
@@ -520,7 +529,9 @@ defmodule Roundtable.MCP do
 
   defp add(room, %{"profile" => reference} = args) when is_binary(reference) do
     with {:ok, profile} <- profile(reference),
-         do: write(Chat.add_profile_to_room(room.id, profile.id, args["name"]))
+         :ok <- approval_provider(profile.provider),
+         do:
+           write(Chat.add_profile_to_room(room.id, profile.id, args["name"], auto_approve: false))
   end
 
   defp add(room, args) do
@@ -529,7 +540,8 @@ defmodule Roundtable.MCP do
       |> take(Map.put(participant_fields(), "provider", "provider"))
       |> Map.put_new("provider", "")
 
-    write(Chat.create_agent(room.id, attrs))
+    with :ok <- approval_provider(attrs["provider"]),
+         do: write(Chat.create_agent(room.id, Map.put(attrs, "auto_approve", false)))
   end
 
   # The human is watching a conversation, not a database, so anything a
@@ -544,14 +556,104 @@ defmodule Roundtable.MCP do
     {:ok, text}
   end
 
-  defp room(_agent, %{"room" => reference}) when is_binary(reference) and reference != "" do
-    case Chat.find_room(reference) do
-      nil -> {:error, "There is no room called #{reference}. list_rooms shows them all."}
-      room -> {:ok, room}
+  defp room(agent, %{"room" => reference}) when is_binary(reference) and reference != "" do
+    case Chat.find_room(reference, Chat.room!(agent.room_id).organization_id) do
+      {:ok, room} ->
+        {:ok, room}
+
+      {:error, reason} ->
+        {:error,
+         reason <>
+           " Use list_rooms for this project, or ask the human to open the other project in the browser."}
     end
   end
 
   defp room(agent, _args), do: {:ok, Chat.room!(agent.room_id)}
+
+  defp approval_provider(provider) when provider in @providers, do: :ok
+
+  defp approval_provider(_provider),
+    do:
+      {:error,
+       "This provider cannot be added through room tools. Ask the human to add it in the browser; only Claude and Codex have a tool approval channel here."}
+
+  defp protect_approved_participant(%{auto_approve: true}, args) do
+    if Map.has_key?(args, "role") or Map.has_key?(args, "model"),
+      do:
+        {:error,
+         "This participant has automatic approval on. Ask the human to change its role or model in the browser, or switch automatic approval off first."},
+      else: :ok
+  end
+
+  defp protect_approved_participant(_target, _args), do: :ok
+
+  defp refuse_schedule_enable(args) do
+    if Map.has_key?(args, "enabled") and args["enabled"] != false,
+      do:
+        {:error,
+         "Schedules cannot be enabled through room tools. Ask the human to review and enable it in the browser’s Schedules page."},
+      else: :ok
+  end
+
+  defp room_directory(room, requested) do
+    project = Chat.organization!(room.organization_id)
+
+    root =
+      if project.directory in [nil, ""],
+        do: Chat.effective_directory(room),
+        else: project.directory
+
+    directory = requested || Chat.effective_directory(room)
+
+    with {:ok, root} <- canonical_directory(root),
+         {:ok, directory} <- canonical_directory(directory),
+         true <- List.starts_with?(Path.split(directory), Path.split(root)) do
+      {:ok, directory}
+    else
+      _ ->
+        {:error,
+         "The directory must be an existing folder inside your project. Ask the human to create rooms elsewhere in the browser."}
+    end
+  end
+
+  # Resolve links before checking containment, including links followed by '..'.
+  # Store the resolved path so an existing alias cannot later point the room elsewhere.
+  defp canonical_directory(path) when is_binary(path) and path != "" do
+    with :absolute <- Path.type(path),
+         {:ok, resolved} <- resolve_directory(Path.split(path), "/", 40),
+         true <- File.dir?(resolved) do
+      {:ok, resolved}
+    else
+      _ -> :error
+    end
+  end
+
+  defp canonical_directory(_path), do: :error
+
+  defp resolve_directory([], current, _links), do: {:ok, current}
+  defp resolve_directory(_parts, _current, 0), do: :error
+  defp resolve_directory(["/" | rest], _current, links), do: resolve_directory(rest, "/", links)
+
+  defp resolve_directory(["." | rest], current, links),
+    do: resolve_directory(rest, current, links)
+
+  defp resolve_directory([".." | rest], current, links),
+    do: resolve_directory(rest, Path.dirname(current), links)
+
+  defp resolve_directory([part | rest], current, links) do
+    next = Path.join(current, part)
+
+    case File.read_link(next) do
+      {:ok, target} ->
+        resolve_directory(Path.split(target) ++ rest, current, links - 1)
+
+      {:error, :einval} ->
+        if File.dir?(next), do: resolve_directory(rest, next, links), else: :error
+
+      _ ->
+        :error
+    end
+  end
 
   defp participant_in(room, reference) when is_binary(reference) and reference != "" do
     wanted = String.downcase(String.trim(reference))
@@ -691,7 +793,11 @@ defmodule Roundtable.MCP do
       )
 
   defp enabled_property,
-    do: %{type: "boolean", description: "Whether it runs at all. Switch it off to stop it."}
+    do: %{
+      type: "boolean",
+      description:
+        "Room tools keep schedules switched off. Only the human can enable them in the browser."
+    }
 
   defp role_property,
     do:

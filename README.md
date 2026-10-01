@@ -659,8 +659,8 @@ After setup, address follow-up requests to `@team-builder` in that room, or
 choose it as the message recipient. It can ask for missing details and use the
 management tools below to make changes. It is instructed to assemble the team
 without starting the new participants' project work; you start that with a
-message to the participant you want. A schedule you ask it to create can start
-future turns when due.
+message to the participant you want. A schedule you ask it to create starts
+switched off; review and enable it in the browser to allow future turns.
 
 The helper lives in a room. A separate workspace-wide Assistant conversation
 and proposal cards with **Create team** / **Start work** controls are not
@@ -689,9 +689,23 @@ ada: added reviewer-api to room 4, Billing, running on codex.
 Nothing there deletes. A room made from a misread instruction is one you remove
 yourself, which costs you a room you did not want rather than history you cannot
 get back. Nothing there posts, either: what an agent sets up is handed back to
-you rather than started. Scheduling is an exception to that timing: creating an
-enabled schedule arranges future agent turns. The tools cannot enable automatic
-approval; change that yourself in the browser if you want unattended work.
+you rather than started. Schedules created or edited through room tools are
+switched off. Review them in the browser’s **Schedules** page and enable them
+there; agents cannot enable schedules through tools.
+
+Room tools can list, read and change rooms only within the caller’s project
+(organisation). New rooms belong to that project. Their folders must exist
+inside its project folder, including after resolving symlinks. For older
+projects with no folder set, the caller’s room folder is the boundary. To make
+a room elsewhere, use the browser.
+
+Participants added through tools always start with automatic approval off,
+even when a saved profile has it on. Only Claude Code and Codex participants
+can be added through tools; add OpenCode or Grok yourself in the browser,
+because they have no tool approval channel. Tools cannot change the role or
+model of a participant with automatic approval on. Make that change in the
+browser, or switch automatic approval off first. The tools cannot enable
+automatic approval; change that yourself in the browser if you want unattended work.
 
 The tools are wired in per turn, with a token that says which participant is
 calling, so the rooms only ever change on behalf of someone who is actually in
@@ -726,7 +740,8 @@ inside a room to manage that room's instructions, or use the **Schedules** link
 in the sidebar (at `/schedules`) to see and manage schedules across every room.
 The workspace page is useful when you want to audit or change several rooms at
 once. An agent can create, edit or disable schedules through its tools, but
-cannot delete them.
+cannot delete or enable them. Creating or editing one switches it off until
+you review and enable it in the browser.
 
 Roundtable must be running for schedules to fire; the browser can be closed.
 The scheduler checks every 30 seconds, so these are not exact-second timers.

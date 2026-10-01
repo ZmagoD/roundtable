@@ -379,7 +379,8 @@ defmodule Roundtable.MCPTest do
       assert [schedule] = Chat.schedules(room.id)
       assert schedule.agent_id == ada.id
       assert schedule.at == "09:00,17:30"
-      assert schedule.enabled
+      refute schedule.enabled
+      assert text =~ "human must enable"
     end
 
     test "but only somebody who is in the room", %{room: room, ada: ada} do
@@ -442,6 +443,253 @@ defmodule Roundtable.MCPTest do
       assert listed["participant"] == "ada"
       assert listed["when"] == "09:00 every day"
       assert listed["last_run_at"] == nil
+    end
+  end
+
+  describe "project boundaries" do
+    setup %{room: room} do
+      {:ok, organization} =
+        Chat.create_organization(%{"name" => "Other project", "directory" => File.cwd!()})
+
+      {:ok, other} =
+        Chat.create_room(%{"name" => "Private", "organization_id" => organization.id})
+
+      {:ok, target} =
+        Chat.create_agent(other.id, %{"name" => "private-agent", "provider" => "codex"})
+
+      {:ok, schedule} =
+        Chat.create_schedule(other.id, %{
+          "agent_id" => target.id,
+          "prompt" => "private task",
+          "at" => "09:00"
+        })
+
+      %{other: other, target: target, schedule: schedule, original_org: room.organization_id}
+    end
+
+    test "listing rooms excludes other projects", %{ada: ada, room: room} do
+      {:ok, json} = MCP.call(ada, "list_rooms")
+      assert Enum.map(Jason.decode!(json), & &1["id"]) == [room.id]
+    end
+
+    test "every explicit room tool rejects other projects by name, slug and id", %{
+      ada: ada,
+      other: other,
+      target: target,
+      schedule: schedule
+    } do
+      calls = [
+        {"list_participants", %{}},
+        {"list_schedules", %{}},
+        {"update_room", %{"brief" => "changed"}},
+        {"add_participant", %{"name" => "intruder", "provider" => "codex"}},
+        {"update_participant", %{"participant" => target.name, "role" => "changed"}},
+        {"create_schedule",
+         %{"participant" => target.name, "prompt" => "changed", "at" => "10:00"}},
+        {"update_schedule", %{"schedule" => to_string(schedule.id), "prompt" => "changed"}}
+      ]
+
+      for reference <- [other.name, Chat.room_slug(other), to_string(other.id)],
+          {tool, args} <- calls do
+        assert {:error, message} = MCP.call(ada, tool, Map.put(args, "room", reference))
+        assert message =~ "browser"
+      end
+
+      assert Chat.room!(other.id).context == ""
+      assert Chat.agents(other.id) == [target]
+      assert Chat.schedules(other.id) == [schedule]
+    end
+
+    test "new rooms belong to the caller's project, ignoring a supplied organisation", %{
+      target: target,
+      other: other,
+      original_org: original_org
+    } do
+      assert {:ok, _} =
+               MCP.call(target, "create_room", %{
+                 "name" => "New team",
+                 "organization_id" => original_org
+               })
+
+      assert {:ok, made} = Chat.find_room("New team", other.organization_id)
+      assert made.organization_id == other.organization_id
+      assert made.directory == File.cwd!()
+      assert {:error, _} = Chat.find_room("New team", original_org)
+    end
+
+    test "a matching name in another project cannot shadow this project's room", %{
+      ada: ada,
+      other: other,
+      room: room
+    } do
+      {:ok, local} =
+        Chat.create_room(%{"name" => other.name, "organization_id" => room.organization_id})
+
+      assert {:ok, _} = MCP.call(ada, "update_room", %{"room" => other.name, "brief" => "local"})
+      assert Chat.room!(local.id).context == "local"
+      assert Chat.room!(other.id).context == ""
+    end
+  end
+
+  describe "project folders" do
+    setup %{room: room} do
+      base = Path.join(System.tmp_dir!(), "roundtable-mcp-#{System.unique_integer([:positive])}")
+      root = Path.join(base, "project")
+      child = Path.join(root, "child")
+      outside = Path.join(base, "project-other")
+      File.mkdir_p!(child)
+      File.mkdir_p!(outside)
+      File.ln_s!(outside, Path.join(root, "escape"))
+      File.ln_s!("child", Path.join(root, "inside"))
+      File.ln_s!("loop", Path.join(root, "loop"))
+      on_exit(fn -> File.rm_rf!(base) end)
+      {:ok, _} = Chat.update_organization(room.organization_id, %{"directory" => root})
+      {:ok, _} = Chat.update_room(room.id, %{"directory" => child})
+      %{root: root, child: child, outside: outside}
+    end
+
+    test "the project root and children are allowed, including resolved internal links", %{
+      ada: ada,
+      root: root,
+      child: child
+    } do
+      for {path, expected} <- [{root, root}, {child, child}, {Path.join(root, "inside"), child}] do
+        name = "Allowed-#{System.unique_integer([:positive])}"
+        assert {:ok, _} = MCP.call(ada, "create_room", %{"name" => name, "directory" => path})
+        assert Chat.find_room(name).directory == expected
+      end
+    end
+
+    test "outside paths, traversal, escaping symlinks and loops are refused", %{
+      ada: ada,
+      root: root,
+      outside: outside
+    } do
+      paths = [
+        outside,
+        Path.join(root, "../project-other"),
+        Path.join(root, "escape"),
+        Path.join(root, "escape/.."),
+        Path.join(root, "loop"),
+        Path.join(root, "missing"),
+        "",
+        "child"
+      ]
+
+      for path <- paths do
+        assert {:error, message} =
+                 MCP.call(ada, "create_room", %{"name" => "Rejected", "directory" => path})
+
+        assert message =~ "browser"
+        assert Chat.find_room("Rejected") == nil
+      end
+    end
+  end
+
+  describe "approval boundaries" do
+    test "profile additions clear automatic approval without changing the template or browser behaviour",
+         %{ada: ada, room: room} do
+      {:ok, profile} =
+        Chat.create_agent_profile(%{
+          "name" => "trusted",
+          "provider" => "codex",
+          "auto_approve" => true
+        })
+
+      assert {:ok, _} = MCP.call(ada, "add_participant", %{"profile" => profile.name})
+      added = Enum.find(Chat.agents(room.id), &(&1.name == profile.name))
+      refute added.auto_approve
+      assert Chat.agent_profile!(profile.id).auto_approve
+      assert {:ok, browser_added} = Chat.add_profile_to_room(room.id, profile.id, "browser-added")
+      assert browser_added.auto_approve
+    end
+
+    test "providers without approval channels are refused directly and through profiles", %{
+      ada: ada,
+      room: room
+    } do
+      for provider <- ["opencode", "grok"] do
+        {:ok, profile} = Chat.create_agent_profile(%{"name" => provider, "provider" => provider})
+
+        for args <- [%{"name" => provider, "provider" => provider}, %{"profile" => profile.name}] do
+          assert {:error, message} = MCP.call(ada, "add_participant", args)
+          assert message =~ "human"
+          assert message =~ "browser"
+        end
+      end
+
+      assert Enum.map(Chat.agents(room.id), & &1.id) == [ada.id]
+    end
+
+    test "role and model edits cannot redirect an automatically approved participant", %{ada: ada} do
+      {:ok, _} = Chat.update_agent(ada.id, %{"auto_approve" => true})
+
+      for attrs <- [%{"role" => "new instructions"}, %{"model" => "other-model"}] do
+        assert {:error, message} =
+                 MCP.call(ada, "update_participant", Map.put(attrs, "participant", ada.name))
+
+        assert message =~ "browser"
+      end
+
+      assert Chat.agent!(ada.id).role == ada.role
+      assert Chat.agent!(ada.id).model == ada.model
+
+      assert {:ok, _} =
+               MCP.call(ada, "update_participant", %{
+                 "participant" => ada.name,
+                 "cost_tier" => "economy"
+               })
+
+      assert Chat.agent!(ada.id).cost_tier == "economy"
+    end
+
+    test "created schedules stay off even if enabled was requested, and cannot be enabled later",
+         %{ada: ada, room: room} do
+      assert {:ok, text} =
+               MCP.call(ada, "create_schedule", %{
+                 "participant" => ada.name,
+                 "prompt" => "review",
+                 "at" => "09:00",
+                 "enabled" => true
+               })
+
+      assert text =~ "human must enable"
+      [schedule] = Chat.schedules(room.id)
+      refute schedule.enabled
+
+      for enabled <- [true, "true", "1"] do
+        assert {:error, message} =
+                 MCP.call(ada, "update_schedule", %{
+                   "schedule" => to_string(schedule.id),
+                   "enabled" => enabled
+                 })
+
+        assert message =~ "browser"
+        refute Chat.schedule!(schedule.id).enabled
+      end
+    end
+
+    test "editing an active schedule disables it for renewed human review", %{
+      ada: ada,
+      room: room
+    } do
+      {:ok, schedule} =
+        Chat.create_schedule(room.id, %{
+          "agent_id" => ada.id,
+          "prompt" => "review",
+          "at" => "09:00",
+          "enabled" => true
+        })
+
+      assert {:ok, text} =
+               MCP.call(ada, "update_schedule", %{
+                 "schedule" => to_string(schedule.id),
+                 "prompt" => "different task"
+               })
+
+      refute Chat.schedule!(schedule.id).enabled
+      assert Chat.schedule!(schedule.id).prompt == "different task"
+      assert text =~ "human must enable"
     end
   end
 
