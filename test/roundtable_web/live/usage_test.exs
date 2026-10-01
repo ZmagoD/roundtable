@@ -33,6 +33,35 @@ defmodule RoundtableWeb.UsageTest do
     assert has_element?(view, "#token-usage-#{cora.id}", "not reported")
   end
 
+  test "expired readings show as unknown on cards, messages and suggestions", %{conn: conn} do
+    {:ok, room} = Chat.create_room(%{name: "Expired usage", directory: File.cwd!()})
+    {:ok, agent} = Chat.create_agent(room.id, %{name: "ada", provider: "claude"})
+
+    Chat.record_provider_usage("claude", %{
+      "percent" => 85,
+      "status" => "near limit",
+      "resets_at" => 0
+    })
+
+    {:ok, _} = Chat.post(room.id, "Earlier message", sender: "ada", kind: "agent")
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+
+    assert has_element?(view, "#provider-usage-#{agent.id}", "not reported")
+    assert has_element?(view, ".message-meta .usage-chip", "not reported")
+    refute has_element?(view, ".usage-warn")
+
+    [mentions] =
+      view
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#message-form")
+      |> LazyHTML.attribute("data-mentions")
+
+    assert %{"name" => "ada", "usage" => "not reported", "level" => "ok"} in Jason.decode!(
+             mentions
+           )
+  end
+
   test "provider updates refresh every room sharing that provider", %{conn: conn} do
     {:ok, first} = Chat.create_room(%{name: "First", directory: File.cwd!()})
     {:ok, second} = Chat.create_room(%{name: "Second", directory: File.cwd!()})

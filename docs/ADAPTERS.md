@@ -149,7 +149,11 @@ as a fraction; converting it to a percentage is not an estimate. Codex uses the
 higher reported `usedPercent` of the two windows and preserves its reset time.
 Claude reports its windows in separate events, so `Usage.keep/2` keeps the one
 closer to its limit (stricter status, then higher percentage) and lets a newer
-reading of the same window replace it.
+reading of the same window replace it. A snapshot expires when its `resets_at`
+(Unix seconds) is reached: `Usage.label/1` renders “not reported” and
+`Usage.level/1` clears its warning. `Usage.keep/2` never prefers an expired
+snapshot over a fresh one, even across windows. Missing reset times do not
+expire; expiry never invents a new percentage.
 Missing fields remain unknown. Contract tests use synthetic, non-sensitive
 events matching these protocol shapes; no real provider turn is needed.
 

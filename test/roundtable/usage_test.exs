@@ -210,7 +210,73 @@ defmodule Roundtable.UsageTest do
     }
   end
 
+  test "quota readings expire at their reset, including persisted snapshots" do
+    now = System.system_time(:second)
+    reading = %{"percent" => 85, "status" => "near limit", "resets_at" => now + 3600}
+
+    for data <- [reading, %{"status" => "limited", "resets_at" => now + 3600}] do
+      refute Usage.stale?(data)
+      refute Usage.label(data) == "not reported"
+      assert Usage.level(data) == "warn"
+
+      for reset <- [now, now - 3600],
+          value <- [
+            Map.put(data, "resets_at", reset),
+            %Roundtable.Chat.ProviderUsage{data: Map.put(data, "resets_at", reset)}
+          ] do
+        assert Usage.stale?(value)
+        assert Usage.label(value) == "not reported"
+        assert Usage.level(value) == "ok"
+      end
+    end
+  end
+
+  test "quota readings without a reset remain reported" do
+    for extra <- [%{}, %{"resets_at" => nil}] do
+      reading = Map.merge(%{"percent" => 85}, extra)
+      refute Usage.stale?(reading)
+      assert Usage.label(reading) == "85.0%"
+      assert Usage.level(reading) == "warn"
+    end
+  end
+
+  test "expired provider usage is not included in participant prompts" do
+    {:ok, room} = Chat.create_room(%{name: "Expired usage", directory: File.cwd!()})
+    {:ok, agent} = Chat.create_agent(room.id, %{name: "ada", provider: "claude"})
+    Chat.post(room.id, "@ada work")
+    [run] = Chat.runs(room.id)
+    Chat.record_provider_usage("claude", %{"percent" => 85, "resets_at" => 0})
+    {prompt, _} = Chat.prompt(agent, run)
+    assert prompt =~ "usage=not reported"
+    refute prompt =~ "usage=85.0%"
+  end
+
   describe "the reading a slot keeps" do
+    test "a fresh lower reading beats an expired warning in either order" do
+      old = %{
+        "percent" => 85,
+        "status" => "near limit",
+        "window" => "five_hours",
+        "resets_at" => 0
+      }
+
+      fresh = %{
+        "percent" => 30,
+        "status" => "OK",
+        "window" => "seven_day",
+        "resets_at" => System.system_time(:second) + 3600
+      }
+
+      for reading <- [
+            fresh,
+            Map.delete(fresh, "resets_at"),
+            Map.put(fresh, "window", "five_hours")
+          ] do
+        assert Usage.keep(old, reading) == reading
+        assert Usage.keep(reading, old) == reading
+      end
+    end
+
     test "a fresher reading of the same window replaces even a better one" do
       five = %{"percent" => 90.0, "status" => "near limit", "window" => "five_hours"}
 

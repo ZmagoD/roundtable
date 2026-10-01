@@ -55,8 +55,17 @@ defmodule Roundtable.Usage do
   and a fresher reading of the same window always replaces an older one, even
   when it looks better — after a reset the old warning must go. Codex reports
   both of its windows in a single event, so it arrives here already decided.
+  An expired reading never wins over a reading whose reset has not passed.
   """
   def keep(one, two) do
+    cond do
+      stale?(one) -> two || one
+      stale?(two) -> one || two
+      true -> keep_current(one, two)
+    end
+  end
+
+  defp keep_current(one, two) do
     cond do
       one == nil or two == nil -> two || one
       one["window"] == two["window"] -> two
@@ -74,11 +83,21 @@ defmodule Roundtable.Usage do
     end
   end
 
-  @doc "How loud a reading is: warning at 80% or more, `near limit` or `limited`."
+  @doc "A quota observation expires at its provider-reported Unix reset time."
+  def stale?(%{data: data}), do: stale?(data)
+
+  def stale?(%{"resets_at" => reset}) when is_integer(reset),
+    do: reset <= System.system_time(:second)
+
+  def stale?(_), do: false
+
+  @doc "How loud a current reading is: warning at 80% or more, `near limit` or `limited`."
   def level(%{data: data}), do: level(data)
-  def level(%{"percent" => n}) when is_number(n) and n >= 80, do: "warn"
-  def level(%{"status" => status}) when status in ["near limit", "limited"], do: "warn"
-  def level(_), do: "ok"
+  def level(reading), do: if(stale?(reading), do: "ok", else: reading_level(reading))
+
+  defp reading_level(%{"percent" => n}) when is_number(n) and n >= 80, do: "warn"
+  defp reading_level(%{"status" => status}) when status in ["near limit", "limited"], do: "warn"
+  defp reading_level(_), do: "ok"
 
   defp strictness(%{"status" => "limited"}), do: 3
   defp strictness(%{"status" => "near limit"}), do: 2
@@ -105,11 +124,15 @@ defmodule Roundtable.Usage do
     end
   end
 
-  def label(nil), do: "not reported"
   def label(%{data: data}), do: label(data)
-  def label(%{"percent" => n}) when is_number(n), do: "#{Float.round(n / 1, 1)}%"
-  def label(%{"status" => status}) when status in ["OK", "near limit", "limited"], do: status
-  def label(_), do: "not reported"
+  def label(reading), do: if(stale?(reading), do: "not reported", else: reading_label(reading))
+
+  defp reading_label(%{"percent" => n}) when is_number(n), do: "#{Float.round(n / 1, 1)}%"
+
+  defp reading_label(%{"status" => status}) when status in ["OK", "near limit", "limited"],
+    do: status
+
+  defp reading_label(_), do: "not reported"
 
   def token_label(usage) when map_size(usage) == 0, do: "not reported"
 

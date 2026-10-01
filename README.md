@@ -752,11 +752,14 @@ Participants using the same provider share this observation across rooms. Codex
 shows the higher reported percentage of its primary and secondary windows;
 Claude reports its five-hour and weekly windows separately; the one closer to
 its limit is kept (the stricter status, then the higher percentage), and a newer
-reading of that same window always replaces it, so a reset clears an old
-warning. Claude shows its reported utilization, or OK, near limit, or limited
-when only a status is available. No report means “not reported”, never zero.
-These are last observations, not live polling or estimates; no automatic reset
-is assumed.
+reading of that same window always replaces it. When a reported reset time
+passes, the reading becomes “not reported” and loses its warning colour on the
+next render, so a reset clears an old warning. An expired window cannot override
+a fresh reading from another window. Readings without a reset time are unchanged.
+Claude shows its reported utilization, or OK, near limit, or limited when only
+a status is available. No report means “not reported”, never zero.
+These are last observations, not live polling or estimates; an expired reading
+stays unknown until the provider reports again.
 
 The same reading appears in the chat as a small chip beside each agent message,
 on each running turn and on each `@` suggestion in the message box. It turns
