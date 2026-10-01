@@ -62,7 +62,10 @@ service_url() {
   if [[ -s "$STATE_DIR/url" ]]; then
     cat "$STATE_DIR/url"
   else
-    grep -o 'http://127\.0\.0\.1:[0-9]*' "$STATE_DIR/server.log" 2>/dev/null | tail -n 1
+    # Only the line the service logs at boot: agents' commands are logged too,
+    # and any of them can contain some other local URL.
+    grep -o 'Roundtable: http://127\.0\.0\.1:[0-9]*' "$STATE_DIR/server.log" 2>/dev/null |
+      tail -n 1 | sed 's/^Roundtable: //'
   fi
 }
 
