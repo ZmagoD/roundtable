@@ -29,6 +29,7 @@ defmodule Roundtable.CoordinatorTest do
       Application.delete_env(:roundtable, :test_observer)
     end)
 
+    Chat.clear_team_head(room.id)
     %{room: room, ada: ada, linus: linus}
   end
 

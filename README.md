@@ -473,12 +473,18 @@ project context, edit the work document, notes, and brief separately.
 
 ### A primary contact and a shared work document
 
-Select **Make team head** on the participant you want to talk to most, or type
-`/head lead` in the browser chat field. Ordinary human messages now start that agent's
-turn. Explicit `@name` and `@all` mentions still choose recipients directly.
+The first participant added to an empty room becomes its team head, so ordinary
+human messages start that agent's turn. This applies to the browser form, the
+`add_participant` tool, and the helper created by **Build a team**. Existing teams
+are left as they are, and adding another participant does not change the head.
+
+To change your primary contact, select **Make team head** on another participant
+or type `/head lead` in the browser chat field. Explicit `@name` and `@all`
+mentions still choose recipients directly.
 Unknown mentions do not fall back to the head; system notices and unaddressed
 agent replies do not wake them either. Remove the designation on the card or
-use `/head off` to return to mention-only routing.
+use `/head off` to return to mention-only routing. Adding more participants after
+clearing the head leaves mention-only routing in place.
 
 Open **Work document** in the room header to view and edit the current plan.
 This is stored in SQLite with the room, separately from the transcript. Keep it

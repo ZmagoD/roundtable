@@ -20,6 +20,7 @@ defmodule Roundtable.ChatTest do
         "directory" => File.cwd!()
       })
 
+    Chat.clear_team_head(room.id)
     %{room: room, ada: ada, linus: linus}
   end
 

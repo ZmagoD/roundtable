@@ -22,8 +22,33 @@ defmodule Roundtable.TeamHeadTest do
     %{room: room, morgan: morgan, ada: ada, grace: grace}
   end
 
-  test "a team starts with nobody designated", ctx do
+  test "the first participant becomes head and later participants leave it unchanged", ctx do
+    assert ctx.morgan.head
+    assert Chat.team_head(ctx.room.id).id == ctx.morgan.id
+    refute ctx.ada.head
+    refute ctx.grace.head
+    {:ok, message} = Chat.post(ctx.room.id, "Please review")
+    assert [%{agent_id: id, message_id: message_id}] = Chat.runs(ctx.room.id)
+    assert id == ctx.morgan.id
+    assert message_id == message.id
+  end
+
+  test "adding a participant preserves a cleared head", ctx do
+    :ok = Chat.clear_team_head(ctx.room.id)
+    {:ok, agent} = Chat.create_agent(ctx.room.id, %{name: "newcomer", provider: "codex"})
+    refute agent.head
     assert Chat.team_head(ctx.room.id) == nil
+    {:ok, _} = Chat.post(ctx.room.id, "Just a note")
+    assert Chat.runs(ctx.room.id) == []
+  end
+
+  test "an invalid first participant leaves the room empty" do
+    {:ok, room} = Chat.create_room(%{name: "Empty", directory: File.cwd!()})
+    assert {:error, %Ecto.Changeset{}} = Chat.create_agent(room.id, %{name: "bad"})
+    assert Chat.agents(room.id) == []
+    assert Chat.team_head(room.id) == nil
+    {:ok, agent} = Chat.create_agent(room.id, %{name: "valid", provider: "codex"})
+    assert agent.head
   end
 
   test "choosing a head records it", ctx do
@@ -78,6 +103,7 @@ defmodule Roundtable.TeamHeadTest do
   end
 
   test "a team with no head says nothing about one", ctx do
+    Chat.clear_team_head(ctx.room.id)
     {:ok, message} = Chat.post(ctx.room.id, "@grace have a look")
     run = Repo.one!(from r in Run, where: r.message_id == ^message.id)
 

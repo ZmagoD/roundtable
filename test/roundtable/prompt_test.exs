@@ -101,6 +101,7 @@ defmodule Roundtable.PromptTest do
   end
 
   test "filter noise before budgeting, retain peer history and advance the cursor", ctx do
+    Chat.clear_team_head(ctx.room.id)
     {:ok, peer} = Chat.post(ctx.room.id, "Useful peer result", sender: "reviewer", kind: "agent")
 
     {:ok, _} =
@@ -140,7 +141,7 @@ defmodule Roundtable.PromptTest do
         ] do
       Chat.change(ctx.agent, role: role)
       {prompt, _} = Chat.prompt(ctx.resumed, ctx.run)
-      assert prompt =~ "usage=not reported, role=#{expected}\n"
+      assert prompt =~ "usage=not reported, team head, role=#{expected}\n"
     end
   end
 end

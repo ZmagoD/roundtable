@@ -18,6 +18,7 @@ defmodule Roundtable.WatchdogTest do
         agent
       end
 
+    Chat.clear_team_head(room.id)
     now = DateTime.utc_now(:second)
     %{room: room, lead: lead, dev: dev, now: now}
   end

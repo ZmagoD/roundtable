@@ -323,7 +323,7 @@ defmodule Roundtable.Chat do
     {:ok, agent!(agent_id)}
   end
 
-  @doc "Leaves a team with nobody designated, which is how every team starts."
+  @doc "Leaves a team with nobody designated, so ordinary messages wake nobody."
   def clear_team_head(room_id) do
     Repo.update_all(from(a in Agent, where: a.room_id == ^room_id and a.head), set: [head: false])
     broadcast(room_id)
@@ -560,11 +560,36 @@ defmodule Roundtable.Chat do
   def create_agent(room_id, attrs) do
     room = room!(room_id)
 
-    %Agent{room_id: room_id}
-    |> Agent.changeset(Map.put(normalise(attrs), "directory", effective_directory(room)))
-    |> valid_directory()
-    |> Repo.insert()
+    Repo.transaction(fn ->
+      result =
+        %Agent{room_id: room_id}
+        |> Agent.changeset(Map.put(normalise(attrs), "directory", effective_directory(room)))
+        |> valid_directory()
+        |> Repo.insert()
+
+      case result do
+        {:ok, agent} ->
+          maybe_set_first_head(agent)
+
+        {:error, changeset} ->
+          Repo.rollback(changeset)
+      end
+    end)
     |> tap(fn result -> if match?({:ok, _}, result), do: broadcast(room_id) end)
+  end
+
+  defp maybe_set_first_head(agent) do
+    room_id = agent.room_id
+
+    # Only the first participant gets this default; adding to a team whose
+    # head was cleared must preserve mention-only routing.
+    if Repo.aggregate(from(a in Agent, where: a.room_id == ^room_id), :count) == 1 and
+         is_nil(team_head(room_id)) do
+      {:ok, head} = set_team_head(agent.id)
+      head
+    else
+      agent
+    end
   end
 
   defp normalise(attrs) do

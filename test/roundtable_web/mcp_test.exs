@@ -28,7 +28,8 @@ defmodule RoundtableWeb.Plugs.MCPTest do
   # test needs one — exactly as it has one in production, where the token is
   # minted after the run is already running.
   defp turn(agent) do
-    {:ok, message} = Chat.post(agent.room_id, "something to do")
+    {:ok, message} =
+      Chat.post(agent.room_id, "something to do", kind: "agent", sender: agent.name)
 
     Roundtable.Repo.insert!(%Roundtable.Chat.Run{
       agent_id: agent.id,

@@ -33,7 +33,9 @@ defmodule Roundtable.MCPTest do
   # test needs one — exactly as it has one in production, where the token is
   # minted after the run is already running.
   defp turn(agent) do
-    {:ok, message} = Chat.post(agent.room_id, "something to do")
+    {:ok, message} =
+      Chat.post(agent.room_id, "something to do", kind: "agent", sender: agent.name)
+
     Repo.insert!(%Run{agent_id: agent.id, message_id: message.id, status: "running"})
   end
 
@@ -127,6 +129,8 @@ defmodule Roundtable.MCPTest do
       linus = Enum.find(Chat.agents(room.id), &(&1.name == "linus"))
       assert linus.directory == room.directory
       assert linus.cost_tier == "economy"
+      refute linus.head
+      assert Chat.team_head(room.id).id == ada.id
     end
 
     test "into another room, by name", %{ada: ada} do
@@ -139,7 +143,7 @@ defmodule Roundtable.MCPTest do
                  "provider" => "claude"
                })
 
-      assert [%Agent{name: "linus"}] = Chat.agents(Chat.find_room("Docs").id)
+      assert [%Agent{name: "linus", head: true}] = Chat.agents(Chat.find_room("Docs").id)
     end
 
     test "a provider that does not exist is refused", %{room: room, ada: ada} do
@@ -297,8 +301,8 @@ defmodule Roundtable.MCPTest do
     # the tools away from the turn still working, nor lend them to the queued one.
     test "a queued next turn does not end the running turn's token", %{ada: ada} do
       token = MCP.token(ada)
-      {:ok, message} = Chat.post(ada.room_id, "and then this")
-      Repo.insert!(%Run{agent_id: ada.id, message_id: message.id, status: "queued"})
+      {:ok, message} = Chat.post(ada.room_id, "@ada and then this")
+      assert Repo.get_by!(Run, agent_id: ada.id, message_id: message.id).status == "queued"
 
       assert {:ok, found} = MCP.participant(token)
       assert found.id == ada.id

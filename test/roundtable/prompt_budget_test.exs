@@ -13,6 +13,7 @@ defmodule Roundtable.PromptBudgetTest do
         "directory" => File.cwd!()
       })
 
+    Chat.clear_team_head(room.id)
     %{room: room, agent: agent}
   end
 

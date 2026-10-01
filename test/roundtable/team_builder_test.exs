@@ -24,6 +24,8 @@ defmodule Roundtable.TeamBuilderTest do
       assert agent.provider == provider
       assert agent.directory == room.directory
       assert agent.name == "team-builder"
+      assert agent.head
+      assert Chat.team_head(room.id).id == agent.id
       refute agent.auto_approve
       assert is_nil(agent.model)
       assert [message] = Chat.messages(room.id)

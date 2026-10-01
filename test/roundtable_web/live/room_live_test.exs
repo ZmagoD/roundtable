@@ -30,6 +30,21 @@ defmodule RoundtableWeb.RoomLiveTest do
     assert has_element?(view, "#work-document-form")
   end
 
+  test "head off followed by adding a second participant keeps the room without a head", %{
+    conn: conn
+  } do
+    {:ok, room} = Chat.create_room(%{name: "Hiring", directory: File.cwd!()})
+    {:ok, first} = Chat.create_agent(room.id, %{name: "reviewer", provider: "codex"})
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+    assert has_element?(view, "#agent-#{first.id} .team-head-badge", "Team head")
+    view |> form("#message-form", message: %{body: "/head off"}) |> render_submit()
+    view |> element("#add-agent-button") |> render_click()
+    view |> form("#agent-form", agent: %{name: "builder", provider: "codex"}) |> render_submit()
+    assert length(Chat.agents(room.id)) == 2
+    assert Chat.team_head(room.id) == nil
+    refute has_element?(view, ".team-head-badge")
+  end
+
   test "agents are shown by their generated avatar, including senders no longer here", %{
     conn: conn
   } do
@@ -293,6 +308,10 @@ defmodule RoundtableWeb.RoomLiveTest do
 
     assert has_element?(view, ".agent-card strong", "ada")
     assert has_element?(view, ".agent-card strong", "tester")
+    [room] = Chat.rooms()
+    [first, second] = Chat.agents(room.id)
+    assert has_element?(view, "#agent-#{first.id} .team-head-badge", "Team head")
+    refute has_element?(view, "#agent-#{second.id} .team-head-badge")
 
     view
     |> form("#message-form", message: %{body: "Check the tests", to: "tester"})
