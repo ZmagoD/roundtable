@@ -366,6 +366,31 @@ defmodule RoundtableWeb.RoomLiveTest do
     assert has_element?(view, ".assignment-meta", "test-premium")
   end
 
+  test "a participant the watchdog gave up on wears a badge until its next turn starts", %{
+    conn: conn
+  } do
+    {:ok, room} = Chat.create_room(%{"name" => "Attention", "directory" => File.cwd!()})
+    {:ok, agent} = Chat.create_agent(room.id, %{"name" => "ada", "provider" => "codex"})
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+    refute has_element?(view, "#needs-attention-#{agent.id}")
+
+    {:ok, _} = Chat.post(room.id, "@ada task")
+    {:ok, _} = Chat.post(room.id, "@ada next task")
+    [held, run] = Chat.runs(room.id)
+
+    # The watchdog's give-up, with a turn held back behind it: the held turn
+    # is newer, but the badge still shows.
+    run |> Chat.give_up() |> Chat.change(status: "failed", error: "could not finish")
+    Chat.change(held, status: "stopped", error: Roundtable.Supervision.held_back())
+    send(view.pid, :room_updated)
+    assert has_element?(view, "#needs-attention-#{agent.id}", "Needs attention")
+
+    # A retry queues the turn again, which clears the badge.
+    Chat.change(Roundtable.Repo.get!(Roundtable.Chat.Run, run.id), status: "queued")
+    send(view.pid, :room_updated)
+    refute has_element?(view, "#needs-attention-#{agent.id}")
+  end
+
   describe "the handlers a browser reaches that the terminal does not" do
     setup %{conn: conn} do
       {:ok, room} = Chat.create_room(%{"name" => "Handlers", "directory" => File.cwd!()})

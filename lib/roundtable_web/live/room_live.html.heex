@@ -514,7 +514,12 @@
                   :if={agent.auto_approve}
                   class="auto-approve"
                   title="Runs tools without stopping to ask"
-                >auto-approves</span>
+                >auto-approves</span><span
+                  :if={needs_attention?(agent, @runs)}
+                  id={"needs-attention-#{agent.id}"}
+                  class="needs-attention"
+                  title="The supervisor gave up on this turn. Retry the assignment to continue."
+                >Needs attention</span>
               </div>
               <div class="agent-usage" id={"agent-usage-#{agent.id}"}>
                 <span id={"provider-usage-#{agent.id}"}>

@@ -431,7 +431,10 @@ message from **supervisor**, saying what happened and what happens next.
   and go back in the queue when the failed turn is restarted or retried.
 - **Problems a retry cannot fix** — signed out, context too long, billing, no
   folder, a permission the CLI refused — are not retried. Neither is a turn's
-  third failure. The notice says the participant needs attention.
+  third failure. The notice says the participant needs attention, and that any
+  turns queued behind the failed one stay held back until one of them is
+  retried. The participant's card keeps a **Needs attention** badge until its
+  next turn starts.
 
 Only each participant's most recent turn from the last two hours is
 considered, and a turn you stopped yourself is left alone.

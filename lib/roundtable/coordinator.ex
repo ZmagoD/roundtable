@@ -403,7 +403,12 @@ defmodule Roundtable.Coordinator do
 
   defp give_up(run, agent, what) do
     Chat.give_up(run)
-    text = "#{agent.name} #{what}. It needs attention; its turn will not be restarted."
+
+    # Held turns follow the failed one only until someone retries, so the
+    # notice says what stays stuck instead of implying all is well later.
+    text =
+      "#{agent.name} #{what}. It needs attention; its turn will not be restarted, " <>
+        "and turns queued behind it stay held back until one is retried."
 
     case wake_target(agent) do
       nil -> Chat.supervisor_notice(agent.room_id, text, "notice")

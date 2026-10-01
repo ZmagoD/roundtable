@@ -1151,6 +1151,24 @@ defmodule RoundtableWeb.RoomLive do
     if active, do: active.status, else: "idle"
   end
 
+  # Runs arrive newest first. The badge stays while the participant's newest
+  # turn is one the watchdog gave up on, and clears when any newer turn
+  # starts — including that run being retried, which requeues it. Turns held
+  # back behind the failure are newer but are not a new turn, so they are
+  # looked past, as the watchdog itself does.
+  defp needs_attention?(agent, runs) do
+    held = Roundtable.Supervision.held_back()
+
+    case Enum.find(runs, &(&1.agent_id == agent.id and &1.error != held)) do
+      nil ->
+        false
+
+      newest ->
+        newest.supervised_retries == Roundtable.Supervision.gave_up() and
+          newest.status in ["failed", "interrupted", "stopped"]
+    end
+  end
+
   # A visible list beats a datalist nobody discovers. Whatever the agent already
   # has is kept as an option, so editing does not silently drop a model this
   # CLI no longer lists.

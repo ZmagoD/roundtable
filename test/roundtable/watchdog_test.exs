@@ -102,6 +102,7 @@ defmodule Roundtable.WatchdogTest do
     assert Repo.get!(Run, run.id).supervised_retries == Supervision.gave_up()
     assert [notice] = notices(ctx.room)
     assert notice.body =~ "@lead dev could not finish (boom)"
+    assert notice.body =~ "held back until one is retried"
     assert [%Run{status: "queued"}] = runs_for(ctx.lead)
 
     # Given up means given up: the next pass does nothing more.
@@ -114,6 +115,7 @@ defmodule Roundtable.WatchdogTest do
     Coordinator.supervise(ctx.now)
     assert [notice] = notices(ctx.room)
     assert notice.body =~ "needs attention"
+    assert notice.body =~ "held back until one is retried"
     refute notice.body =~ "@"
   end
 

@@ -665,6 +665,10 @@ h1, h2, h3, p { margin: 0; }
    the theme like the rest of the palette. */
 .usage-chip { font-size: 8px; font-weight: 500; padding: 2px 5px; border-radius: 4px; white-space: nowrap; background: var(--green-surface-10); color: var(--green-mid-31); }
 .usage-chip.usage-warn { color: var(--warm-mid-1); background: var(--warm-surface-8); }
+/* The badge on a card whose turn the watchdog gave up on: the warm warning
+   pair the chips already use, and dark mode inverts it with the theme. It
+   clears on the agent's next turn. */
+.needs-attention { font-size: 8px; font-weight: 550; padding: 2px 5px; border-radius: 4px; white-space: nowrap; color: var(--warm-mid-1); background: var(--warm-surface-8); border: 1px solid var(--warm-soft-2); }
 .preset-list { margin-bottom: 22px; }
 .preset-row { width: 100%; display: flex; justify-content: space-between; align-items: center; text-align: left; background: var(--green-surface-8); border: 1px solid var(--green-surface-6); padding: 10px 12px; border-radius: 7px; margin-bottom: 7px; }
 .profile-row { gap: 12px; }
