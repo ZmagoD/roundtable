@@ -56,7 +56,9 @@ defmodule Roundtable.Git do
   defp run(directory, args) do
     # A room's own .git/config is the agent's to write, so nothing in it may
     # make the service run a program when the changes panel refreshes.
-    safe = ["-c", "core.fsmonitor=false", "--no-optional-locks", "-C", directory]
+    safe =
+      ["-c", "core.fsmonitor=false"] ++
+        empty_filters(directory) ++ ["--no-optional-locks", "-C", directory]
 
     case System.cmd("git", safe ++ args ++ no_external(args), stderr_to_stdout: true) do
       {output, 0} -> {:ok, String.trim_trailing(output)}
@@ -65,6 +67,37 @@ defmodule Roundtable.Git do
   rescue
     # No git on PATH, or the directory disappeared under us.
     error -> {:error, Exception.message(error)}
+  end
+
+  # A filter named in .git/config and switched on by .gitattributes or
+  # .git/info/attributes runs on status and diff, and no flag turns filters off
+  # wholesale. Reading the config runs nothing, so each configured filter is
+  # found that way and emptied for the call that follows.
+  defp empty_filters(directory) do
+    args = ["--no-optional-locks", "-C", directory, "config", "--get-regexp", ~S"^filter\."]
+
+    case System.cmd("git", args, stderr_to_stdout: true) do
+      {output, 0} ->
+        for name <- filter_names(output),
+            {key, value} <- [clean: "", smudge: "", process: "", required: "false"],
+            arg <- ["-c", "filter.#{name}.#{key}=#{value}"],
+            do: arg
+
+      _no_filters ->
+        []
+    end
+  end
+
+  defp filter_names(output) do
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.flat_map(fn line ->
+      case Regex.run(~r/^filter\.(.+)\.[a-z]+(\s|$)/, line) do
+        [_, name | _] -> [name]
+        _ -> []
+      end
+    end)
+    |> Enum.uniq()
   end
 
   defp no_external(["diff" | _]), do: ["--no-ext-diff", "--no-textconv"]

@@ -893,10 +893,11 @@ tool tokens (`SECRET_KEY_BASE`), and the live service's pid and URL files. So an
 agent cannot mint a token for another turn, and a dev server started from an
 agent's shell cannot take over the service's state. `bin/roundtable stop` only
 stops a process running from this checkout's release. A model id must look like
-one (letters, digits and `. : / @ ~ + - _`), so it can never be read as a flag
-on the CLI's command line. The changes panel runs git with the repository's own
-filesystem monitor, external diff and text conversion turned off, so a room's
-`.git/config` cannot make the service run a program.
+one (letters, digits and `. : / @ ~ + - _ [ ]`, never starting with `-`), so it
+can never be read as a flag on the CLI's command line. The changes panel runs
+git with the repository's own filesystem monitor, external diff, text
+conversion and clean or smudge filters turned off, so a room's `.git/config`
+cannot make the service run a program.
 
 ## Tests
 

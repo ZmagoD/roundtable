@@ -31,6 +31,20 @@ defmodule Roundtable.GitTest do
     refute File.exists?(marker)
   end
 
+  # A clean filter needs no flag of its own: config names it, either
+  # attributes file switches it on, and status and diff run it.
+  test "a filter configured in the repository is never run", %{dir: dir, git: git} do
+    marker = Path.join(dir, "filtered")
+    git.(["config", "filter.evil.clean", "touch #{marker}; cat"])
+    git.(["config", "filter.evil.required", "true"])
+    File.write!(Path.join([dir, ".git", "info", "attributes"]), "*.txt filter=evil\n")
+    File.write!(Path.join(dir, "kept.txt"), "uno\ndos\ntres\n")
+
+    assert {:ok, _} = Git.status(dir)
+    assert {:ok, _} = Git.diff(dir)
+    refute File.exists?(marker)
+  end
+
   test "a clean tree reports its branch and nothing else", %{dir: dir} do
     assert {:ok, status} = Git.status(dir)
     assert status.branch == "work"
