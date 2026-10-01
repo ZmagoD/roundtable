@@ -437,7 +437,9 @@ message from **supervisor**, saying what happened and what happens next.
   next turn starts.
 
 Only each participant's most recent turn from the last two hours is
-considered, and a turn you stopped yourself is left alone.
+considered, and a turn you stopped yourself is left alone. `/stop` counts for
+a turn that already ended in a crash too: it is marked stopped, so the
+watchdog will not quietly restart it about a minute later.
 
 With a team head, the watchdog also keeps the head in the loop. The notice
 mentions the head, which starts the head's turn, when:
@@ -770,6 +772,7 @@ the warning colour at 80% or more, near limit or limited. When a new reading
 arrives, chips on messages already on screen change with it, without a reload;
 hover a chip for when the reading was recorded. A sender who has left the room,
 or who writes from another room, shows “not reported”.
+
 The roster in agent prompts includes the same quota summary. OpenCode token
 counts are recorded only when its JSON step events include them; no quota
 percentage is inferred from those counts.

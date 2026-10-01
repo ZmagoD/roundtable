@@ -33,6 +33,16 @@ defmodule RoundtableWeb.AgentAvatarTest do
     assert AgentAvatar.mark(nil) == nil
   end
 
+  test "a keyword matches whole words only, and still reaches its longer forms" do
+    assert AgentAvatar.mark("keep an eye ahead of the build") == nil
+    assert AgentAvatar.mark("keep it up to latest at all times") == nil
+    assert AgentAvatar.mark("engineer") == "hero-code-bracket-mini"
+    assert AgentAvatar.mark("code review and then some") == "hero-check-badge-mini"
+    assert AgentAvatar.mark("team lead on the rebuild") == "hero-star-mini"
+    assert AgentAvatar.mark("verification and orchestration") == "hero-check-badge-mini"
+    assert AgentAvatar.mark("orchestrator of the room") == "hero-star-mini"
+  end
+
   test "it names the agent for people who cannot see the picture" do
     html = render("ada", "Reviewer")
     assert html =~ ~s(aria-label="ada")

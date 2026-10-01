@@ -69,7 +69,11 @@ defmodule Roundtable.Coordinator do
   def handle_call(:approvals, _, state), do: {:reply, state.approvals, state}
 
   def handle_call({:stop, agent_id}, _, state) do
-    {:reply, :ok, schedule(cancel_agent(state, agent_id))}
+    state = cancel_agent(state, agent_id)
+    # /stop cannot cancel a turn that already ended in a crash, and leaving it
+    # interrupted invites the watchdog to restart it about a minute later.
+    Chat.abandon_latest_failure(agent_id)
+    {:reply, :ok, schedule(state)}
   end
 
   def handle_call({:reset, agent_id}, _, state) do
@@ -593,7 +597,7 @@ defmodule Roundtable.Coordinator do
     end
   end
 
-  defp cancel_agent(state, agent_id, error \\ "Stopped. Retry to continue this assignment.") do
+  defp cancel_agent(state, agent_id, error \\ Supervision.stopped()) do
     state =
       Enum.reduce(state.workers, state, fn {id, worker}, acc ->
         if worker.agent_id == agent_id do

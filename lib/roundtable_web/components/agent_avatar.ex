@@ -23,6 +23,13 @@ defmodule RoundtableWeb.AgentAvatar do
     {~w(develop engineer implement programmer), "hero-code-bracket-mini"}
   ]
 
+  # A keyword has to begin a whole word — "ahead" is not "head", "latest" is
+  # not "test" — while staying a prefix: "verif" still reaches "verify" and
+  # "orchestrat" reaches "orchestrator".
+  @word_marks Enum.map(@marks, fn {words, icon} ->
+                {Enum.map(words, &Regex.compile!(~S{\b} <> &1)), icon}
+              end)
+
   attr :name, :string, required: true
   attr :role, :string, default: nil
   attr :provider, :string, default: nil
@@ -75,9 +82,9 @@ defmodule RoundtableWeb.AgentAvatar do
     role = String.downcase(role)
 
     found =
-      for {words, icon} <- @marks,
-          word <- words,
-          {at, _} <- [:binary.match(role, word)],
+      for {patterns, icon} <- @word_marks,
+          pattern <- patterns,
+          {at, _} <- List.wrap(Regex.run(pattern, role, return: :index)),
           do: {at, icon}
 
     case Enum.min_by(found, &elem(&1, 0), fn -> nil end) do

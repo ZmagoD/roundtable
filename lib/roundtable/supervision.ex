@@ -24,7 +24,12 @@ defmodule Roundtable.Supervision do
   # turn and go back in the queue when it is restarted.
   @held_back "Held back because an earlier turn of this participant failed. Retry to continue."
 
+  # What the human's /stop marks a turn with, including one that ended in a
+  # crash: cancelled or not, the retry is theirs to make.
+  @stopped "Stopped. Retry to continue this assignment."
+
   def held_back, do: @held_back
+  def stopped, do: @stopped
   def max_retries, do: @max_retries
   def gave_up, do: @gave_up
   def silent_after, do: @silent_after

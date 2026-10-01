@@ -810,6 +810,32 @@ defmodule Roundtable.Chat do
   def give_up(run), do: change(run, supervised_retries: Roundtable.Supervision.gave_up())
 
   @doc """
+  Marks a participant's latest turn stopped when it already ended in a crash
+  or a failure, so the watchdog leaves it: saying stop once has to be enough.
+  Turns held back behind it keep their own mark, so a retry there still puts
+  them back in the queue.
+  """
+  def abandon_latest_failure(agent_id) do
+    held = Roundtable.Supervision.held_back()
+
+    # The participant's latest real turn, its newest held-back turn aside:
+    # held turns are newer than the failure but wait on it.
+    latest =
+      from r in Run,
+        where: r.agent_id == ^agent_id and not (r.status == "stopped" and r.error == ^held),
+        select: max(r.id)
+
+    from(r in Run,
+      where: r.id in subquery(latest) and r.status in ["failed", "interrupted"]
+    )
+    |> Repo.update_all(
+      set: [status: "stopped", retry_at: nil, error: Roundtable.Supervision.stopped()]
+    )
+
+    :ok
+  end
+
+  @doc """
   Posts what the watchdog did. A notice that mentions the team head starts the
   head's turn, which is the point of a wake-up; every other notice names
   participants without `@` so it wakes nobody.
