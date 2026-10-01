@@ -80,6 +80,19 @@ defmodule Roundtable.Agents.ProtocolTest do
       refute "--model" in args
     end
 
+    test "claude is shut off from the human's own setup, with or without a session" do
+      for session_id <- [nil, "abc"] do
+        {_, args} = Protocol.command(%{provider: "claude", session_id: session_id, model: nil})
+
+        # Verified against the CLI: without these, an init event named the
+        # roundtable server plus eight claude.ai connectors and listed 45
+        # personal skills; with them, it names no server it was not passed and
+        # none of those skills.
+        assert "--strict-mcp-config" in args
+        assert ["--setting-sources", "project,local"] in Enum.chunk_every(args, 2, 1)
+      end
+    end
+
     test "a session or a model is passed only when there is one" do
       {_, args} = Protocol.command(%{provider: "claude", session_id: "abc", model: "opus"})
       pairs = Enum.chunk_every(args, 2, 1)

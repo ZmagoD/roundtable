@@ -447,6 +447,22 @@ defmodule Roundtable.MCPTest do
       assert id == ada.id
     end
 
+    test "claude steps into the room carrying nothing else from outside it", %{ada: ada} do
+      # With the tools wired in either way, the room is the only MCP
+      # configuration and the human's user settings stay unread, resumed
+      # session or not.
+      for with_session <- [false, true] do
+        agent = if with_session, do: Map.put(ada, :session_id, "sess-9"), else: ada
+        {"claude", args} = Protocol.command(agent)
+        pairs = Enum.chunk_every(args, 2, 1)
+
+        assert "--strict-mcp-config" in args
+        assert ["--setting-sources", "project,local"] in pairs
+        assert Enum.any?(pairs, &match?(["--mcp-config", _], &1))
+        assert with_session == "--resume" in args
+      end
+    end
+
     test "and no provider is given it any other way", %{room: room, ada: ada} do
       {:ok, codex} = Chat.create_agent(room.id, %{"name" => "linus", "provider" => "codex"})
 

@@ -20,7 +20,16 @@ defmodule Roundtable.Agents.Protocol do
       "--permission-mode",
       "default",
       "--permission-prompt-tool",
-      "stdio"
+      "stdio",
+      # Isolate the participant's session from the human's own setup. Without
+      # these, every turn loads the human's claude.ai connectors (Slack,
+      # Notion, Drive and the rest — a room agent could post to Slack), plus
+      # personal skills and memory, none of it asked for by this room.
+      # `project,local` keeps this workspace's own settings and permission
+      # rules; only the user's are dropped.
+      "--strict-mcp-config",
+      "--setting-sources",
+      "project,local"
     ]
 
     {"claude",
