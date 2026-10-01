@@ -137,6 +137,9 @@ the worker's launch provider, even if the participant is edited mid-turn.
 every browser room. Claude's installed rate-limit schema defines `utilization`
 as a fraction; converting it to a percentage is not an estimate. Codex uses the
 higher reported `usedPercent` of the two windows and preserves its reset time.
+Claude reports its windows in separate events, so `Usage.keep/2` keeps the one
+closer to its limit (stricter status, then higher percentage) and lets a newer
+reading of the same window replace it.
 Missing fields remain unknown. Contract tests use synthetic, non-sensitive
 events matching these protocol shapes; no real provider turn is needed.
 

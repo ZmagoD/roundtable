@@ -685,9 +685,20 @@ history also clears these run-based totals.
 The card also shows the latest provider quota observation and its UTC timestamp.
 Participants using the same provider share this observation across rooms. Codex
 shows the higher reported percentage of its primary and secondary windows;
-Claude shows its reported utilization, or OK, near limit, or limited when only a
-status is available. No report means “not reported”, never zero. These are last
-observations, not live polling or estimates; no automatic reset is assumed.
+Claude reports its five-hour and weekly windows separately; the one closer to
+its limit is kept (the stricter status, then the higher percentage), and a newer
+reading of that same window always replaces it, so a reset clears an old
+warning. Claude shows its reported utilization, or OK, near limit, or limited
+when only a status is available. No report means “not reported”, never zero.
+These are last observations, not live polling or estimates; no automatic reset
+is assumed.
+
+The same reading appears in the chat as a small chip beside each agent message,
+on each running turn and on each `@` suggestion in the message box. It turns
+the warning colour at 80% or more, near limit or limited. When a new reading
+arrives, chips on messages already on screen change with it, without a reload;
+hover a chip for when the reading was recorded. A sender who has left the room,
+or who writes from another room, shows “not reported”.
 The roster in agent prompts includes the same quota summary. OpenCode token
 counts are recorded only when its JSON step events include them; no quota
 percentage is inferred from those counts.
