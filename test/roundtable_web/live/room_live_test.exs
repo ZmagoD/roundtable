@@ -687,14 +687,16 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert html =~ "roundtable"
     end
 
-    test "a git repository is marked as one", %{view: view} do
+    # Its own repository, so the test does not depend on what happens to sit
+    # next to this checkout or what the checkout is called.
+    @tag :tmp_dir
+    test "a git repository is marked as one", %{view: view, tmp_dir: tmp_dir} do
+      File.mkdir_p!(Path.join([tmp_dir, "checkout", ".git"]))
       view |> element("#new-room-button") |> render_click()
 
       html =
         view
-        |> form("#room-form",
-          room: %{name: "X", directory: Path.dirname(File.cwd!()) <> "/round"}
-        )
+        |> form("#room-form", room: %{name: "X", directory: Path.join(tmp_dir, "check")})
         |> render_change()
 
       assert html =~ "directory-repo"
