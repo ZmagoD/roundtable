@@ -435,6 +435,16 @@ defmodule RoundtableWeb.RoomLive do
 
   def handle_event("add-profile", _, socket), do: {:noreply, socket}
 
+  def handle_event("confirm-remove-agent", %{"id" => id}, socket) do
+    case Enum.find(socket.assigns.agents, &(to_string(&1.id) == id)) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "This participant is no longer in the room.")}
+
+      agent ->
+        {:noreply, assign(socket, panel: "remove-agent", removing_agent: agent, form_error: nil)}
+    end
+  end
+
   def handle_event("remove-agent", %{"id" => id}, socket) do
     case Enum.find(socket.assigns.agents, &(to_string(&1.id) == id)) do
       nil ->
@@ -897,15 +907,18 @@ defmodule RoundtableWeb.RoomLive do
        )}
 
   defp run_command(socket, body) do
-    case ComposerCommands.parse(body, socket.assigns.agents) do
+    case ComposerCommands.parse(body, socket.assigns.agents,
+           runs: socket.assigns.runs,
+           approvals: socket.assigns.approvals
+         ) do
       {:error, message} ->
         {:noreply, put_flash(socket, :error, message)}
 
       {:quota_retry, id, enabled} ->
-        case Chat.update_agent(id, %{auto_retry: enabled}) do
-          {:ok, _} -> {:noreply, socket |> refresh() |> command_sent()}
-          {:error, _} -> {:noreply, put_flash(socket, :error, "Could not update quota retries.")}
-        end
+        update_command_agent(socket, id, %{auto_retry: enabled})
+
+      {:update_agent, id, attrs} ->
+        update_command_agent(socket, id, attrs)
 
       {:panel, panel} ->
         {:noreply, socket |> assign(panel: panel, form_error: nil) |> command_sent()}
@@ -913,6 +926,17 @@ defmodule RoundtableWeb.RoomLive do
       {:event, event, params} ->
         {:noreply, socket} = handle_event(event, params, socket)
         {:noreply, command_sent(socket)}
+    end
+  end
+
+  defp update_command_agent(socket, id, attrs) do
+    case Chat.update_agent(id, attrs) do
+      {:ok, _} ->
+        {:noreply, socket |> refresh() |> command_sent()}
+
+      {:error, changeset} ->
+        {:noreply,
+         put_flash(socket, :error, errors(changeset) <> ". Update the command and try again.")}
     end
   end
 
@@ -1011,7 +1035,11 @@ defmodule RoundtableWeb.RoomLive do
       effective_directory: Chat.effective_directory(socket.assigns.room),
       organization:
         Enum.find(Chat.organizations(), &(&1.id == socket.assigns.room.organization_id)),
-      approvals: Coordinator.approvals() |> Map.values() |> Enum.filter(&(&1.room_id == id))
+      approvals:
+        Coordinator.approvals()
+        |> Map.values()
+        |> Enum.filter(&(&1.room_id == id))
+        |> Enum.sort_by(&{&1.run_id, &1.request_id})
     )
   end
 

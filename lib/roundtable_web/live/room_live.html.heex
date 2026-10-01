@@ -258,12 +258,12 @@
                 </div>
               </article>
               <div
-                :for={approval <- @approvals}
+                :for={{approval, number} <- Enum.with_index(@approvals, 1)}
                 class="approval-card"
                 id={"approval-#{approval.run_id}-#{approval.request_id}"}
               >
                 <div class="eyebrow">YOUR APPROVAL NEEDED</div><h3>
-                  {approval.agent} wants to use a tool
+                  {approval.agent} wants to use a tool · approval {number}
                 </h3><pre>{Jason.encode!(approval.params, pretty: true)}</pre><div class="actions">
                   <button
                     class="button"
@@ -325,7 +325,9 @@
                 phx-change="draft"
                 class="composer"
                 phx-hook="Composer"
-                data-commands={Jason.encode!(ComposerCommands.suggestions(@agents))}
+                data-commands={
+                  Jason.encode!(ComposerCommands.suggestions(@agents, @runs, @approvals))
+                }
                 data-mentions={Jason.encode!(["all" | Enum.map(@agents, & &1.name)])}
               >
                 <div id="mention-menu-container" phx-update="ignore">
@@ -589,6 +591,8 @@
             "profiles" -> "YOUR PEOPLE"
             "schedules" -> "STANDING INSTRUCTIONS"
             "commands" -> "ROOM CONTROLS"
+            "roster" -> "YOUR TEAM"
+            "remove-agent" -> "REMOVE A PARTICIPANT"
             "clear-history" -> "CLEAR THIS ROOM"
             "work" -> "CURRENT WORK"
             "notes" -> "WHAT THIS ROOM HAS LEARNED"
@@ -603,6 +607,8 @@
             "profiles" -> "Saved agent roles"
             "schedules" -> "Schedules"
             "commands" -> "Chat commands"
+            "roster" -> "Participants"
+            "remove-agent" -> "Remove #{@removing_agent.name}"
             "clear-history" -> "Clear chat history"
             "work" -> "Work document"
             "notes" -> "Room notes"
@@ -628,6 +634,12 @@
 
             "schedules" ->
               "Say something to one participant at the same times every day."
+
+            "roster" ->
+              "The participants in this room, their roles and current status."
+
+            "remove-agent" ->
+              "Stop this participant's turns and remove it from the room. Its messages stay."
 
             "commands" ->
               "Type / in the chat field to find a command. Use the arrows, then Tab or Enter to complete it. Submit the completed command to run it."
@@ -656,10 +668,29 @@
         </p>
         <p :if={@form_error} class="form-error" role="alert">{@form_error}</p>
         <div :if={@panel == "commands"} id="chat-command-help">
-          <p :for={command <- ComposerCommands.suggestions(@agents)}>
+          <p :for={command <- ComposerCommands.suggestions(@agents, @runs, @approvals)}>
             <code>/{command.name} {command.usage}</code><br />{command.description}
           </p>
           <p>To send a message that starts with a slash, type // instead.</p>
+        </div>
+        <div :if={@panel == "roster"} id="command-roster">
+          <p :if={@agents == []}>No participants yet. Invite an agent to get started.</p>
+          <p :for={agent <- @agents} id={"roster-agent-#{agent.id}"}>
+            <strong>{agent.name}</strong>
+            · {agent.provider} · {agent.model || "provider default"} · {agent.cost_tier} · {status_label(
+              status(agent, @runs)
+            )}<br />
+            {agent.role}
+          </p>
+        </div>
+        <div :if={@panel == "remove-agent"} class="actions">
+          <button
+            id="confirm-remove-agent"
+            class="button danger"
+            phx-click="remove-agent"
+            phx-value-id={@removing_agent.id}
+          >Remove {@removing_agent.name}</button>
+          <button id="cancel-remove-agent" class="button secondary" phx-click="close-panel">Keep participant</button>
         </div>
         <div :if={@panel == "clear-history"} class="actions">
           <button id="confirm-clear-history" class="button danger" phx-click="clear-history">Clear chat history</button>

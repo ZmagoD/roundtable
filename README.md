@@ -120,13 +120,21 @@ filters as you type, and includes `@all` to address everyone in the room.
 In the browser, type `/` at the start of the chat field for command autocomplete.
 Use `↑`/`↓` to select, then `Tab` or `Enter` to complete, or click a suggestion.
 Completing a command does not run it: submit the completed line to execute it.
-Participant names and `on`/`off` values are suggested as you type arguments.
+Participant names, `on`/`off` values, retryable run IDs and pending approval
+numbers are suggested as you type arguments.
 `Escape` closes the menu, and `Shift + Enter` still inserts a newline.
 
 Browser commands are `/clear-history`, `/quota-retry <agent> on|off`,
-`/head <agent|off>`, `/work`, `/context`, `/schedules`, `/stop <agent>`, and `/help`.
-`/work` and `/context` open their editors. `/clear-history` opens a confirmation;
-selecting it never immediately deletes messages. Commands act locally on the
+`/head <agent|off>`, `/work`, `/context`, `/schedules`, `/stop <agent>`, `/help`,
+`/auto <agent> on|off`, `/model <agent> <id|default>`, `/role <agent> <text>`,
+`/reset <agent>`, `/retry [run]`, `/approve accept|decline [n]`,
+`/rename <agent> <new>`, `/remove <agent>` and `/who`.
+`/work` and `/context` open their editors; `/who` opens the roster.
+`/retry` without an ID retries the newest failed, interrupted, stopped or
+quota-waiting run. Approval numbers match the numbered cards in the chat;
+omitting the number selects the first pending approval.
+`/clear-history` and `/remove` open confirmations before deleting anything.
+Commands act locally on the
 current room and are not posted to agents, regardless of the recipient selector.
 Use `//` to send ordinary text beginning with `/`. The terminal's larger command
 palette remains available in the terminal client.

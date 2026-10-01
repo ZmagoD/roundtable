@@ -5,12 +5,16 @@ import {suggestions, Composer} from "../js/composer.mjs"
 const commands = [
   {name: "clear-history", usage: "", description: "Confirm before clearing", choices: []},
   {name: "quota-retry", usage: "<agent> on|off", description: "Resume after quota", choices: [["ada", "bob"], ["on", "off"]]},
-  {name: "head", usage: "<agent|off>", description: "Primary contact", choices: [["ada", "bob", "off"]]}
+  {name: "head", usage: "<agent|off>", description: "Primary contact", choices: [["ada", "bob", "off"]]},
+  {name: "auto", usage: "<agent> on|off", description: "Tool approvals", choices: [["ada", "bob"], ["on", "off"]]},
+  {name: "retry", usage: "[run]", description: "Retry a run", choices: [["21", "12"]]},
+  {name: "approve", usage: "accept|decline [n]", description: "Answer approval", choices: [["accept", "decline"], ["1", "2"]]},
+  {name: "model", usage: "<agent> <id|default>", description: "Choose model", choices: [["ada", "bob"], ["default"]]}
 ]
 const suggest = (text, caret = text.length, end = caret) => suggestions(text, caret, end, commands, ["all", "ada", "bob"])
 
 test("slash commands filter and carry descriptions", () => {
-  assert.equal(suggest("/").length, 3)
+  assert.equal(suggest("/").length, commands.length)
   assert.equal(suggest("/cl")[0].text, "/clear-history ")
   assert.equal(suggest("/cl")[0].description, "Confirm before clearing")
   assert.deepEqual(suggest("//clear-history"), [])
@@ -59,10 +63,22 @@ test("arrows navigate, Escape closes, and IME and Shift+Enter are left alone", (
     refresh: () => { refreshed = true }, close: () => { closed = true },
     el: {requestSubmit: () => assert.fail("must not submit")}}
   Composer.onKeyDown.call(hook, {key: "ArrowUp", preventDefault() {}})
-  assert.equal(hook.selected, 2)
+  assert.equal(hook.selected, commands.length - 1)
   assert.ok(refreshed)
   Composer.onKeyDown.call(hook, {key: "Escape", preventDefault() {}, stopPropagation() {}})
   assert.ok(closed)
   Composer.onKeyDown.call(hook, {key: "Enter", shiftKey: true})
   Composer.onKeyDown.call(hook, {key: "Enter", isComposing: true})
+})
+
+
+test("agent controls and numbered actions offer and filter each argument", () => {
+  assert.deepEqual(suggest("/auto a").map(s => s.label), ["ada"])
+  assert.deepEqual(suggest("/auto ada o").map(s => s.label), ["on", "off"])
+  assert.deepEqual(suggest("/retry 2").map(s => s.label), ["21"])
+  assert.deepEqual(suggest("/approve d").map(s => s.label), ["decline"])
+  assert.deepEqual(suggest("/approve decline ").map(s => s.label), ["1", "2"])
+  assert.deepEqual(suggest("/approve decline 2").map(s => s.label), ["2"])
+  assert.deepEqual(suggest("/model ada d").map(s => s.label), ["default"])
+  assert.deepEqual(suggest("/retry 21 "), [])
 })
