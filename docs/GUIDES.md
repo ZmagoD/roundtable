@@ -19,13 +19,14 @@ this is what to do once you are in.
 A room is one project on one working tree, and everyone in it shares that tree.
 The split that works is by *responsibility*, not by chapter of the task:
 
-```
-/new-room checkout .
-/context Elixir and Phoenix. Tests with every change, mix precommit before anything is done.
-/agent architect claude --model opus --tier premium --role "Plan and assign. Split the work, say who does what, never write code yourself."
-/agent builder codex --tier economy --role "Implement exactly what architect specifies. Tests with the change."
-/agent reviewer claude --model sonnet --tier standard --role "Review diffs for correctness and coverage. Say what is wrong, do not fix it."
-```
+Create a room for your working tree using **New room**, then set its **Room
+brief** to the stack and verification rules. Invite three participants:
+
+- `architect`: plans and assigns work; never writes code.
+- `builder`: implements the assigned task and ships tests with it.
+- `reviewer`: checks diffs for correctness and coverage; reports findings.
+
+Choose each provider, model and cost tier in the participant form.
 
 Then address the one you mean: `@architect a repeated POST charges twice`. Its
 reply can mention `@builder`, which starts that turn, and so on for up to four
@@ -57,10 +58,10 @@ Anything that is true for everyone belongs in the room's brief rather than in
 each role, where copies drift apart: the stack, the conventions, what "done"
 means, what is off limits.
 
-```
-/context Elixir/Phoenix checkout service. Tests with every change. mix precommit
-before anything is called done. Never push; the human does that.
-```
+Open **Room brief** (or type `/context`) and save, for example:
+
+> Elixir/Phoenix checkout service. Tests with every change. Run mix precommit
+> before anything is called done. Never push; the human does that.
 
 In the browser it is **Room brief** in the room header. Every turn opens with
 the participant's own role *and* this. Where both apply, an agent follows both;
@@ -71,12 +72,12 @@ silently.
 
 **Agent profiles** in the sidebar is the library: provider, model, cost tier,
 role and tool approvals, saved under a name. Add one to the room you are in with
-the button on its row, or `/hire reviewer` in the terminal client.
+the button on its row.
 
 A profile is a template. The participant it creates is its own from that moment
 — its own provider session, its own queue — so the same `reviewer` profile can
 be in three rooms at once without any of them sharing context. To have it twice
-in one room, give the second a different name: `/hire reviewer reviewer-api`.
+in one room, give the second a different name in the participant form.
 
 Editing or deleting a profile never reaches back into rooms.
 
@@ -109,12 +110,8 @@ Give each instruction a short name such as `Morning review` so it is easy to
 recognize later.
 The **Schedules** link in the sidebar opens `/schedules`, where you can audit
 and manage instructions across every room.
-In the terminal client:
-
-```
-/schedule ada 09:00 Sweep the bug board and say what is worth doing today
-/schedule ada 09:00,17:30 Summarise what changed since last time --days 1,2,3,4,5
-```
+Choose the participant, enter times such as `09:00,17:30`, select weekdays, and
+save the instruction in the schedule form.
 
 What it says lands in the room as an ordinary mention, so it starts a turn and
 costs what a turn costs. For one that should run while you are asleep, set that
@@ -122,9 +119,8 @@ participant to approve its own tools as well; otherwise it will be waiting at
 the first one when you come back.
 
 Times are this machine's own local time. A schedule missed by more than ten
-minutes is skipped rather than run late. `/schedules` lists them with their ids,
-`/unschedule <id>` stops one, and in the browser a schedule can be switched off
-and left there for next time. The workspace page can switch off or delete an
+minutes is skipped rather than run late. In **Schedules**, an instruction can
+be switched off and left there for next time. The workspace page can switch off or delete an
 instruction without opening each room first.
 
 ## Let an orchestrator run unattended
@@ -133,7 +129,7 @@ Codex and Claude Code stop and ask before each tool use. That is right for a
 participant you are watching and wrong for one you set going and leave.
 
 Set **Tool approvals** to *Approve automatically* on its card, `/auto architect
-on` in the terminal client, or press **Always allow** on a request that is
+on` in the browser chat field, or press **Always allow** on a request that is
 already waiting. Its turns then run without stopping, and every granted request
 is written to the service log:
 
@@ -148,7 +144,7 @@ they use their own configured permissions and never ask in the first place.
 ## Change a model and have it take effect
 
 Pick a different model on the participant's card, or `/model ada <id>`
-(`/model ada default` hands the choice back to the CLI). `/models <provider>`
+(`/model ada default` hands the choice back to the CLI). The model picker
 lists what that CLI reports; anything it does not list can go in a **Model
 preset**.
 
@@ -165,8 +161,6 @@ message): it stays on that turn and its retries, whatever the default becomes.
 
 - **Terminal** in the room header opens a shell in the room's directory. `nvim
   .`, `lazygit`, `git diff` — it is a real pty, so full-screen programs work.
-- In the terminal client, `^T` shows the changes pane for the room's tree and
-  `^G` hands the whole terminal to lazygit until you quit it.
 - Each reply carries the model and cost tier it was produced with, so an
   expensive turn is visible in the transcript rather than only on the bill.
 
@@ -175,11 +169,11 @@ message): it stays on that turn and its retries, whatever the default becomes.
 Rooms are teams. One can ask another without joining it:
 
 ```
-/ask platform/ada does the gateway retry 502s?
-/delegate platform/ada add the retry and tell me when it lands
+@platform/ada does the gateway retry 502s?
 ```
 
-The answer is posted back into your room when their turn finishes. Hops are
+Include the task in the cross-room mention in the browser chat field. The
+answer is posted back into your room when their turn finishes. Hops are
 capped the same way as mentions, so a chain cannot run away.
 
 ## Run a model on another machine

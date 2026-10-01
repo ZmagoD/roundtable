@@ -2,7 +2,7 @@ defmodule Roundtable.Coordinator do
   @moduledoc """
   Serialises every queue transition in the service.
 
-  One process owns which turns are running, so two clients cannot start the
+  One process owns which turns are running, so concurrent requests cannot start the
   same agent twice and a delivery cannot interleave with a retry. It holds no
   durable state of its own: runs live in the database, and this process only
   decides what happens next.

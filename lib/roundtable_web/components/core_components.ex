@@ -59,8 +59,7 @@ defmodule RoundtableWeb.CoreComponents do
   @doc """
   A message body, rendered as the Markdown agents actually write.
 
-  Same parser the terminal client uses, so a reply reads the same in both. The
-  text is interpolated rather than injected as HTML: an agent's output is not
+  Text is interpolated rather than injected as HTML: an agent's output is not
   trusted markup, and a room is full of other people's output.
   """
   def message(assigns) do

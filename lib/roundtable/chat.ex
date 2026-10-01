@@ -2,9 +2,8 @@ defmodule Roundtable.Chat do
   @moduledoc """
   Rooms, participants, messages and the turns they schedule.
 
-  The coordination core, and the only module that writes to the database. Both
-  clients — the browser UI and the terminal — go through here, so a rule lives
-  in one place rather than once per client.
+  The coordination core, and the only module that writes to the database. The
+  browser UI and agent tools go through here, so each rule lives in one place.
   """
   import Ecto.Query
 
@@ -1113,7 +1112,7 @@ defmodule Roundtable.Chat do
     |> String.trim("-")
   end
 
-  @doc "Finds a room by slug, exact name, or id. Used by `/ask` and by mentions."
+  @doc "Finds a room by slug, exact name, or id. Used by cross-room requests and mentions."
   def find_room(reference) do
     reference = String.trim(reference)
     slug = room_slug(reference)

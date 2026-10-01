@@ -166,7 +166,6 @@ echo
 bold "Roundtable is installed."
 echo
 echo "  roundtable start     start the service"
-echo "  roundtable tui       open the terminal client"
 echo "  roundtable status    check on it, and print the browser URL"
 echo "  roundtable stop      stop it"
 echo

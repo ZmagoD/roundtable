@@ -11,20 +11,15 @@ through worker dispatch, approval and completion.
 
 ```sh
 mix precommit
-mix test --only pty
 mix test --cover
 ```
 
 `mix precommit` runs the default suite with compilation, formatting and Credo
-checks. The `:pty` tests run separately because they start a second VM and drive
-a real terminal. `mix test --include pty` runs both groups together.
+checks. The browser shell's PTY bridge tests run in the same suite. JavaScript
+composer tests run with `node --test assets/test/*.test.mjs`.
 
-The latest local validation on 2026-09-18 passed 405 default tests and all four
-terminal integration tests. The team-builder's 30 new executable Elixir lines
-were covered. Overall coverage was 81.30%, below the default 90% threshold;
-`mix test --cover` therefore exits with a coverage failure even when its tests
-pass. HTML reports are in `cover/`. Second-VM terminal execution is not captured
-by the parent report, and there are also uncovered paths elsewhere.
+Coverage reports are written to `cover/`; the default threshold is 90%.
+Coverage records execution rather than proof of correctness.
 
 ## Optional provider checks
 

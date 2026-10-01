@@ -1,6 +1,6 @@
 # Contributing
 
-Roundtable keeps coordination separate from provider implementations and clients.
+Roundtable keeps coordination separate from provider implementations and the browser UI.
 Changes should preserve durable delivery, per-participant session isolation,
 and explicit permission handling.
 
@@ -10,9 +10,8 @@ and explicit permission handling.
   behaviour and add protocol fixture tests. See `docs/ADAPTERS.md`.
 - Keep credentials and local transcripts out of code, fixtures, screenshots, and logs.
 - Do not disable provider approval/sandbox settings to make an integration pass.
-- For a future TUI, keep business logic in `Roundtable.Chat` and
-  `Roundtable.Coordinator`; introduce a versioned, authenticated transport rather
-  than coupling the client to database tables.
+- Keep browser and agent-tool business rules in `Roundtable.Chat` and
+  `Roundtable.Coordinator`; the UI never writes database tables directly.
 
 Before publishing, select a license and add the repository URL and maintainer
 contact information. This repository intentionally has no fabricated ownership

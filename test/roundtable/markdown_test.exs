@@ -1,46 +1,10 @@
 defmodule Roundtable.MarkdownTest do
   @moduledoc """
-  What agents actually write, and how it has to read.
-
-  The wrapping tests matter most: breaking mid-word to fill a column made
-  every reply look corrupted, and no amount of styling fixes that.
+  Markdown blocks and inline text used by the browser message renderer.
   """
   use ExUnit.Case, async: true
 
   alias Roundtable.Markdown
-
-  describe "wrapping" do
-    test "breaks between words, not through them" do
-      assert Markdown.wrap("the test does not cover the boundary", 20) == [
-               "the test does not",
-               "cover the boundary"
-             ]
-    end
-
-    test "every line fits" do
-      text = "Roundtable keeps one conversation for a human and several coding agents."
-
-      for width <- [12, 20, 37, 80] do
-        for line <- Markdown.wrap(text, width) do
-          assert String.length(line) <= width, "#{inspect(line)} is wider than #{width}"
-        end
-      end
-    end
-
-    test "a word longer than the line is broken, because the alternative overflows" do
-      path = String.duplicate("a", 25)
-      lines = Markdown.wrap(path, 10)
-
-      assert Enum.all?(lines, &(String.length(&1) <= 10))
-      assert Enum.join(lines) == path
-    end
-
-    test "nothing to wrap is still one line" do
-      assert Markdown.wrap("", 20) == [""]
-      assert Markdown.wrap("   ", 20) == [""]
-      assert Markdown.wrap("anything", 0) == [""]
-    end
-  end
 
   describe "blocks" do
     test "headings lose their hashes" do

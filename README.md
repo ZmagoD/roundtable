@@ -24,8 +24,8 @@ Provider CLIs connect to their configured services to run the models.
   helper that can add participants, reuse profiles and configure schedules.
 - **Schedule standing instructions.** Wake an existing participant with a prompt
   at chosen times of day, every day or on selected weekdays.
-- **Two clients, one core.** The browser UI and a terminal client that attaches
-  to the running service over distributed Erlang.
+- **Browser workspace.** Chat, approvals, participant controls and an embedded
+  shell in one page, backed by a single coordination core.
 
 **Status:** early working prototype. A public network API is not implemented
 yet.
@@ -49,7 +49,6 @@ Then:
 
 ```sh
 roundtable start     # start the background service
-roundtable tui       # open the terminal client
 roundtable status    # check on it, and print the browser URL
 ```
 
@@ -136,8 +135,7 @@ omitting the number selects the first pending approval.
 `/clear-history` and `/remove` open confirmations before deleting anything.
 Commands act locally on the
 current room and are not posted to agents, regardless of the recipient selector.
-Use `//` to send ordinary text beginning with `/`. The terminal's larger command
-palette remains available in the terminal client.
+Use `//` to send ordinary text beginning with `/`.
 
 
 The room header shows the current branch and the working directory, and a panel
@@ -197,112 +195,10 @@ the runtime, so the same two commands work on every distribution — the only
 thing installed is a `.desktop` text file. Set `ROUNDTABLE_BROWSER` to choose a
 browser; without a Chromium-family one it falls back to an ordinary tab.
 
-## Terminal client
-
-```sh
-roundtable start   # the service owns the database and the agents
-roundtable tui     # attach a terminal to it
-```
-
-The client attaches to the running service over distributed Erlang rather than
-opening the database itself, so the terminal, the browser, and any other
-terminal all see one conversation and one delivery queue. Quitting the client
-leaves running turns alone: a 30-minute turn keeps going, and reattaching shows
-where it got to. The service node is `roundtable@<hostname>`; override it with
-`ROUNDTABLE_NODE`, and the cookie with `ROUNDTABLE_COOKIE`.
-
-Agents do not run in the browser or in the client: the service starts each
-provider CLI as a process on your machine, in the room's working directory.
-Every participant in a room works on the same tree — a room is a project, and
-separate trees are separate rooms. So point a room at the project you want worked on — from the
-directory itself, `/new-room My App .` is enough — and the agent has the access
-your user has there, subject to the provider's own permissions.
-
-Type a message to post it to the room, or `@name` to assign a turn — `Tab`
-cycles the recipient. Lines beginning with `/` are commands:
-
-| Command | Effect |
-| --- | --- |
-| `/help`, or `?` on an empty line | the full help screen |
-| `/rooms`, `/room <name>` | list rooms, switch to one |
-| `/new-room <name> <dir>` | create a room; `.` is the directory you started the client in |
-| `/head <agent\|off>` | choose the primary contact, or restore mention-only routing |
-| `/work [text]` | show the shared work document, or replace it |
-| `/context [text]` | show the room's shared brief, or set it |
-| `/schedules` | list this room's schedules and their ids |
-| `/schedule <agent> <times> <text> [--days 1,2,3,4,5]` | send a recurring prompt at selected times and weekdays |
-| `/unschedule <id>` | delete a schedule |
-| `/agent <name> <provider>` | add a participant; `--model`, `--role`, `--tier` |
-| `/role <agent> <text>` | set what a participant is for |
-| `/model <agent> <id\|default>` | pin a model, or hand the choice back |
-| `/quota-retry <agent> on\|off` | automatically resume assignments after quota resets |
-| `/auto <agent> on\|off` | let it approve its own tool use |
-| `/rename <agent> <new name>` | rename a participant, before its first turn |
-| `/providers` | which agent CLIs are installed |
-| `/profiles`, `/hire <profile> [name]` | the profile library, and adding one here |
-| `/models <provider> [filter]` | model names that provider offers |
-| `/who` | show every participant, their model, tier and role |
-| `/stop <agent>`, `/reset <agent>` | stop a participant's queue, clear its session |
-| `/remove <agent>` | remove a participant; what it said stays |
-| `/clear-history <exact current room name>` | clear chat and runs, stop turns, and reset sessions |
-| `/remove-room <name>` | delete a room and everything in it |
-| `/retry [run]` | retry the newest failed run, or one by id |
-| `/approve accept\|decline [n]` | answer a pending tool approval |
-| `/changes [on\|off]` | show or hide the changes pane |
-| `/ask <room>/<agent> <question>` | ask another room; the answer comes back here |
-| `/delegate <room>/<agent> <task>` | hand work to another room; it reports back |
-| `/lazygit` | hand the terminal to lazygit |
-| `/refresh` | re-read the room now, without waiting for an update |
-| `/quit` | leave (Ctrl-C and Ctrl-D also work) |
-
-Type `/` and the commands appear as a palette, narrowing as you type: `↑`/`↓`
-choose, `Tab` completes as far as the matches agree, and `Enter` takes the
-highlighted one — filling in the line when it needs an argument rather than
-running it bare. Press `?` on an empty line for the full help screen. The
-client is meant to be learnable from inside it, without this page.
-
-`↑`/`↓` and `PgUp`/`PgDn` scroll the transcript, `^L` redraws. Approvals and
-failed runs appear inline with the command that answers them.
-
-`^P` opens the roster: every participant with their provider, model, cost tier
-and role, which is also what each agent is told about the others.
-
-The message line takes the usual editing keys: `Esc` closes the roster if it is open and otherwise clears it, `^U` deletes to
-the start, `^W` deletes the word behind the cursor, and `Home`/`End` jump to
-either end.
-
-### Watching the work land
-
-A pane under the transcript polls `git status` in the room's directory, so you
-see files appear and line counts move while a turn is still running:
-
-```
-─ changes · main ───────────────────────────────
-  M lib/parser.ex                          +42 -7
-  A test/parser_test.exs                      +88
- ?? scratch.md
- 3 files, +130 -7
-```
-
-`^T` hides and shows it. It watches the room's directory, which is where every
-participant in the room works.
-
-`^G` hands the terminal to **lazygit** in whichever directory the pane is
-watching, and brings the client back when you quit it. Set `ROUNDTABLE_GIT_UI`
-to use something else (`ROUNDTABLE_GIT_UI=nvim`, for instance). This needs
-`bin/roundtable tui`: the client cannot spawn an interactive tool itself,
-because the BEAM starts every child process in its own session with no
-controlling terminal, so the launcher does it and restarts the client
-afterwards.
-
-Without the service running, `mix tui --local` starts a standalone client that
-owns the database itself. Use it only when the background service is stopped —
-two coordinators on one database fight over the same delivery queue.
-
 ### Which agents and which models
 
 The app looks for each adapter's CLI on your PATH and says which it found — in
-the browser beside the provider, and with `/providers` in the terminal. An
+the participant form beside the provider. An
 agent on a CLI you have not installed can still be created; it just says so,
 rather than letting you find out at the first turn.
 
@@ -321,16 +217,7 @@ something to choose on the first screen. A model an agent already has is kept
 as an option even if the CLI has stopped listing it, rather than being dropped
 without telling you.
 
-`/models <provider> [filter]` does the same from the terminal — with 400-odd
-OpenCode models, the filter is the point:
-
-```
-/models claude              claude: fable, opus, sonnet
-/models opencode mistral    filters 405 down to the ones you meant
-/providers                  which CLIs are installed
-```
-
-The terminal accepts explicit model IDs even when they are not in the listing.
+The browser `/model <agent> <id>` command accepts explicit model IDs.
 Model presets in the sidebar also accept explicit IDs and save the ones you
 use with a cost tier attached.
 
@@ -341,10 +228,8 @@ want: it is a multi-provider agent, and `opencode models` lists what your
 installation can actually reach. On this machine that is over 400, including
 Mistral and Grok:
 
-```
-/agent mistral opencode --model openrouter/mistralai/mistral-large --tier standard
-/agent grok opencode --model openrouter/~x-ai/grok-latest --tier standard
-```
+Invite an agent, choose OpenCode, and select the model it reports in the picker.
+Save an explicit model ID under **Model presets** when needed.
 
 So a new provider usually needs no code. An adapter is for a CLI with its own
 agent loop — its own tools, approvals and sessions — not for reaching a model.
@@ -378,12 +263,11 @@ The address is whichever machine runs it — `127.0.0.1` when it is this one —
 and the `/v1` suffix matters: that is Ollama's OpenAI-compatible endpoint.
 
 Nothing is needed here. Roundtable asks the CLI what it can reach, so the
-models appear in `/models opencode ollama` and in the browser's picker as soon
+models appear in the browser's picker as soon
 as OpenCode knows about them:
 
-```
-/agent local opencode --model ollama/qwen2.5-coder:14b --tier economy
-```
+Invite an OpenCode participant called `local`, select your Ollama model in the
+picker, and choose the cost tier you want to use for assignments.
 
 One caveat worth setting expectations on: a participant is only as useful as
 its model is at *tool use*. A small local model that writes good prose may
@@ -401,7 +285,7 @@ A room is addressed from another room by its name in lowercase with dashes, so
 `Design Team` is `design-team`:
 
 ```
-/ask design-team/grace what spacing should the room list use?
+@design-team/grace what spacing should the room list use?
 ```
 
 The question is delivered into Design Team as an ordinary turn for `@grace`,
@@ -411,9 +295,8 @@ same by writing `@design-team/grace …` in its reply; the answer then mentions
 that agent, so it wakes up and can use it. Each agent's prompt lists the other
 rooms it can reach.
 
-`/delegate` is the same path for work rather than a question, and reports back
-when it is done. Agents can ask other rooms on their own, but only a human can
-delegate to one.
+Include the question or task directly after the cross-room mention in the
+browser chat field.
 
 The four-hop cap spans rooms: a cross-room request inherits the asking
 message's depth, so Platform → Design → Platform terminates like any other
@@ -421,118 +304,17 @@ chain rather than resetting each time it crosses a boundary.
 
 ## A walkthrough
 
-Say you want a discount added to a checkout. Start the service and open a
-terminal on the project:
+Open `roundtable open`, create a room for an existing project directory, and
+invite an implementer and a reviewer. Set their roles in their participant
+forms, then mention the implementer in chat with a concrete task. Its reply can
+hand work to the reviewer by name. Approvals and results appear in the chat.
 
-```sh
-cd ~/code/checkout
-roundtable start
-roundtable tui
-```
+The header carries the branch and directory; the right-hand column shows each
+participant's role, model, quota observation and reported tokens. Use the
+**Terminal** button to inspect changes in the room's directory. The theme follows
+your system:
 
-**Make a room on the project.** `.` is the directory you are standing in:
-
-```
-/new-room Checkout .
-```
-
-**Build a team.** Give each participant a model, a cost tier and — most
-importantly — a role, because every agent is told about the others and uses
-that to decide who to hand work to:
-
-```
-/agent architect claude --model opus --tier premium --role "Plan and assign. Never write code yourself."
-/agent builder codex --tier economy --role "Implement exactly what architect specifies."
-/agent reviewer claude --model sonnet --tier standard --role "Review diffs for correctness and tests."
-```
-
-`^P` shows who is in the room, what they run on, and what each is for:
-
-```
- roundtable                                                Checkout · main · /tmp/rt-demo-project 
-──────────────────────────────────────────────────────────────────────────────────────────────────
- ROOMS              participants · 3 ──────────────────────────────────────────────────────────── 
- ▌ Checkout          ○ @architect  claude · opus · premium                                        
-                       Plan and assign. Never write code yourself.                                
- AGENTS                                                                                           
- ○ architect         ○ @builder  codex · provider default · economy                               
- ○ builder             Implement exactly what architect specifies.                                
- ○ reviewer                                                                                       
-                     ○ @reviewer  claude · sonnet · standard                                      
-                       Review diffs for correctness and tests.                                    
-                                                                                                  
-                                                                                                  
-──────────────────────────────────────────────────────────────────────────────────────────────────
- ▌ /quit                                                                                          
- ?  help    ^P  who    ^T  changes    ^G  lazygit    ^C  quit                          in-process 
-```
-
-**Give the work to someone.** A message with an `@name` starts that
-participant's turn. Without a mention, it goes to the selected team head;
-without a head, it is saved as shared context for the next turn:
-
-```
-@architect we need a percentage discount on the cart total.
-```
-
-Architect plans, then hands the implementation over by mentioning `@builder`
-in its reply, which starts builder's turn. Delegation stops after four hops, so
-a chain ends on its own.
-
-**Watch the work land.** Replies are rendered rather than shown as markup —
-headings, bullets and code, wrapped on words — and the pane underneath is
-`git status` in the room's directory, updating while a turn runs:
-
-```
- roundtable                                                Checkout · main · /tmp/rt-demo-project 
-──────────────────────────────────────────────────────────────────────────────────────────────────
- ROOMS                               implementation.                                              
- ▌ Checkout                                                                                       
-                    14:09 builder    Added Cart.discount/2 with a test for 10% off 100. @reviewer 
- AGENTS                              over to you.                                                 
- ○ architect                                                                                      
- ○ builder          14:09 reviewer   The rounding is right, but the test does not cover the case  
- ○ reviewer                          that made you ask.                                           
-                                                                                                  
-                                     What I checked                                               
-                                                                                                  
-                                     • round/1 rounds half away from zero, so 105 at 10% gives 95 
-                                     • the only test is an exact division, which never rounds     
-                                                                                                  
-                                     ▏ test "rounds half away from zero" do                       
-                                     ▏   assert Checkout.Cart.discount(105, 10) == 95             
-                                     ▏ end                                                        
-                                                                                                  
-                                     @builder add that one, plus 0% and 100%.                     
-                    changes · main ────────────────────────────────────────────────────────────── 
-                      M lib/cart.ex                                                          +2 -0
-                      M test/cart_test.exs                                                   +4 -0
-                     ?? NOTES.md                                                                  
-                     3 files, +6 -0                                                               
-──────────────────────────────────────────────────────────────────────────────────────────────────
- ▌ Say something, or / for commands                                                               
- Connected to in-process. /help for commands.                                          in-process 
-```
-
-**Answer for the tools.** When an agent asks to run something, the request
-appears inline with the command that answers it — `/approve accept 1` or
-`/approve decline 1`. Codex and Claude Code ask; OpenCode uses its own
-configured permissions.
-
-**Press `?` for everything else.** The client is meant to be learnable from
-inside it.
-
-### The same room in a browser
-
-`roundtable open` gives the same room a window — the one at the top of this
-page. The header carries the branch and the directory, the right-hand column is
-the roster with each participant's role, model and tier, and the theme follows
-your system. Dark is the same palette with its lightness inverted, not a second
-design:
-
-![The same room in dark mode](docs/images/room-dark.png)
-
-The **Terminal** button opens a shell in the room's directory, in the page.
+![A room in dark mode](docs/images/room-dark.png)
 
 ## Working together
 
@@ -564,8 +346,7 @@ with partial output and a retry control. Each turn has a 30-minute timeout.
 
 **Agent profiles** in the sidebar is where a participant is defined once —
 provider, model, cost tier, role, how it handles tool approvals — and added to
-any room from there, or with `/hire <profile> [name]` in the terminal client.
-`/profiles` lists them.
+any room from there.
 
 A profile is a template, not a shared participant. Adding one creates an agent
 in that room, with its own provider session and its own queue, so the same
@@ -577,7 +358,7 @@ added from it exactly as they are.
 ### Continuing after provider quota limits
 
 Enable **Resume after quota resets** on each participant that should wait and
-continue automatically. In the terminal:
+continue automatically. In the browser chat field:
 
 ```text
 /quota-retry lead on
@@ -588,7 +369,7 @@ continue automatically. In the terminal:
 This is off by default. Enable it before starting work; for an assignment that
 has already failed, enable it and use **Retry assignment** or `/retry <run>`.
 A recognized provider quota failure becomes **Waiting for quota**, with the
-next attempt shown in the browser and terminal. The assignment, partial output,
+next attempt shown in the browser. The assignment, partial output,
 provider session, and queued work stay saved. A waiting participant holds its
 queue, while other participants can carry on.
 
@@ -629,15 +410,14 @@ subagents are managed by their provider session.
 
 ### Clearing a room's chat
 
-Use **Clear chat history** in the room header and accept the confirmation, or
-enter `/clear-history <exact current room name>` in the terminal. The command
-requires the full name of the room you currently have open.
+Use **Clear chat history** in the room header or enter `/clear-history` in
+the browser chat field. Both open a confirmation before deleting anything.
 
 This permanently deletes the room's messages and run records, stops its active
 and queued turns, and resets its agents' provider sessions. Cross-room request
 links involving the room are removed, so outstanding replies cannot return to
 the cleared chat. Messages and work already running in other rooms stay there.
-All connected clients refresh the transcript.
+All open browser tabs refresh the transcript.
 
 The room, participants, primary contact, work document, notes, brief, and
 schedules remain. Enabled schedules can start new turns later. There is no undo.
@@ -648,7 +428,7 @@ project context, edit the work document, notes, and brief separately.
 ### A primary contact and a shared work document
 
 Select **Make team head** on the participant you want to talk to most, or type
-`/head lead` in the terminal. Ordinary human messages now start that agent's
+`/head lead` in the browser chat field. Ordinary human messages now start that agent's
 turn. Explicit `@name` and `@all` mentions still choose recipients directly.
 Unknown mentions do not fall back to the head; system notices and unaddressed
 agent replies do not wake them either. Remove the designation on the card or
@@ -676,9 +456,7 @@ The document is limited to 8,000 characters. Replace outdated entries instead of
 appending a running log. Each edit includes a revision: if somebody changed it
 while you were editing, your save is rejected and your browser draft remains.
 Copy the draft before **Reload latest**, then merge it into the new version.
-In the terminal, `/work` shows the document and `/work <text>` replaces it;
-use the browser editor for multiline plans. After a stale terminal edit, use
-`/refresh`, read `/work`, and merge before trying again.
+The `/work` command opens the same editor for multiline plans.
 
 When a head is selected, prompts include the current work document, room brief,
 carried notes, roster, and assigned message, without automatically including
@@ -715,7 +493,7 @@ four-hop limit.
 ### The room's brief
 
 A room carries what the team is working on and how, in one place: **Room brief**
-in the room header, or `/context <text>` in the terminal client. Every
+in the room header, or `/context` in the browser chat field. Every
 participant opens every turn with it, alongside its own role, so conventions
 that apply to everyone — "Elixir and Phoenix, tests with every change,
 `mix precommit` before anything is called done, never push" — belong there
@@ -766,8 +544,7 @@ rather than being handed an invented one.
 
 An agent that orchestrates, or one you set going and leave alone, stops at every
 tool request and waits for you. Set **Tool approvals** to *Approve automatically*
-on that participant — in its form, with `/auto <agent> on` in the terminal
-client, or with **Always allow** on a request that is already waiting. Its turns
+on that participant — in its form, with `/auto <agent> on` in the chat field, or with **Always allow** on a request that is already waiting. Its turns
 then run without stopping, and each granted request is written to the service
 log (`bin/roundtable logs`). The roster marks who is on it, and it stays off
 until you say otherwise. Turn it off again with *Ask me before each tool* or
@@ -780,7 +557,7 @@ and merging are not built in.
 All messages are public within their room. Agents process new messages at the
 next turn boundary; mid-turn steering is not implemented.
 
-Both clients render a reply's Markdown — headings, bullets and fenced code —
+The browser renders a reply's Markdown — headings, bullets and fenced code —
 rather than showing its markup.
 Room history is loaded in full; very large rooms will need pagination and
 context compaction. Session reset clears the participant's current native
@@ -839,7 +616,7 @@ yourself, which costs you a room you did not want rather than history you cannot
 get back. Nothing there posts, either: what an agent sets up is handed back to
 you rather than started. Scheduling is an exception to that timing: creating an
 enabled schedule arranges future agent turns. The tools cannot enable automatic
-approval; change that yourself in the UI or terminal if you want unattended work.
+approval; change that yourself in the browser if you want unattended work.
 
 The tools are wired in per turn, with a token that says which participant is
 calling, so the rooms only ever change on behalf of someone who is actually in
@@ -852,8 +629,7 @@ off for everyone with `config :roundtable, :mcp_url, false`.
 ### Standing instructions
 
 A room can wake one of its participants at the same times every day: **Schedules**
-in the room header, `/schedule ada 09:00 Sweep the bug board` in the terminal
-client, or by asking an agent that has the tools for it.
+in the room header, or by asking an agent that has the tools for it.
 
 A schedule has a name and sends one message to one participant at times of day you choose —
 `09:00`, or `09:00,17:30` — every day, on weekdays, or on the days you pick.
@@ -868,15 +644,8 @@ ask the team builder:
 
 > @team-builder Every weekday at 09:00, have reviewer check open changes.
 
-Or use the terminal:
-
-```text
-/schedule reviewer 09:00 Review open changes --days 1,2,3,4,5
-/schedules
-```
-
-Weekdays are numbered 1 (Monday) through 7 (Sunday); omit `--days` for every day.
-A schedule accepts up to 12 times of day. In the browser, open **Schedules**
+Or open **Schedules**, choose a participant, times and weekdays, and save the
+instruction. A schedule accepts up to 12 times of day. In the browser, open **Schedules**
 inside a room to manage that room's instructions, or use the **Schedules** link
 in the sidebar (at `/schedules`) to see and manage schedules across every room.
 The workspace page is useful when you want to audit or change several rooms at
@@ -893,8 +662,7 @@ management when supported.
 Times are the machine's own. An occurrence missed by more than ten minutes — the
 laptop asleep, the service stopped — is skipped rather than delivered late,
 because nobody wants the morning's work starting at four in the afternoon.
-Switch a schedule off to stop it, or delete it; `/schedules` lists them with
-their ids and `/unschedule <id>` removes one. When several occurrences fall
+Switch a schedule off to stop it, or delete it from **Schedules**. When several occurrences fall
 within the catch-up window, only the latest is delivered. A failed attempt to
 post a scheduled prompt is logged, not automatically replayed; once a turn is
 created, it uses the normal queue, approvals and explicit retry controls.
@@ -973,10 +741,9 @@ should accompany updates. Codex's installed schema can be inspected with
 
 ## Architecture
 
-Clients (LiveView, terminal) → Chat/Coordinator → supervised agent workers →
-provider CLIs. `Roundtable.Client` is the seam: it calls the coordination core
-directly in-node, or over distributed Erlang from a terminal, so a client never
-opens the database itself.
+Browser (LiveView) → Chat/Coordinator → supervised agent workers → provider
+CLIs. The browser calls the coordination core in-node; only Chat writes the
+database.
 SQLite stores rooms and their revisioned work documents, participants, messages, native session IDs, durable run
 records, agent profiles, model presets, schedules and room knowledge notes.
 Message insertion and delivery creation are transactional; PubSub
@@ -989,9 +756,10 @@ The web server binds **only to loopback** and the app is designed for a single
 local user. It has no multi-user authentication. Do not put it on a public proxy
 without adding authentication and authorization.
 
-One thing does not bind to loopback: **Erlang distribution**. The terminal
-client attaches over it, so the service runs a distributed node, and both that
-node's listener and `epmd` accept connections on every interface — the default,
+One thing does not bind to loopback: **Erlang distribution**. The launcher uses
+the release’s RPC-based `pid` command to recover service state, so it still
+runs a named node. That node’s listener and `epmd` accept connections on every
+interface — the default,
 never narrowed here. The only thing guarding them is the release cookie. That is
 56 bytes of randomness and not guessable, but it is readable by anything running
 as you, so treat "my agents run as me" and "this laptop is on a café network" as
@@ -1016,7 +784,6 @@ shell commands.
 
 ```sh
 mix test
-mix test --only pty
 node --test assets/test/*.test.mjs
 mix test --cover
 mix format --check-formatted
@@ -1025,30 +792,17 @@ mix credo --strict
 ```
 
 `mix precommit` compiles with warnings as errors, checks for unused dependencies,
-formats the code, runs strict Credo and runs the default test suite. Terminal
-tests and coverage are separate commands. CI runs the default suite, terminal
-tests, formatting checks, compilation and Credo on every push, plus `shellcheck`
+formats the code, runs strict Credo and runs the full test suite, including the
+browser shell’s PTY bridge tests. Coverage is a separate command. CI runs tests,
+formatting checks, compilation and Credo on every push, plus `shellcheck`
 on `install.sh` and `bin/roundtable`, which reach users before any Elixir does.
 
 The adapters have contract tests because provider protocols change under us,
 and a wrong clause there does not crash — it silently drops a turn's output or
 leaves a turn that never finishes.
 
-The terminal client is tested in two halves. Its pure layers — key decoding,
-state transitions, rendering — and every effect a keystroke asks for run in the
-normal suite. What only exists because there is a terminal (raw mode, the
-reader process, the redraw loop, restoring the screen) is covered by
-`mix test --only pty`, which allocates a real pty, types a scripted session
-into the client and reads back what it drew. Those are excluded from the
-default run because they boot a second VM; CI runs them as their own step.
-
-The latest local coverage run (2026-09-18) reports **81.30%** overall, below the
-90% default threshold, so `mix test --cover` currently exits unsuccessfully even
-when every test passes. Coverage reports are written to `cover/`. Some terminal
-paths run in a second VM that the parent coverage report cannot measure; other
-parts of the application also have uncovered paths. The team-builder change's
-30 new executable Elixir lines are covered, including provider selection,
-validation and dispatch. Coverage records execution, not proof of correctness.
+Coverage reports are written to `cover/`. Coverage records execution, not proof
+of correctness; the default coverage threshold is 90%.
 
 Tests use fake workers and synthetic protocol events, so they don't consume
 model tokens or depend on installed provider credentials. See `docs/TESTING.md`
