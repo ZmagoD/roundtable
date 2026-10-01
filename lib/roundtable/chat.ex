@@ -1012,11 +1012,25 @@ defmodule Roundtable.Chat do
   end
 
   @doc """
+  The turn a participant is in the middle of, ignoring any queued behind it.
+
+  Unlike `active_run/1`, a queued run never answers here: the next turn being
+  scheduled must not be mistaken for the one still working.
+  """
+  def turn_in_progress(agent_id) when is_integer(agent_id) do
+    Repo.one(
+      from r in Run,
+        where: r.agent_id == ^agent_id and r.status in ["running", "approval"],
+        order_by: [desc: r.id],
+        limit: 1
+    )
+  end
+
+  @doc """
   The turn a participant is currently working on, or `nil`.
 
   Queued counts as active: that turn is already assigned, and the model on it is
-  the one the agent will actually run with. `Roundtable.MCP` also reads this to
-  decide whether a participant's token still belongs to a turn in progress.
+  the one the agent will actually run with.
   """
   def active_run(agent_id) when is_integer(agent_id) do
     Repo.one(

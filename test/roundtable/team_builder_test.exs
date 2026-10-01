@@ -88,6 +88,8 @@ defmodule Roundtable.TeamBuilderTest do
 
     {:ok, room} = Chat.build_team(attrs())
     [builder] = Chat.agents(room.id)
+    # A token is minted as the turn launches, when its run is already running.
+    Chat.change(Chat.active_run(builder.id), status: "running")
     assert {:ok, authenticated} = MCP.participant(MCP.token(builder))
     assert authenticated.id == builder.id
 

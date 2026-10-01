@@ -293,6 +293,19 @@ defmodule Roundtable.MCPTest do
       assert found.id == ada.id
     end
 
+    # Mentioning a participant mid-turn queues its next turn. That must not take
+    # the tools away from the turn still working, nor lend them to the queued one.
+    test "a queued next turn does not end the running turn's token", %{ada: ada} do
+      token = MCP.token(ada)
+      {:ok, message} = Chat.post(ada.room_id, "and then this")
+      Repo.insert!(%Run{agent_id: ada.id, message_id: message.id, status: "queued"})
+
+      assert {:ok, found} = MCP.participant(token)
+      assert found.id == ada.id
+      # Minted now, it still names the running turn rather than the queued one.
+      assert {:ok, _} = MCP.participant(MCP.token(ada))
+    end
+
     # A later turn must not revive an old turn's token: the run is named in the
     # signature, so a new run is a different token.
     test "a new turn does not revive the old turn's token", %{ada: ada, run: run} do

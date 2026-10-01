@@ -61,7 +61,7 @@ defmodule Roundtable.MCP do
   no run and is refused on use rather than being quietly useful.
   """
   def token(%{id: id}) do
-    run_id = with run when not is_nil(run) <- Chat.active_run(id), do: run.id
+    run_id = with run when not is_nil(run) <- Chat.turn_in_progress(id), do: run.id
     Phoenix.Token.sign(RoundtableWeb.Endpoint, @salt, {id, run_id})
   end
 
@@ -99,8 +99,10 @@ defmodule Roundtable.MCP do
   # reason it always claimed: the turn this token belongs to has ended.
   defp turn_in_progress(_id, nil), do: {:error, :expired}
 
+  # A queued follow-up for the same participant is not the end of this turn,
+  # so only a running or waiting turn counts.
   defp turn_in_progress(id, run_id) do
-    case Chat.active_run(id) do
+    case Chat.turn_in_progress(id) do
       %{id: ^run_id} -> :ok
       _other -> {:error, :expired}
     end
