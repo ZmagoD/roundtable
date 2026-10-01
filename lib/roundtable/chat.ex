@@ -760,7 +760,15 @@ defmodule Roundtable.Chat do
   """
   def supervision_candidates(now) do
     since = DateTime.add(now, -2 * 3600, :second)
-    latest = from r in Run, group_by: r.agent_id, select: max(r.id)
+    held = Roundtable.Supervision.held_back()
+
+    # Turns held back behind a failure are not the participant's latest word:
+    # the failure is.
+    latest =
+      from r in Run,
+        where: not (r.status == "stopped" and r.error == ^held),
+        group_by: r.agent_id,
+        select: max(r.id)
 
     Repo.all(
       from r in Run,
@@ -783,6 +791,18 @@ defmodule Roundtable.Chat do
         retry_at: nil,
         supervised_retries: run.supervised_retries + 1
       ] ++ attrs
+    )
+  end
+
+  @doc "Puts a participant's turns held back behind a failure back in the queue."
+  def release_held(agent_id) do
+    held = Roundtable.Supervision.held_back()
+
+    Repo.update_all(
+      from(r in Run,
+        where: r.agent_id == ^agent_id and r.status == "stopped" and r.error == ^held
+      ),
+      set: [status: "queued", error: nil]
     )
   end
 

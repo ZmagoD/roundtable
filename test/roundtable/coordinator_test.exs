@@ -416,6 +416,26 @@ defmodule Roundtable.CoordinatorTest do
     Coordinator.stop(ctx.ada.id)
   end
 
+  test "a crashed turn is restarted ahead of the turn queued behind it", ctx do
+    Coordinator.post(ctx.room.id, "@ada first")
+    assert_receive {:agent_started, pid, _, first, _}, 1000
+    Coordinator.post(ctx.room.id, "@ada second")
+    ref = Process.monitor(pid)
+    Process.exit(pid, :kill)
+    assert_receive {:DOWN, ^ref, :process, ^pid, :killed}, 1000
+    _ = :sys.get_state(Coordinator)
+
+    assert %{status: "interrupted"} = Repo.get!(Run, first.id)
+    [second] = Enum.filter(Chat.runs(ctx.room.id), &(&1.id != first.id))
+    assert second.error == Roundtable.Supervision.held_back()
+
+    Coordinator.supervise(DateTime.add(DateTime.utc_now(:second), 120, :second))
+    assert_receive {:agent_started, _, _, restarted, _}, 1000
+    assert restarted.id == first.id
+    assert Repo.get!(Run, second.id).status == "queued"
+    Coordinator.stop(ctx.ada.id)
+  end
+
   test "a specialist that finishes without handing on wakes the head", ctx do
     Chat.set_team_head(ctx.linus.id)
     Coordinator.post(ctx.room.id, "@ada build it")

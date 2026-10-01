@@ -52,6 +52,29 @@ defmodule Roundtable.WatchdogTest do
     assert runs_for(ctx.lead) == []
   end
 
+  # A crash stops the turns queued behind it. They must neither hide the crash
+  # from the watchdog nor be lost: they go back in the queue with it.
+  test "a crash with turns queued behind it is still restarted, and they follow", ctx do
+    crashed = ended(ctx.dev, status: "interrupted", error: "Agent process exited: :killed")
+    held = ended(ctx.dev, status: "stopped", error: Supervision.held_back())
+    Coordinator.supervise(ctx.now)
+
+    assert Repo.get!(Run, crashed.id).status == "queued"
+    assert Repo.get!(Run, held.id).status == "queued"
+    assert [_notice] = notices(ctx.room)
+  end
+
+  test "a turn the human stopped still hides an older failure", ctx do
+    ended(ctx.dev, error: "boom")
+
+    stopped =
+      ended(ctx.dev, status: "stopped", error: "Stopped. Retry to continue this assignment.")
+
+    Coordinator.supervise(ctx.now)
+    assert Repo.get!(Run, stopped.id).status == "stopped"
+    assert notices(ctx.room) == []
+  end
+
   test "a turn that just failed is left to back off first", ctx do
     run = ended(ctx.dev, error: "connection reset", updated_at: ctx.now)
     Coordinator.supervise(ctx.now)

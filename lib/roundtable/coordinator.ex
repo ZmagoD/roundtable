@@ -130,6 +130,8 @@ defmodule Roundtable.Coordinator do
         run,
         [status: "queued", error: nil, output: "", retry_at: nil] ++ current_model(run)
       )
+
+      Chat.release_held(run.agent_id)
     end
 
     {:reply, :ok, schedule(state)}
@@ -251,7 +253,11 @@ defmodule Roundtable.Coordinator do
 
     state = forget(state, run.id)
     # A failed turn blocks queued turns for this participant until explicitly retried.
-    state = if status != "completed", do: cancel_agent(state, agent.id), else: state
+    state =
+      if status != "completed",
+        do: cancel_agent(state, agent.id, Supervision.held_back()),
+        else: state
+
     schedule(state)
   end
 
@@ -327,7 +333,9 @@ defmodule Roundtable.Coordinator do
         run = Repo.get!(Run, id)
         Chat.change(run, status: "interrupted", error: "Agent process exited: #{inspect(reason)}")
         Chat.broadcast(Chat.agent!(run.agent_id).room_id)
-        {:noreply, state |> forget(id) |> cancel_agent(run.agent_id) |> schedule()}
+
+        {:noreply,
+         state |> forget(id) |> cancel_agent(run.agent_id, Supervision.held_back()) |> schedule()}
 
       nil ->
         {:noreply, state}
@@ -341,16 +349,15 @@ defmodule Roundtable.Coordinator do
     run = Repo.get(Run, id)
 
     if run && Supervision.silent?(run, now) do
-      DynamicSupervisor.terminate_child(Roundtable.AgentSupervisor, worker.pid)
-
       Chat.change(run,
         status: "interrupted",
         error:
           "No activity for #{div(Supervision.silent_after(), 60)} minutes, so it was stopped."
       )
 
-      Chat.broadcast(Chat.agent!(run.agent_id).room_id)
-      forget(state, id)
+      # Holding the turns queued behind it keeps the stopped one the
+      # participant's latest, which is the one the watchdog restarts.
+      cancel_agent(state, worker.agent_id, Supervision.held_back())
     else
       state
     end
@@ -365,6 +372,7 @@ defmodule Roundtable.Coordinator do
 
       {:quota, quota} ->
         if waiting = Chat.wait_for_quota(run, quota.message, quota[:resets_at], now) do
+          Chat.release_held(agent.id)
           notice(agent, "hit its usage limit. Its turn resumes at #{clock(waiting.retry_at)}.")
         else
           give_up(run, agent, "hit its usage limit, and automatic quota retry is off for it")
@@ -372,6 +380,7 @@ defmodule Roundtable.Coordinator do
 
       {:retry, reason} ->
         Chat.supervised_retry(run, current_model(run))
+        Chat.release_held(agent.id)
         attempt = run.supervised_retries + 1
 
         notice(
@@ -568,7 +577,7 @@ defmodule Roundtable.Coordinator do
     end
   end
 
-  defp cancel_agent(state, agent_id) do
+  defp cancel_agent(state, agent_id, error \\ "Stopped. Retry to continue this assignment.") do
     state =
       Enum.reduce(state.workers, state, fn {id, worker}, acc ->
         if worker.agent_id == agent_id do
@@ -585,11 +594,7 @@ defmodule Roundtable.Coordinator do
           r.agent_id == ^agent_id and
             r.status in ["queued", "running", "approval", "waiting_quota"]
       ),
-      set: [
-        status: "stopped",
-        retry_at: nil,
-        error: "Stopped. Retry to continue this assignment."
-      ]
+      set: [status: "stopped", retry_at: nil, error: error]
     )
 
     Chat.broadcast(Chat.agent!(agent_id).room_id)

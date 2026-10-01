@@ -19,6 +19,12 @@ defmodule Roundtable.Supervision do
   # Nothing a retry can fix: the same turn would fail the same way.
   @permanent ~r/context (?:window|length)|maximum context|insufficient_quota|credit balance|billing|payment required|authentication|unauthorized|not logged in|log in|no folder to work in|permission requested/i
 
+  # Turns queued behind one that failed are stopped with this, not the human's
+  # "Stopped", so the watchdog can tell them apart: these wait on the failed
+  # turn and go back in the queue when it is restarted.
+  @held_back "Held back because an earlier turn of this participant failed. Retry to continue."
+
+  def held_back, do: @held_back
   def max_retries, do: @max_retries
   def gave_up, do: @gave_up
   def silent_after, do: @silent_after

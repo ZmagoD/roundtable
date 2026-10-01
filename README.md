@@ -420,9 +420,12 @@ message from **supervisor**, saying what happened and what happens next.
 - **Usage limits.** A turn stopped by a provider's usage limit waits for the
   reset and then resumes, when automatic quota retry is on for that participant
   (see above). Codex's "try again at 12:47 PM" is read as that reset time.
-- **Silent turns.** A turn that reports nothing for 20 minutes is stopped and
-  then restarted like a crash. A turn waiting for your approval is never
-  treated as silent.
+- **Silent turns.** A turn with no new output or token count for 20 minutes is
+  stopped and then restarted like a crash, so a single command that runs longer
+  than that is cut off too. A turn waiting for your approval is never treated
+  as silent.
+- **Turns queued behind a failure** are held back rather than run out of order,
+  and go back in the queue when the failed turn is restarted or retried.
 - **Problems a retry cannot fix** — signed out, context too long, billing, no
   folder, a permission the CLI refused — are not retried. Neither is a turn's
   third failure. The notice says the participant needs attention.
