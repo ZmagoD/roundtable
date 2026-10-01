@@ -577,12 +577,19 @@ own full role is never shortened when it is sent.
 The room brief, project context, carried notes, work document and roster are
 refreshed on every turn, so edits and membership changes are visible immediately.
 Resets, model or folder changes, and quota retries receive full standing
-instructions again. In rooms without a head, unread history excludes system
-messages and the participant's own replies before applying the history limit;
+instructions again. Full instructions also return on the next turn after a
+reported Claude or Codex compaction, and on every twentieth resumed turn even
+when the provider reports no compaction. The refresh counter survives service
+restarts; existing sessions receive a full refresh after this upgrade.
+
+In rooms without a head, unread history always excludes system messages. It
+excludes the participant's own replies only when resuming the same session;
+fresh and reset sessions retain those replies within the history limit;
 the assigned message is always included explicitly. Head rooms continue to use
 the work document and assignment instead of automatic chat history.
 
-`mix test test/roundtable/prompt_measurement_test.exs` prints fresh and resumed
+`ROUNDTABLE_MEASURE_PROMPTS=1 mix test test/roundtable/prompt_measurement_test.exs`
+prints fresh and resumed
 prompt character counts for a five-agent fixture. These measure prompt size,
 not provider token savings; reported tokens remain available on the agent cards.
 

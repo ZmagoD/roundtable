@@ -342,7 +342,7 @@ defmodule Roundtable.CoordinatorTest do
     Coordinator.post(room.id, "@ada routine task")
     assert_receive {:agent_started, second, %{model: nil, session_id: nil}, _, prompt}, 1000
     assert prompt =~ "Keep this history"
-    refute prompt =~ "Plan ready"
+    assert prompt =~ "Plan ready"
     assert prompt =~ "WHO YOU ARE AND HOW YOU WORK"
     ref = Process.monitor(second)
     GenServer.cast(second, {:finish, "Done"})

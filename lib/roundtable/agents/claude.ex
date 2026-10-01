@@ -33,6 +33,15 @@ defmodule Roundtable.Agents.Claude do
 
   # Session, streaming text and completion are the shared wire format; what is
   # Claude Code's own is the control channel that carries tool approvals.
+  def handle_event(%{"type" => "system", "subtype" => "compact_boundary"} = event, state) do
+    Roundtable.Coordinator.event(state.run.id, :compacted)
+
+    case Messages.handle(event, state) do
+      {:ok, state} -> state
+      :unhandled -> state
+    end
+  end
+
   def handle_event(event, state) do
     case Messages.handle(event, state) do
       {:ok, state} -> state

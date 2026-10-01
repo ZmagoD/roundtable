@@ -77,6 +77,16 @@ Session creation is lazy: adding a participant does not call a model. The first
 assignment starts the native conversation. Every subsequent turn gets the saved
 ID. Reset creates a fresh conversation on the next turn and supplies room history.
 
+Compaction emits the normalized `:compacted` coordinator event. Claude's
+[`system/compact_boundary`](https://code.claude.com/docs/en/agent-sdk/agent-loop#automatic-compaction)
+and Codex's `item/completed` with a `contextCompaction` item (or legacy
+`thread/compacted`) request full standing instructions on the next turn. The
+Codex shapes are defined by `codex app-server generate-json-schema`. Unknown
+events and compaction-start notifications do not trigger a refresh. Chat persists
+the counter, which also refreshes instructions every twentieth resumed dispatch.
+The counter advances only after a worker starts; repeated compaction events are
+idempotent, and later session events do not clear a pending refresh.
+
 Tests should cover session creation/resume, fragmented streaming, final output,
 permissions, errors, unknown events, and shutdown. Never include real credentials
 or proprietary room history in fixtures.

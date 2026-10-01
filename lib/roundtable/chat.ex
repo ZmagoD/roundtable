@@ -1488,13 +1488,15 @@ defmodule Roundtable.Chat do
     head = team_head(room.id)
     until_id = Repo.one(from m in Message, where: m.room_id == ^room.id, select: max(m.id)) || 0
 
+    resumed = resumed_session?(agent, run)
+
     {unread, omitted} =
       if head do
         {[], 0}
       else
         room.id
         |> messages_after(agent.last_seen_id)
-        |> Enum.reject(&(&1.sender in ["system", agent.name]))
+        |> Enum.reject(&(&1.sender == "system" or (resumed and &1.sender == agent.name)))
         |> recent_unread()
       end
 
@@ -1538,9 +1540,23 @@ defmodule Roundtable.Chat do
   # Session snapshots are set by the coordinator when the provider reports its
   # session. Missing snapshots and retries get the full brief conservatively.
   defp full_instructions?(agent, run) do
-    is_nil(agent.session_id) or is_nil(agent.session_role) or run.retry_count > 0 or
-      agent.session_model != run.model or agent.session_directory != agent.directory
+    not resumed_session?(agent, run) or is_nil(agent.session_role) or
+      run.retry_count > 0 or agent.instruction_turns >= 19
   end
+
+  defp resumed_session?(agent, run) do
+    is_binary(agent.session_id) and agent.session_id != "" and
+      agent.session_model == run.model and agent.session_directory == agent.directory
+  end
+
+  @doc "Records an instruction refresh or a short prompt dispatched to a worker."
+  def record_prompt(agent, run) do
+    turns = if full_instructions?(agent, run), do: 0, else: agent.instruction_turns + 1
+    change(agent, instruction_turns: turns)
+  end
+
+  @doc "Ensures the next prompt restores instructions lost to provider compaction."
+  def session_compacted(agent), do: change(agent, instruction_turns: 20)
 
   defp identity(agent, false) do
     reminder =

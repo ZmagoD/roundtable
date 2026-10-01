@@ -188,6 +188,11 @@ defmodule Roundtable.Coordinator do
     state
   end
 
+  defp apply_event(state, _run, agent, :compacted) do
+    Chat.session_compacted(agent)
+    state
+  end
+
   defp apply_event(state, run, _agent, {:output, text}) do
     Chat.change(run, output: String.slice(text, 0, 256_000))
     state
@@ -510,6 +515,7 @@ defmodule Roundtable.Coordinator do
              {worker_module, {agent, run, prompt}}
            ) do
         {:ok, pid} ->
+          Chat.record_prompt(agent, run)
           Chat.broadcast(agent.room_id)
 
           worker = %{

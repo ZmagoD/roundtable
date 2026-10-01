@@ -67,6 +67,22 @@ defmodule Roundtable.Agents.Codex do
   def handle_event(%{"id" => 3, "result" => %{"turn" => %{"id" => id}}}, state),
     do: Map.put(state, :usage_turn_id, id)
 
+  def handle_event(%{"method" => "thread/compacted"}, state) do
+    Coordinator.event(state.run.id, :compacted)
+    state
+  end
+
+  def handle_event(
+        %{
+          "method" => "item/completed",
+          "params" => %{"item" => %{"type" => "contextCompaction"}}
+        },
+        state
+      ) do
+    Coordinator.event(state.run.id, :compacted)
+    state
+  end
+
   def handle_event(%{"method" => "thread/tokenUsage/updated", "params" => params}, state),
     do: Roundtable.Agents.Usage.codex(state, params)
 

@@ -21,6 +21,7 @@ defmodule Roundtable.PromptTest do
     resumed = %{
       agent
       | session_id: "native",
+        instruction_turns: 0,
         session_model: run.model,
         session_role: agent.role,
         session_directory: agent.directory
@@ -112,11 +113,16 @@ defmodule Roundtable.PromptTest do
         agent_id: ctx.agent.id
       )
 
-    for agent <- [ctx.agent, ctx.resumed] do
+    for agent <- [
+          ctx.agent,
+          ctx.resumed,
+          %{ctx.resumed | session_id: nil, last_seen_id: 0},
+          %{ctx.resumed | instruction_turns: 20}
+        ] do
       {prompt, cursor} = Chat.prompt(agent, ctx.run)
       assert prompt =~ peer.body
       refute prompt =~ "noise"
-      refute prompt =~ own.body
+      assert prompt =~ own.body == is_nil(agent.session_id)
       refute prompt =~ "oldest unread messages"
       assert cursor == own.id
     end

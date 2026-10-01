@@ -52,6 +52,7 @@ defmodule Roundtable.PromptMeasurementTest do
     resumed = %{
       agent
       | session_id: "measurement",
+        instruction_turns: 0,
         session_model: run.model,
         session_directory: agent.directory,
         session_role: agent.role
@@ -61,9 +62,11 @@ defmodule Roundtable.PromptMeasurementTest do
     {continued, _} = Chat.prompt(resumed, run)
     assert String.length(continued) < String.length(fresh) * 0.6
 
-    for {label, participant} <- [{"fresh", agent}, {"resumed", resumed}] do
-      {prompt, _} = Chat.prompt(participant, run)
-      IO.puts("PROMPT #{label}: #{String.length(prompt)} characters")
+    if System.get_env("ROUNDTABLE_MEASURE_PROMPTS") == "1" do
+      for {label, participant} <- [{"fresh", agent}, {"resumed", resumed}] do
+        {prompt, _} = Chat.prompt(participant, run)
+        IO.puts("PROMPT #{label}: #{String.length(prompt)} characters")
+      end
     end
   end
 end
