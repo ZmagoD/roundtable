@@ -69,5 +69,7 @@ defmodule Roundtable.Directories do
   end
 
   @doc "Whether a directory is a git repository, which is usually the point."
-  def repository?(path), do: File.dir?(Path.join(path, ".git"))
+  # A linked worktree's `.git` is a file pointing at the main repository, so
+  # existence is the test, not being a directory.
+  def repository?(path), do: File.exists?(Path.join(path, ".git"))
 end

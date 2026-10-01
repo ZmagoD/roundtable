@@ -65,6 +65,13 @@ defmodule Roundtable.DirectoriesTest do
     refute Directories.repository?(Path.join(root, "billing"))
   end
 
+  test "a git worktree is a repository too", %{root: root} do
+    worktree = Path.join(root, "worktree")
+    File.mkdir_p!(worktree)
+    File.write!(Path.join(worktree, ".git"), "gitdir: /elsewhere/.git/worktrees/worktree\n")
+    assert Directories.repository?(worktree)
+  end
+
   test "the starting point falls back when the workspace is not a directory" do
     assert Directories.starting_point("/nowhere-at-all") in [System.user_home(), "/"]
     assert File.dir?(Directories.starting_point(nil))
