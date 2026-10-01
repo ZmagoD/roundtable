@@ -24,6 +24,31 @@ defmodule Roundtable.ChatTest do
     %{room: room, ada: ada, linus: linus}
   end
 
+  # The model id follows --model on the CLI's command line, so it must not be
+  # able to read as a flag; every real provider id still passes.
+  test "a model id cannot pose as a command-line flag", %{room: room} do
+    for model <-
+          ~w(opus openrouter/~anthropic/claude-opus-latest ollama/qwen3:8b opencode-go/glm-5.3-flash) do
+      assert {:ok, _} =
+               Chat.create_agent(room.id, %{
+                 "name" => "m#{System.unique_integer([:positive])}",
+                 "provider" => "opencode",
+                 "model" => model
+               })
+    end
+
+    for model <- ["--dangerously-skip-permissions", "-x", "opus --yolo"] do
+      assert {:error, changeset} =
+               Chat.create_agent(room.id, %{
+                 "name" => "bad",
+                 "provider" => "opencode",
+                 "model" => model
+               })
+
+      assert %{model: [_]} = errors_on(changeset)
+    end
+  end
+
   test "mentions queue exactly one delivery and plain chat doesn't wake agents", %{
     room: room,
     ada: ada

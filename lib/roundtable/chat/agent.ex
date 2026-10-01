@@ -49,10 +49,24 @@ defmodule Roundtable.Chat.Agent do
     |> validate_format(:name, ~r/^[a-z][a-z0-9_-]{0,29}$/)
     |> validate_exclusion(:name, ["you", "system", "all", "schedule"])
     |> validate_length(:role, max: 4000)
+    |> validate_model()
     |> validate_inclusion(:cost_tier, ["economy", "standard", "premium", "unknown"])
     |> unique_constraint(:name,
       name: :agents_room_id_name_index,
       message: "is already used in this room"
+    )
+  end
+
+  @doc """
+  A model id is passed to the CLI as the value after --model, so it must not
+  be able to read as a flag of its own. Provider ids such as
+  `openrouter/~anthropic/claude-opus-latest` or `ollama/qwen3:8b` all pass.
+  """
+  def validate_model(changeset) do
+    changeset
+    |> validate_length(:model, max: 200)
+    |> validate_format(:model, ~r/^[A-Za-z0-9][\w.:\/@\[\]~+-]*$/,
+      message: "can only be a model id such as opus or openrouter/z-ai/glm-5.3"
     )
   end
 
@@ -78,6 +92,7 @@ defmodule Roundtable.Chat.Agent do
     |> validate_exclusion(:name, ["you", "system", "all", "schedule"])
     |> validate_inclusion(:provider, Roundtable.Agents.ids())
     |> validate_length(:role, max: 4000)
+    |> validate_model()
     |> validate_inclusion(:cost_tier, ["economy", "standard", "premium", "unknown"])
     # Reported against :name, not the index's first column: "room_id has
     # already been taken" means nothing to someone naming a participant.

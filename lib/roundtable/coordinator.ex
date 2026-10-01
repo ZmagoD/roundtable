@@ -286,16 +286,16 @@ defmodule Roundtable.Coordinator do
   defp grant(state, run, agent, request_id, params) do
     %{pid: pid} = state.workers[run.id]
     send(pid, {:approval, request_id, "accept"})
-    Logger.info("auto-approved for @#{agent.name} (run #{run.id}): #{summarise(params)}")
+    Logger.info("auto-approved for @#{agent.name} (run #{run.id}): #{tool_name(params)}")
     state
   end
 
-  defp summarise(params) do
-    case Jason.encode(params) do
-      {:ok, json} -> String.slice(json, 0, 300)
-      {:error, _} -> inspect(params, limit: 10)
-    end
-  end
+  # The tool's name, never its input: a command can carry a secret typed
+  # inline, and the log outlives the turn.
+  defp tool_name(params) when is_map(params),
+    do: params["display_name"] || params["tool_name"] || params["name"] || "a tool"
+
+  defp tool_name(_params), do: "a tool"
 
   # A retry is a fresh attempt, so it runs on what the participant runs on now.
   # Retrying after changing the model is how someone gets off a model that just

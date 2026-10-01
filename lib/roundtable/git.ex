@@ -54,9 +54,11 @@ defmodule Roundtable.Git do
   end
 
   defp run(directory, args) do
-    case System.cmd("git", ["--no-optional-locks", "-C", directory] ++ args,
-           stderr_to_stdout: true
-         ) do
+    # A room's own .git/config is the agent's to write, so nothing in it may
+    # make the service run a program when the changes panel refreshes.
+    safe = ["-c", "core.fsmonitor=false", "--no-optional-locks", "-C", directory]
+
+    case System.cmd("git", safe ++ args ++ no_external(args), stderr_to_stdout: true) do
       {output, 0} -> {:ok, String.trim_trailing(output)}
       {output, _} -> {:error, first_line(output)}
     end
@@ -64,6 +66,9 @@ defmodule Roundtable.Git do
     # No git on PATH, or the directory disappeared under us.
     error -> {:error, Exception.message(error)}
   end
+
+  defp no_external(["diff" | _]), do: ["--no-ext-diff", "--no-textconv"]
+  defp no_external(_args), do: []
 
   defp first_line(output) do
     output |> String.split("\n", parts: 2) |> List.first() |> String.trim()

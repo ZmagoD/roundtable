@@ -131,7 +131,9 @@ case "${1:-start}" in
       pid="$(cat "$STATE_DIR/beam.pid")"
       if kill -0 "$pid" 2>/dev/null; then
         # Refuse stale PID files belonging to another process.
-        if [[ -r "/proc/$pid/cmdline" ]] && tr '\0' ' ' < "/proc/$pid/cmdline" | grep -q 'roundtable'; then
+        # The same release-path check service_running makes: a dev server
+        # merely named roundtable must not be the one that gets stopped.
+        if [[ -r "/proc/$pid/cmdline" ]] && tr '\0' ' ' < "/proc/$pid/cmdline" | grep -Fq "$APP_ROOT/_build/prod/rel/roundtable"; then
           kill -TERM "$pid"
           for _ in {1..100}; do
             if ! kill -0 "$pid" 2>/dev/null; then

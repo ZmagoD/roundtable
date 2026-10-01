@@ -48,6 +48,19 @@ defmodule Roundtable.SpawnEnvTest do
       assert "MIX_ENV" in names
     end
 
+    # The key that signs tool tokens, and the files that say which process is
+    # the live service: an agent holding the first could act as any running
+    # turn, and a dev server started from its shell would write over the rest.
+    test "the token key and the live service's pid and URL files" do
+      for name <- ~w(SECRET_KEY_BASE PHX_SERVER ROUNDTABLE_PID_FILE ROUNDTABLE_URL_FILE),
+          do: System.put_env(name, "set")
+
+      names = SpawnEnv.names()
+
+      for name <- ~w(SECRET_KEY_BASE PHX_SERVER ROUNDTABLE_PID_FILE ROUNDTABLE_URL_FILE),
+          do: assert(name in names)
+    end
+
     test "and nothing else" do
       System.put_env("ROUNDTABLE_WORKSPACE", "/home/someone/code")
       System.put_env("EDITOR", "vim")

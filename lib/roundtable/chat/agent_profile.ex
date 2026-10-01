@@ -31,6 +31,7 @@ defmodule Roundtable.Chat.AgentProfile do
     |> validate_inclusion(:provider, Roundtable.Agents.ids())
     |> validate_inclusion(:cost_tier, ["economy", "standard", "premium", "unknown"])
     |> validate_length(:role, max: 4000)
+    |> Roundtable.Chat.Agent.validate_model()
     |> unique_constraint(:name, message: "is already a profile")
   end
 end

@@ -15,7 +15,7 @@ defmodule Roundtable.Chat.ModelPreset do
     |> cast(attrs, [:name, :provider, :model, :cost_tier])
     |> validate_required([:name, :provider, :model, :cost_tier])
     |> validate_length(:name, max: 60)
-    |> validate_length(:model, max: 200)
+    |> Roundtable.Chat.Agent.validate_model()
     |> validate_inclusion(:provider, Roundtable.Agents.ids())
     |> validate_inclusion(:cost_tier, ["economy", "standard", "premium", "unknown"])
     |> unique_constraint([:provider, :name])

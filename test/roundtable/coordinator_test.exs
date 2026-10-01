@@ -211,9 +211,28 @@ defmodule Roundtable.CoordinatorTest do
     Chat.change(ada, auto_approve: true)
     Coordinator.post(room.id, "@ada do work")
     assert_receive {:agent_started, _pid, _, run, _}, 1000
-    Coordinator.event(run.id, {:approval, "req-1", %{"command" => "mix test"}})
 
-    assert_receive {:decision, "req-1", "accept"}, 1000
+    # The log names the tool, never its input, which can carry a secret. The
+    # suite logs at warning, so info is let through for this one capture.
+    level = Logger.level()
+    Logger.configure(level: :info)
+    on_exit(fn -> Logger.configure(level: level) end)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        Coordinator.event(
+          run.id,
+          {:approval, "req-1", %{"display_name" => "Bash", "command" => "TOKEN=hunter2 mix test"}}
+        )
+
+        assert_receive {:decision, "req-1", "accept"}, 1000
+        # The line is logged just after the approval is sent.
+        _ = :sys.get_state(Coordinator)
+      end)
+
+    assert log =~ "auto-approved for @ada"
+    assert log =~ "Bash"
+    refute log =~ "hunter2"
     assert Coordinator.approvals() == %{}
     # The turn never stopped, so it is still the running one.
     assert Repo.get!(Run, run.id).status == "running"

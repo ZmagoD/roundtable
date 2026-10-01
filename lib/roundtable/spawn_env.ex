@@ -28,8 +28,19 @@ defmodule Roundtable.SpawnEnv do
   """
 
   # Named exactly, not by prefix, so adding one is a decision rather than a
-  # side effect of what somebody called a variable.
-  @strip ["ROUNDTABLE_COOKIE", "DATABASE_PATH", "MIX_ENV"]
+  # side effect of what somebody called a variable. SECRET_KEY_BASE signs the
+  # tool tokens, so a child holding it could mint one for any running turn; the
+  # pid and URL files are the live service's, and a dev server started from an
+  # agent's shell would otherwise write over them.
+  @strip [
+    "ROUNDTABLE_COOKIE",
+    "DATABASE_PATH",
+    "MIX_ENV",
+    "SECRET_KEY_BASE",
+    "PHX_SERVER",
+    "ROUNDTABLE_PID_FILE",
+    "ROUNDTABLE_URL_FILE"
+  ]
 
   @doc """
   Removals and a cleaned `PATH`, for the `env:` option of `Port.open`.

@@ -18,6 +18,19 @@ defmodule Roundtable.GitTest do
     %{dir: dir, git: git}
   end
 
+  # A room's .git/config is the agent's to write. Neither a filesystem monitor
+  # nor an external diff tool configured there may run when the panel refreshes.
+  test "programs named in the repository's own config are never run", %{dir: dir, git: git} do
+    marker = Path.join(dir, "ran")
+    git.(["config", "core.fsmonitor", "touch #{marker}"])
+    git.(["config", "diff.external", "touch #{marker}"])
+    File.write!(Path.join(dir, "kept.txt"), "changed\n")
+
+    assert {:ok, _} = Git.status(dir)
+    assert {:ok, _} = Git.diff(dir)
+    refute File.exists?(marker)
+  end
+
   test "a clean tree reports its branch and nothing else", %{dir: dir} do
     assert {:ok, status} = Git.status(dir)
     assert status.branch == "work"

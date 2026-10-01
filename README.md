@@ -621,7 +621,8 @@ An agent that orchestrates, or one you set going and leave alone, stops at every
 tool request and waits for you. Set **Tool approvals** to *Approve automatically*
 on that participant — in its form, with `/auto <agent> on` in the chat field, or with **Always allow** on a request that is already waiting. Its turns
 then run without stopping, and each granted request is written to the service
-log (`bin/roundtable logs`). The roster marks who is on it, and it stays off
+log (`bin/roundtable logs`) by participant, turn and tool name. The tool's input
+is left out, because a command can carry a secret typed inline. The roster marks who is on it, and it stays off
 until you say otherwise. Turn it off again with *Ask me before each tool* or
 `/auto <agent> off`.
 
@@ -885,6 +886,17 @@ with a server that does not exist. Adapters are trusted code with the same OS
 access as the service. Prompt text
 and working directories are passed as arguments/data, not interpolated into
 shell commands.
+
+What an agent's CLI, and every command it runs, does not inherit from the
+service: the release cookie, the database path, `MIX_ENV`, the key that signs
+tool tokens (`SECRET_KEY_BASE`), and the live service's pid and URL files. So an
+agent cannot mint a token for another turn, and a dev server started from an
+agent's shell cannot take over the service's state. `bin/roundtable stop` only
+stops a process running from this checkout's release. A model id must look like
+one (letters, digits and `. : / @ ~ + - _`), so it can never be read as a flag
+on the CLI's command line. The changes panel runs git with the repository's own
+filesystem monitor, external diff and text conversion turned off, so a room's
+`.git/config` cannot make the service run a program.
 
 ## Tests
 
