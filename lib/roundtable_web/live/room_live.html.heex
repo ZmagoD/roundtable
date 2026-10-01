@@ -480,6 +480,25 @@
                   title="Runs tools without stopping to ask"
                 >auto-approves</span>
               </div>
+              <div class="agent-usage" id={"agent-usage-#{agent.id}"}>
+                <span id={"provider-usage-#{agent.id}"}>
+                  Provider usage: {Roundtable.Usage.label(@provider_usage[agent.provider])}
+                </span>
+                <time
+                  :if={@provider_usage[agent.provider]}
+                  datetime={DateTime.to_iso8601(@provider_usage[agent.provider].recorded_at)}
+                >
+                  Recorded {Calendar.strftime(
+                    @provider_usage[agent.provider].recorded_at,
+                    "%d %b %H:%M UTC"
+                  )}
+                </time>
+                <span id={"token-usage-#{agent.id}"}>
+                  Reported tokens: {Roundtable.Usage.token_label(
+                    Map.get(@participant_tokens, agent.id, %{})
+                  )}
+                </span>
+              </div>
               <p>
                 <button
                   id={"quota-retry-toggle-#{agent.id}"}

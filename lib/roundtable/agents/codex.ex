@@ -61,6 +61,15 @@ defmodule Roundtable.Agents.Codex do
   def handle_event(%{"error" => error, "id" => _}, state),
     do: %{state | finished: quota_failure(error, state)}
 
+  def handle_event(%{"method" => "turn/started", "params" => %{"turn" => %{"id" => id}}}, state),
+    do: Map.put(state, :usage_turn_id, id)
+
+  def handle_event(%{"id" => 3, "result" => %{"turn" => %{"id" => id}}}, state),
+    do: Map.put(state, :usage_turn_id, id)
+
+  def handle_event(%{"method" => "thread/tokenUsage/updated", "params" => params}, state),
+    do: Roundtable.Agents.Usage.codex(state, params)
+
   def handle_event(%{"method" => "item/agentMessage/delta", "params" => p}, state) do
     items = Map.update(state.items, p["itemId"], p["delta"], &(&1 <> p["delta"]))
 
@@ -96,6 +105,8 @@ defmodule Roundtable.Agents.Codex do
         %{"method" => "account/rateLimits/updated", "params" => %{"rateLimits" => limits}},
         state
       ) do
+    Coordinator.event(state.run.id, {:provider_usage, Roundtable.Usage.codex_limit(limits)})
+
     resets =
       for key <- ["primary", "secondary"],
           %{"usedPercent" => used, "resetsAt" => reset} <- [limits[key]],

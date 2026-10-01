@@ -9,6 +9,7 @@ defmodule RoundtableWeb.RoomLive do
   def mount(_, _, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Roundtable.PubSub, "rooms")
+      Phoenix.PubSub.subscribe(Roundtable.PubSub, "provider_usage")
       # Files move while a turn runs, and nothing broadcasts when they do.
       :timer.send_interval(2_000, self(), :poll_git)
     end
@@ -20,6 +21,8 @@ defmodule RoundtableWeb.RoomLive do
        organization_id: nil,
        rooms: teams_in(nil),
        agents: [],
+       provider_usage: Chat.provider_usage(),
+       participant_tokens: %{},
        last_message_id: 0,
        model_presets: Chat.model_presets(),
        agent_profiles: Chat.agent_profiles(),
@@ -897,6 +900,9 @@ defmodule RoundtableWeb.RoomLive do
 
   def handle_info(:room_updated, socket), do: {:noreply, refresh(socket)}
 
+  def handle_info(:provider_usage_updated, socket),
+    do: {:noreply, assign(socket, provider_usage: Chat.provider_usage())}
+
   def handle_info(:rooms_updated, socket),
     do:
       {:noreply,
@@ -1029,6 +1035,8 @@ defmodule RoundtableWeb.RoomLive do
       last_message_id: last_id,
       rooms: teams_in(socket.assigns.organization_id),
       agents: Chat.agents(id),
+      provider_usage: Chat.provider_usage(),
+      participant_tokens: Chat.participant_tokens(id),
       schedules: Chat.schedules(id),
       notes: Chat.room_notes(id),
       runs: Chat.runs(id),

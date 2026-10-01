@@ -15,6 +15,7 @@ defmodule Roundtable.Chat do
     Message,
     ModelPreset,
     Organization,
+    ProviderUsage,
     Room,
     RoomNote,
     Run,
@@ -22,6 +23,35 @@ defmodule Roundtable.Chat do
   }
 
   alias Roundtable.Repo
+  alias Roundtable.Usage
+
+  def record_tokens(run, attempt, tokens) do
+    tokens = Usage.valid_tokens(tokens)
+    attempts = Map.update(run.token_usage, attempt, tokens, &Map.merge(&1, tokens))
+    change(run, token_usage: attempts)
+  end
+
+  def record_provider_usage(provider, data) do
+    Repo.insert!(%ProviderUsage{provider: provider, data: data, recorded_at: DateTime.utc_now()},
+      on_conflict: {:replace, [:data, :recorded_at]},
+      conflict_target: :provider
+    )
+
+    Phoenix.PubSub.broadcast(Roundtable.PubSub, "provider_usage", :provider_usage_updated)
+  end
+
+  def provider_usage, do: Map.new(Repo.all(ProviderUsage), &{&1.provider, &1})
+
+  def participant_tokens(room_id) do
+    Repo.all(
+      from r in Run,
+        join: a in assoc(r, :agent),
+        where: a.room_id == ^room_id,
+        select: {r.agent_id, r.token_usage}
+    )
+    |> Enum.group_by(&elem(&1, 0), fn {_, attempts} -> Usage.sum(Map.values(attempts)) end)
+    |> Map.new(fn {id, counts} -> {id, Usage.sum(counts)} end)
+  end
 
   @doc "Every project, oldest first, so the list does not reorder as names change."
   def organizations, do: Repo.all(from o in Organization, order_by: [asc: o.id])
@@ -962,6 +992,8 @@ defmodule Roundtable.Chat do
   # What each agent is told about the others: enough to pick the right one, and
   # nothing about what they are doing.
   defp roster(room_id) do
+    usage = provider_usage()
+
     Enum.map_join(agents(room_id), "\n", fn member ->
       active = active_run(member.id)
       model = (active && active.model) || member.model || "provider default"
@@ -970,7 +1002,7 @@ defmodule Roundtable.Chat do
       status = work_status(member.id, active)
 
       "@#{member.name}: provider=#{member.provider}, model=#{model}, relative cost=#{tier}, " <>
-        "status=#{status}, #{leads(member)}role=#{member.role || "general"}"
+        "status=#{status}, usage=#{Usage.label(usage[member.provider])}, #{leads(member)}role=#{member.role || "general"}"
     end)
   end
 

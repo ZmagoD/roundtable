@@ -629,6 +629,8 @@ h1, h2, h3, p { margin: 0; }
 .icon-button { display: inline-flex; align-items: center; justify-content: center; }
 .agent-model { display: flex; align-items: center; gap: 6px; justify-content: space-between; font-size: 9px; color: var(--green-mid-31); margin-top: 10px; }
 .agent-model > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-usage { display: grid; gap: 4px; margin-top: 10px; font-size: 10px; line-height: 1.5; color: var(--green-mid-31); }
+.agent-usage time { color: var(--green-soft-3); font-size: 9px; }
 .cost-tier { font-size: 8px; border: 1px solid var(--green-surface-10); padding: 2px 5px; border-radius: 4px; white-space: nowrap; }
 .cost-tier.economy { color: var(--green-mid-14); background: var(--green-surface-5); border-color: var(--green-soft-8); }
 .cost-tier.premium { color: var(--warm-mid-1); background: var(--warm-surface-8); border-color: var(--warm-soft-2); }

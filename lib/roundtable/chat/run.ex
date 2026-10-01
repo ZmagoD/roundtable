@@ -13,6 +13,7 @@ defmodule Roundtable.Chat.Run do
     field :retry_at, :utc_datetime
     field :retry_count, :integer, default: 0
     field :retry_context, :string, default: ""
+    field :token_usage, :map, default: %{}
     field :status, :string, default: "queued"
     field :output, :string, default: ""
     field :error, :string

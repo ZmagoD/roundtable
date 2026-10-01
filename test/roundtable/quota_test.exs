@@ -39,7 +39,7 @@ defmodule Roundtable.QuotaTest do
   end
 
   test "Claude reports a rejected quota separately from an allowed warning" do
-    state = %{finished: false}
+    state = %{finished: false, run: %{id: -1}}
 
     event = %{
       "type" => "rate_limit_event",
@@ -62,7 +62,7 @@ defmodule Roundtable.QuotaTest do
   end
 
   test "Codex uses exhausted windows only after a quota failure" do
-    state = %{finished: false, final_output: nil}
+    state = %{finished: false, final_output: nil, run: %{id: -1}}
 
     event = %{
       "method" => "account/rateLimits/updated",

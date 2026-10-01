@@ -39,11 +39,18 @@ defmodule Roundtable.Agents.Messages do
   end
 
   def handle(
-        %{"type" => "rate_limit_event", "rate_limit_info" => %{"status" => "rejected"} = info},
+        %{"type" => "rate_limit_event", "rate_limit_info" => info},
         state
-      ) do
-    quota = %{message: "Provider usage limit reached.", resets_at: info["resetsAt"]}
-    {:ok, %{state | finished: {"rate_limited", quota}}}
+      )
+      when is_map(info) do
+    Coordinator.event(state.run.id, {:provider_usage, Roundtable.Usage.claude_limit(info)})
+
+    if info["status"] == "rejected" do
+      quota = %{message: "Provider usage limit reached.", resets_at: info["resetsAt"]}
+      {:ok, %{state | finished: {"rate_limited", quota}}}
+    else
+      {:ok, state}
+    end
   end
 
   def handle(%{"type" => "assistant", "error" => "rate_limit"} = event, state) do
@@ -54,12 +61,15 @@ defmodule Roundtable.Agents.Messages do
   # Whole assistant messages are the fallback when partial events aren't
   # available; they must not clobber text the deltas already produced.
   def handle(%{"type" => "assistant", "message" => message}, state) do
+    state = Roundtable.Agents.Usage.claude_message(state, message)
+
     if state.output == "",
       do: {:ok, put_output(state, Protocol.text_blocks(message["content"]))},
       else: {:ok, state}
   end
 
   def handle(%{"type" => "result"} = event, state) do
+    state = Roundtable.Agents.Usage.report(state, Roundtable.Usage.claude_tokens(event["usage"]))
     state = if is_binary(event["result"]), do: put_output(state, event["result"]), else: state
 
     error =

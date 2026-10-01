@@ -112,6 +112,34 @@ The coordinator does not publish partial output or fail cross-room requests
 while waiting. Ordinary worker crashes are still interrupted and need an explicit
 retry, so a process restart does not silently repeat arbitrary side effects.
 
+## Usage reporting
+
+`Roundtable.Agents.Usage.report/2` sends cumulative token snapshots for one worker
+attempt to the coordinator. `Chat` persists them in `runs.token_usage`, keyed by
+attempt UUID, so duplicate snapshots replace counts and retries retain earlier
+consumption. Use the keys `input`, `output`, `cached` (cache reads), and
+`cache_write`. Omit absent values; zero is a real reported value. Participant
+totals sum only retained runs and do not survive clearing chat history.
+
+Claude's `result.usage` is authoritative for a turn. Assistant message usage is
+retained by message ID as a fallback for interrupted streams, then replaced by
+the final result. Codex `thread/tokenUsage/updated` carries cumulative thread
+totals and the last model response, not a single turn total. The adapter counts
+the first current-turn `last`, then differences between successive `total`
+snapshots; replayed and other-turn notifications do not add usage. The installed
+app-server JSON schema defines these events; `turn/completed` itself has no
+token fields. OpenCode `step_finish.part.tokens` is summed by unique part ID
+when present (see its [JSON command implementation](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/cli/cmd/run.ts)).
+
+Quota events use `{:provider_usage, data}`. The coordinator attributes them to
+the worker's launch provider, even if the participant is edited mid-turn.
+`Chat` replaces the provider's previous snapshot and timestamp and notifies
+every browser room. Claude's installed rate-limit schema defines `utilization`
+as a fraction; converting it to a percentage is not an estimate. Codex uses the
+higher reported `usedPercent` of the two windows and preserves its reset time.
+Missing fields remain unknown. Contract tests use synthetic, non-sensitive
+events matching these protocol shapes; no real provider turn is needed.
+
 ## The rooms as tools
 
 A participant whose CLI takes an MCP server on the command line *and* can ask

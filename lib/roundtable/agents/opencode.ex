@@ -8,7 +8,7 @@ defmodule Roundtable.Agents.OpenCode do
   """
   @behaviour Roundtable.Agents.Adapter
   import Roundtable.Agents.Worker, only: [put_output: 2, write_raw: 2, close_stdin: 1]
-  alias Roundtable.Agents.Protocol
+  alias Roundtable.Agents.{Protocol, Usage}
   alias Roundtable.Coordinator
   def id, do: "opencode"
   def label, do: "OpenCode"
@@ -29,6 +29,9 @@ defmodule Roundtable.Agents.OpenCode do
     state = %{state | session: session}
 
     case e do
+      %{"type" => "step_finish", "part" => part} ->
+        Usage.opencode_step(state, part)
+
       %{"type" => "text", "part" => %{"text" => text}} ->
         put_output(state, state.output <> text <> "\n")
 

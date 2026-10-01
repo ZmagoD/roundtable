@@ -903,8 +903,26 @@ created, it uses the normal queue, approvals and explicit retry controls.
 
 Open **Model presets** in the sidebar to save model IDs/aliases accepted by your
 CLIs. Label each preset **economy**, **standard**, **premium**, or **unrated**.
-These are your relative estimates, not live vendor prices; no dollar billing
-or token accounting is implied. You can edit presets later.
+These are your relative estimates, not live vendor prices or measured token
+counts. You can edit presets later.
+
+Each participant card shows reported input, output, cache-read and cache-write
+tokens summed across its retained runs, including retry attempts. Missing counts
+stay “not reported”; historical turns are not backfilled. Counts keep the
+provider's definitions: Codex input includes cached input, while Claude reports
+cache reads and writes separately from its input count. Do not add the four
+figures together as if they were disjoint for every provider. Clearing a room's
+history also clears these run-based totals.
+
+The card also shows the latest provider quota observation and its UTC timestamp.
+Participants using the same provider share this observation across rooms. Codex
+shows the higher reported percentage of its primary and secondary windows;
+Claude shows its reported utilization, or OK, near limit, or limited when only a
+status is available. No report means “not reported”, never zero. These are last
+observations, not live polling or estimates; no automatic reset is assumed.
+The roster in agent prompts includes the same quota summary. OpenCode token
+counts are recorded only when its JSON step events include them; no quota
+percentage is inferred from those counts.
 
 When adding an agent, select a preset or enter a custom model and its cost tier.
 For each assignment, select a named recipient, choose a model preset (or keep

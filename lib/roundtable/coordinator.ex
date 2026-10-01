@@ -178,6 +178,16 @@ defmodule Roundtable.Coordinator do
     state
   end
 
+  defp apply_event(state, run, _agent, {:tokens, attempt, tokens}) do
+    Chat.record_tokens(run, attempt, tokens)
+    state
+  end
+
+  defp apply_event(state, run, _agent, {:provider_usage, data}) do
+    Chat.record_provider_usage(state.workers[run.id].provider, data)
+    state
+  end
+
   defp apply_event(state, run, agent, {:approval, request_id, params}) do
     if agent.auto_approve do
       grant(state, run, agent, request_id, params)
@@ -336,7 +346,14 @@ defmodule Roundtable.Coordinator do
            ) do
         {:ok, pid} ->
           Chat.broadcast(agent.room_id)
-          worker = %{pid: pid, ref: Process.monitor(pid), agent_id: agent.id}
+
+          worker = %{
+            pid: pid,
+            ref: Process.monitor(pid),
+            agent_id: agent.id,
+            provider: agent.provider
+          }
+
           %{state | workers: Map.put(state.workers, run.id, worker)}
 
         {:error, reason} ->
