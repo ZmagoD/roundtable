@@ -123,44 +123,53 @@
               phx-click="open-work"
               title="Current goal, tasks, decisions and verification"
             >Work document</button><button
-              id="room-notes-button"
-              class="button secondary"
-              phx-click="panel"
-              phx-value-name="notes"
-              title="What this room has learned, given to every participant"
-            >Room notes</button><button
-              id="schedules-button"
-              class="button secondary"
-              phx-click="panel"
-              phx-value-name="schedules"
-              title="Wake a participant at a time of day"
-            >Schedules</button><button
               id="add-agent-button"
               class="button secondary"
               phx-click="panel"
               phx-value-name="agent"
             >+ Add agent</button>
-            <button
-              id="clear-history-button"
-              class="button secondary danger"
-              phx-click="clear-history"
-              data-confirm={"Clear all chat history in #{@room.name}? This stops its active and queued turns, deletes messages, run records and cross-room request links, and resets agent sessions. Agents, the work document, notes, brief and schedules stay. There is no undo."}
-            >Clear chat history</button>
-            <button
-              id="remove-room-button"
-              class="button secondary danger"
-              phx-click="remove-room"
-              phx-value-id={@room.id}
-              data-confirm={"Delete #{@room.name}? Its participants, its whole history and any cross-room requests go with it. There is no undo and nothing is exported."}
-            >Delete room</button>
-            <button
-              id="terminal-button"
-              class="button secondary"
-              phx-click={if @terminal, do: "close-terminal", else: "open-terminal"}
-              title="A shell in this room's directory"
-            >
-              {if @terminal, do: "Close terminal", else: "Terminal"}
-            </button>
+            <%!-- The less-used actions sit behind a native details menu, so
+                 the header keeps its one line at narrow widths; no script. --%>
+            <details class="header-more">
+              <summary class="button secondary">More<span class="more-arrow">▾</span></summary>
+              <div class="more-panel">
+                <button
+                  id="room-notes-button"
+                  class="button secondary"
+                  phx-click="panel"
+                  phx-value-name="notes"
+                  title="What this room has learned, given to every participant"
+                >Room notes</button>
+                <button
+                  id="schedules-button"
+                  class="button secondary"
+                  phx-click="panel"
+                  phx-value-name="schedules"
+                  title="Wake a participant at a time of day"
+                >Schedules</button>
+                <button
+                  id="terminal-button"
+                  class="button secondary"
+                  phx-click={if @terminal, do: "close-terminal", else: "open-terminal"}
+                  title="A shell in this room's directory"
+                >
+                  {if @terminal, do: "Close terminal", else: "Terminal"}
+                </button>
+                <button
+                  id="clear-history-button"
+                  class="button secondary danger"
+                  phx-click="clear-history"
+                  data-confirm={"Clear all chat history in #{@room.name}? This stops its active and queued turns, deletes messages, run records and cross-room request links, and resets agent sessions. Agents, the work document, notes, brief and schedules stay. There is no undo."}
+                >Clear chat history</button>
+                <button
+                  id="remove-room-button"
+                  class="button secondary danger"
+                  phx-click="remove-room"
+                  phx-value-id={@room.id}
+                  data-confirm={"Delete #{@room.name}? Its participants, its whole history and any cross-room requests go with it. There is no undo and nothing is exported."}
+                >Delete room</button>
+              </div>
+            </details>
           </div>
         </header>
         <div class="room-body">

@@ -140,7 +140,10 @@ Use `//` to send ordinary text beginning with `/`.
 
 The room header shows the current branch and the working directory, and a panel
 lists what has changed in it — file by file, with line counts — updating while a
-turn runs. Click it for the patch itself. A participant can be removed from its card and a room from its header, both
+turn runs. Click it for the patch itself. The header's everyday actions sit in
+the row, and the less-used ones — room notes, schedules, the in-room terminal,
+clearing the history, deleting the room — collect under its **More** menu.
+A participant can be removed from its card and a room from its header, both
 behind a confirmation. Removing a participant keeps what it said: its runs go,
 but its messages stay attributed by name, because a room's history is a record
 of what happened rather than a list of who is still here. Removing a room takes
@@ -447,8 +450,9 @@ each other. The head is never woken about its own turns.
 
 ### Clearing a room's chat
 
-Use **Clear chat history** in the room header or enter `/clear-history` in
-the browser chat field. Both open a confirmation before deleting anything.
+Use **Clear chat history** in the room header's **More** menu, or enter
+`/clear-history` in the browser chat field. Both open a confirmation before
+deleting anything.
 
 This permanently deletes the room's messages and run records, stops its active
 and queued turns, and resets its agents' provider sessions. Cross-room request
@@ -540,10 +544,11 @@ than choose silently if they genuinely conflict.
 
 ### What the room has learned
 
-The brief is what you meant; notes are what the room found out. **Room notes**
-in the header keeps a line each for the things that would otherwise be
-rediscovered — where something lives, what was already settled, what caught
-someone out — and every participant reads them at the top of every turn,
+The brief is what you meant; notes are what the room found out. **Room notes**,
+under the header's **More** menu, keeps a line each for the things that would
+otherwise be rediscovered — where something lives, what was already settled,
+what caught someone out — and every participant reads them at the top of every
+turn,
 ahead of its own assumptions about the codebase.
 
 A note is one or two sentences, not a document, because every note is paid for
@@ -665,8 +670,9 @@ off for everyone with `config :roundtable, :mcp_url, false`.
 
 ### Standing instructions
 
-A room can wake one of its participants at the same times every day: **Schedules**
-in the room header, or by asking an agent that has the tools for it.
+A room can wake one of its participants at the same times every day:
+**Schedules** under the room header's **More** menu, or by asking an agent that
+has the tools for it.
 
 A schedule has a name and sends one message to one participant at times of day you choose —
 `09:00`, or `09:00,17:30` — every day, on weekdays, or on the days you pick.
