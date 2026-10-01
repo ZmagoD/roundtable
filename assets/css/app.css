@@ -554,6 +554,13 @@ h1, h2, h3, p { margin: 0; }
 .composer textarea::placeholder { color: var(--neutral-soft-3); }
 .composer-footer { display: flex; justify-content: space-between; align-items: center; padding: 7px 11px 10px 17px; }
 .composer-footer select { background: none; border: none; color: var(--neutral-mid-10); font-size: 10px; padding: 3px 2px; max-width: 180px; }
+/* Sized to the footer it sits in, not to the header's full-size buttons. */
+.send-button { padding: 7px 11px 7px 14px; gap: 6px; font-size: 11px; border-radius: 8px; transition: background-color .15s, border-color .15s, transform .1s; }
+.send-button:hover { background: var(--green-ink-11); border-color: var(--green-ink-11); }
+.send-button:active { transform: translateY(1px); }
+.send-button:focus-visible { outline: 2px solid var(--green-soft-10); outline-offset: 2px; }
+.send-button .hero-arrow-up-right { transition: transform .15s; }
+.send-button:hover .hero-arrow-up-right { transform: translate(1px, -1px); }
 .composer-hint { display: flex; justify-content: space-between; color: var(--neutral-soft-4); font-size: 9px; padding: 11px 3px 0; gap: 10px; }
 .agent-panel { width: 277px; padding: 27px 20px; border-left: 1px solid var(--line); background: var(--green-surface-24); overflow-y: auto; flex-shrink: 0; }
 .agent-panel-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
