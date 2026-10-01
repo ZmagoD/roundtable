@@ -198,7 +198,12 @@
                       >AGENT</span><time
                         datetime={DateTime.to_iso8601(message.inserted_at)}
                         title={Calendar.strftime(message.inserted_at, "%d %b %Y at %H:%M UTC")}
-                      >{time(message.inserted_at)}</time>
+                      >{time(message.inserted_at)}</time><.usage_chip
+                        :if={message.kind == "agent"}
+                        id={"usage-chip-#{dom_id}"}
+                        provider={provider_of(@agents, message.sender)}
+                        reading={usage_of(@provider_usage, @agents, message.sender)}
+                      />
                     </div>
                     <div :if={message.metadata != %{}} class="assignment-meta">
                       <span>{message.metadata["name"]}</span><span>{message.metadata["model"] ||
@@ -227,7 +232,11 @@
                   <div class="message-meta">
                     <strong>{run.agent.name}</strong><span class={["status", run.status]}>{status_label(
                       run.status
-                    )}</span>
+                    )}</span><.usage_chip
+                      id={"usage-chip-run-#{run.id}"}
+                      provider={run.agent.provider}
+                      reading={@provider_usage[run.agent.provider]}
+                    />
                   </div><div class="assignment-meta">
                     <span>{run.model || "Provider default"}</span><span class={[
                       "cost-tier",
@@ -328,7 +337,7 @@
                 data-commands={
                   Jason.encode!(ComposerCommands.suggestions(@agents, @runs, @approvals))
                 }
-                data-mentions={Jason.encode!(["all" | Enum.map(@agents, & &1.name)])}
+                data-mentions={Jason.encode!(mention_choices(@agents, @provider_usage))}
               >
                 <div id="mention-menu-container" phx-update="ignore">
                   <ul

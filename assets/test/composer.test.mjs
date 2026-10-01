@@ -11,7 +11,13 @@ const commands = [
   {name: "approve", usage: "accept|decline [n]", description: "Answer approval", choices: [["accept", "decline"], ["1", "2"]]},
   {name: "model", usage: "<agent> <id|default>", description: "Choose model", choices: [["ada", "bob"], ["default"]]}
 ]
-const suggest = (text, caret = text.length, end = caret) => suggestions(text, caret, end, commands, ["all", "ada", "bob"])
+const names = [
+  {name: "all"},
+  {name: "ada", usage: "42.0%", level: "warn"},
+  {name: "bob", usage: "not reported", level: "ok"}
+]
+const suggest = (text, caret = text.length, end = caret) =>
+  suggestions(text, caret, end, commands, names)
 
 test("slash commands filter and carry descriptions", () => {
   assert.equal(suggest("/").length, commands.length)
@@ -38,6 +44,14 @@ test("mention completion respects caret, selection and surrounding text", () => 
   assert.deepEqual(suggest("contact user@ad"), [])
   assert.deepEqual(suggest("@ad", 1, 3), [])
   assert.equal(suggest("@AD")[0].text, "@ada ")
+})
+
+test("mention choices carry the provider reading beside the name", () => {
+  assert.deepEqual(suggest("@a").map(s => s.label), ["@all", "@ada"])
+  assert.deepEqual(suggest("@a")[0].usage, undefined)
+  assert.equal(suggest("@ad")[0].usage, "42.0%")
+  assert.equal(suggest("@ad")[0].level, "warn")
+  assert.equal(suggest("@bo")[0].usage, "not reported")
 })
 
 test("Enter and Tab accept a suggestion; a later Enter submits", () => {

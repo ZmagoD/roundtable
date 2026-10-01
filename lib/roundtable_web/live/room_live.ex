@@ -900,8 +900,22 @@ defmodule RoundtableWeb.RoomLive do
 
   def handle_info(:room_updated, socket), do: {:noreply, refresh(socket)}
 
-  def handle_info(:provider_usage_updated, socket),
-    do: {:noreply, assign(socket, provider_usage: Chat.provider_usage())}
+  def handle_info(:provider_usage_updated, %{assigns: %{provider_usage: before}} = socket) do
+    usage = Chat.provider_usage()
+
+    # Chips sit inside the message stream, which a re-render does not redraw,
+    # so the browser is told the reading directly instead.
+    socket = assign(socket, provider_usage: usage)
+
+    socket =
+      for {provider, reading} <- usage,
+          Map.get(before, provider, %{recorded_at: nil}).recorded_at != reading.recorded_at,
+          reduce: socket do
+        acc -> push_event(acc, "usage-update", usage_update(provider, reading))
+      end
+
+    {:noreply, socket}
+  end
 
   def handle_info(:rooms_updated, socket),
     do:
@@ -1199,6 +1213,68 @@ defmodule RoundtableWeb.RoomLive do
 
   defp provider_of(agents, name),
     do: agents |> Enum.find(&(&1.name == name)) |> then(&(&1 && &1.provider))
+
+  # A message keeps only its sender's name, so the reading the card shows is
+  # echoed here by looking the sender up among the current agents; someone
+  # since removed, or writing from another room, reports nothing.
+  defp usage_of(usage, agents, name), do: usage[provider_of(agents, name)]
+
+  @doc """
+  The reading a participant's provider last gave, as a small chip in the chat.
+
+  Same source as the agent cards, same three forms: a percentage, a status,
+  or `not reported`. Sent further from the server — see `usage_update/2` —
+  because a chip inside the streamed messages is not redrawn by a re-render.
+  """
+  attr :id, :string, required: true
+  attr :provider, :string, default: nil
+  attr :reading, :map, default: nil
+
+  def usage_chip(assigns) do
+    ~H"""
+    <span
+      id={@id}
+      class={[
+        "usage-chip",
+        @provider && "usage-#{@provider}",
+        Roundtable.Usage.level(@reading) == "warn" && "usage-warn"
+      ]}
+      data-provider={@provider}
+      phx-hook="Usage"
+      title={recorded(@reading)}
+    >{Roundtable.Usage.label(@reading)}</span>
+    """
+  end
+
+  defp usage_update(provider, reading) do
+    %{
+      provider: provider,
+      label: Roundtable.Usage.label(reading),
+      level: Roundtable.Usage.level(reading),
+      recorded: recorded(reading)
+    }
+  end
+
+  defp recorded(nil), do: nil
+
+  defp recorded(reading),
+    do: "Recorded #{Calendar.strftime(reading.recorded_at, "%d %b %H:%M UTC")}"
+
+  defp mention_choices(agents, usage) do
+    [
+      # Mentioning everyone is not an agent, and nothing about usage is known.
+      %{name: "all"}
+      | Enum.map(agents, fn agent ->
+          reading = usage[agent.provider]
+
+          %{
+            name: agent.name,
+            usage: Roundtable.Usage.label(reading),
+            level: Roundtable.Usage.level(reading)
+          }
+        end)
+    ]
+  end
 
   def time(datetime) do
     format =

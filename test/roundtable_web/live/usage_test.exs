@@ -49,4 +49,63 @@ defmodule RoundtableWeb.UsageTest do
     assert has_element?(two, "#provider-usage-#{bob.id}", "limited")
     assert has_element?(schedules, "#workspace-navigation")
   end
+
+  test "chips in the chat show the reading on messages, live runs and suggestions", %{
+    conn: conn
+  } do
+    {:ok, room} = Chat.create_room(%{name: "Usage chips", directory: File.cwd!()})
+    {:ok, _ada} = Chat.create_agent(room.id, %{name: "ada", provider: "codex"})
+    {:ok, _bob} = Chat.create_agent(room.id, %{name: "bob", provider: "claude"})
+
+    Chat.record_provider_usage("codex", %{"percent" => 85})
+    Chat.record_provider_usage("claude", %{"status" => "limited"})
+    {:ok, _} = Chat.post(room.id, "written by ada", sender: "ada", kind: "agent")
+    {:ok, _} = Chat.post(room.id, "written by bob", sender: "bob", kind: "agent")
+    {:ok, _} = Chat.post(room.id, "written by nobody here", sender: "gone", kind: "agent")
+
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+
+    assert has_element?(view, ".message-meta .usage-chip.usage-warn", "85.0%")
+    assert has_element?(view, ".message-meta .usage-chip.usage-warn", "limited")
+    # Someone since removed, or from another room, reports nothing.
+    assert has_element?(view, "#messages .message-meta .usage-chip", "not reported")
+    html = render(view)
+
+    # The chip says whose reading it is, in data, whether or not anything came.
+    assert html =~ ~s(class="usage-chip usage-codex usage-warn")
+    assert html =~ ~s(class="usage-chip usage-claude usage-warn")
+
+    # A queued turn shows the same chip as a message does.
+    {:ok, _} = Chat.post(room.id, "@ada work")
+    [run] = Chat.runs(room.id)
+    assert has_element?(view, "#run-#{run.id} .usage-chip", "85.0%")
+
+    # @ suggestions carry each provider's reading beside the name. The JSON
+    # is HTML-escaped in the attribute, so it is read back rather than grepped.
+    document = LazyHTML.from_fragment(render(view))
+    form = LazyHTML.query(document, "#message-form")
+    [mentions] = LazyHTML.attribute(form, "data-mentions")
+    choices = Jason.decode!(mentions)
+    assert %{"name" => "ada", "usage" => "85.0%", "level" => "warn"} in choices
+    assert %{"name" => "bob", "usage" => "limited", "level" => "warn"} in choices
+  end
+
+  test "a reading arriving after a message is on screen pushes its chip update", %{conn: conn} do
+    {:ok, room} = Chat.create_room(%{name: "Chip updates", directory: File.cwd!()})
+    {:ok, _} = Chat.create_agent(room.id, %{name: "ada", provider: "codex"})
+    {:ok, _} = Chat.post(room.id, "written before any reading", sender: "ada", kind: "agent")
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+
+    assert has_element?(view, ".message-meta .usage-chip", "not reported")
+
+    Chat.record_provider_usage("codex", %{"percent" => 92})
+    _ = :sys.get_state(view.pid)
+
+    {_, {:push_event, "usage-update", payload}} =
+      assert_push_event(view, "usage-update", %{provider: "codex"})
+
+    assert payload.label == "92.0%"
+    assert payload.level == "warn"
+    assert payload.recorded =~ "Recorded"
+  end
 end

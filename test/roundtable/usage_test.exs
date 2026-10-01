@@ -209,4 +209,50 @@ defmodule Roundtable.UsageTest do
       }
     }
   end
+
+  describe "the reading a slot keeps" do
+    test "a fresher reading of the same window replaces even a better one" do
+      five = %{"percent" => 90.0, "status" => "near limit", "window" => "five_hours"}
+
+      # After a reset the old warning must go; a slot is not a maximum.
+      assert Usage.keep(five, %{five | "percent" => 10.0, "status" => "OK"}) ==
+               %{five | "percent" => 10.0, "status" => "OK"}
+    end
+
+    test "between windows, the one closer to its limit is kept" do
+      five = %{"percent" => 85.0, "status" => "near limit", "window" => "five_hours"}
+      week = %{"percent" => 30.0, "status" => "OK", "window" => "seven_day"}
+
+      assert Usage.keep(five, week) == five
+
+      # A stricter status beats a lower percentage.
+      assert Usage.keep(
+               %{five | "percent" => 99.9, "status" => "OK"},
+               %{"status" => "limited", "window" => "seven_day"}
+             )["status"] == "limited"
+
+      # Between calm windows, the higher percentage is the one shown.
+      calm_high = %{"percent" => 70.0, "status" => "OK", "window" => "five_hours"}
+      calm_low = %{"percent" => 20.0, "status" => "OK", "window" => "seven_day"}
+
+      assert Usage.keep(calm_low, calm_high) == calm_high
+      assert Usage.keep(calm_high, calm_low) == calm_high
+    end
+
+    test "the first reading is kept whole" do
+      reading = %{"percent" => 42.0, "window" => "five_hours"}
+      assert Usage.keep(nil, reading) == reading
+    end
+  end
+
+  describe "how loud a reading is" do
+    test "warn at 80% or more, near limit or limited; quiet otherwise" do
+      assert Usage.level(%{"percent" => 79.9}) == "ok"
+      assert Usage.level(%{"percent" => 80}) == "warn"
+      assert Usage.level(%{"status" => "near limit"}) == "warn"
+      assert Usage.level(%{"status" => "limited"}) == "warn"
+      assert Usage.level(%{"status" => "OK"}) == "ok"
+      assert Usage.level(nil) == "ok"
+    end
+  end
 end

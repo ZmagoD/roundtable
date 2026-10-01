@@ -13,7 +13,7 @@ defmodule Roundtable.Coordinator do
   # Turns that may run at once, across every room.
   @max_workers 4
   import Ecto.Query
-  alias Roundtable.{Chat, Repo}
+  alias Roundtable.{Chat, Repo, Usage}
   alias Roundtable.Chat.{Agent, Message, Run}
 
   def start_link(_), do: GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
@@ -184,7 +184,13 @@ defmodule Roundtable.Coordinator do
   end
 
   defp apply_event(state, run, _agent, {:provider_usage, data}) do
-    Chat.record_provider_usage(state.workers[run.id].provider, data)
+    provider = state.workers[run.id].provider
+
+    # Which of Claude's two windows a slot keeps is decided before the write:
+    # the choice is Usage's policy, the write stays Chat's. See `Usage.keep/2`.
+    current = Map.get(Chat.provider_usage(), provider)
+
+    Chat.record_provider_usage(provider, Usage.keep(current && current.data, data))
     state
   end
 

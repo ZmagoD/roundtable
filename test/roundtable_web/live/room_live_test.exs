@@ -3,6 +3,14 @@ defmodule RoundtableWeb.RoomLiveTest do
   import Phoenix.LiveViewTest
   alias Roundtable.Chat
 
+  # The mention payload is HTML-escaped in a data attribute, so tests read it
+  # back through the parser instead of grepping for what the browser got.
+  def mentions_of(html) do
+    form = LazyHTML.from_fragment(html) |> LazyHTML.query("#message-form")
+    [value] = LazyHTML.attribute(form, "data-mentions")
+    Jason.decode!(value)
+  end
+
   test "composer offers and runs commands without posting them to agents", %{conn: conn} do
     {:ok, room} = Chat.create_room(%{name: "Commands", directory: File.cwd!()})
     {:ok, agent} = Chat.create_agent(room.id, %{name: "ada", provider: "claude"})
@@ -759,7 +767,10 @@ defmodule RoundtableWeb.RoomLiveTest do
                "#message-body[aria-controls=mention-menu][aria-autocomplete=list]"
              )
 
-      assert has_element?(view, "#message-form[data-mentions='[\"all\",\"ada\"]']")
+      # Names now arrive with each provider's usage reading beside them.
+      choices = mentions_of(render(view))
+      assert Enum.any?(choices, &(&1["name"] == "all"))
+      assert Enum.any?(choices, &(&1["name"] == "ada" and Map.has_key?(&1, "usage")))
       view |> form("#message-form", message: %{body: "@ad"}) |> render_change()
       assert has_element?(view, "#mention-menu-container[phx-update=ignore] #mention-menu")
     end

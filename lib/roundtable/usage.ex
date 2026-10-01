@@ -46,6 +46,44 @@ defmodule Roundtable.Usage do
     }
   end
 
+  @doc """
+  The reading a slot keeps when two reports compete for it.
+
+  Claude sends its five-hour and weekly limits as separate events, and a room
+  shows one reading per provider, so the window closer to its limit wins: a
+  stricter status beats a calmer one, a higher percentage beats a lower one,
+  and a fresher reading of the same window always replaces an older one, even
+  when it looks better — after a reset the old warning must go. Codex reports
+  both of its windows in a single event, so it arrives here already decided.
+  """
+  def keep(one, two) do
+    cond do
+      one == nil or two == nil -> two || one
+      one["window"] == two["window"] -> two
+      true -> across_windows(one, two)
+    end
+  end
+
+  defp across_windows(one, two) do
+    cond do
+      strictness(one) > strictness(two) -> one
+      strictness(one) < strictness(two) -> two
+      one["percent"] == nil or two["percent"] == nil -> two
+      one["percent"] >= two["percent"] -> one
+      true -> two
+    end
+  end
+
+  @doc "How loud a reading is: warning at 80% or more, `near limit` or `limited`."
+  def level(%{data: data}), do: level(data)
+  def level(%{"percent" => n}) when is_number(n) and n >= 80, do: "warn"
+  def level(%{"status" => status}) when status in ["near limit", "limited"], do: "warn"
+  def level(_), do: "ok"
+
+  defp strictness(%{"status" => "limited"}), do: 3
+  defp strictness(%{"status" => "near limit"}), do: 2
+  defp strictness(_), do: 0
+
   def codex_limit(limits) do
     windows =
       for key <- ~w(primary secondary),

@@ -66,6 +66,48 @@ defmodule Roundtable.UsageEventsTest do
     refute Map.has_key?(Chat.provider_usage(), "opencode")
   end
 
+  test "Claude keeps the window closer to its limit", %{room: room} do
+    {:ok, _agent} = Chat.create_agent(room.id, %{name: "ada", provider: "claude"})
+    Coordinator.post(room.id, "@ada task")
+    assert_receive {:agent_started, _, _, run, _}, 1000
+    state = %{run: run, output: "", flush: nil, finished: false}
+
+    # Two events, one per window; only one slot per provider.
+    for window <- [
+          %{
+            "rateLimitType" => "five_hours",
+            "status" => "allowed_warning",
+            "utilization" => 0.85
+          },
+          %{"rateLimitType" => "seven_day", "status" => "allowed", "utilization" => 0.3}
+        ] do
+      Claude.handle_event(%{"type" => "rate_limit_event", "rate_limit_info" => window}, state)
+      _ = :sys.get_state(Coordinator)
+    end
+
+    assert Chat.provider_usage()["claude"].data["percent"] == 85.0
+
+    # A fresher reading of the same window replaces it even when it is calmer.
+    Claude.handle_event(
+      %{
+        "type" => "rate_limit_event",
+        "rate_limit_info" => %{
+          "rateLimitType" => "five_hours",
+          "status" => "allowed",
+          "utilization" => 0.05
+        }
+      },
+      state
+    )
+
+    _ = :sys.get_state(Coordinator)
+    assert Chat.provider_usage()["claude"].data["percent"] == 5.0
+
+    Coordinator.event(run.id, {:done, "completed", nil})
+    _ = :sys.get_state(Coordinator)
+    assert Repo.get!(Run, run.id).status == "completed"
+  end
+
   test "Codex notifications persist usage even when the turn fails", %{room: room} do
     {:ok, agent} = Chat.create_agent(room.id, %{name: "ada", provider: "codex"})
     Coordinator.post(room.id, "@ada task")

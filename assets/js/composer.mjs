@@ -26,12 +26,15 @@ export function suggestions(value, caret, end, commands, names) {
   }
   const mention = before.match(/(^|\s)@([a-z0-9_-]*)$/i)
   if (!mention) return []
-  return names.filter(n => n.startsWith(mention[2].toLowerCase())).map(n => ({
-    label: `@${n}`, description: "",
-    start: caret - mention[2].length - 1,
-    end: caret + (value.slice(caret).match(/^[\w-]*/)?.[0].length || 0),
-    text: `@${n} `
-  }))
+  // Each name arrives with the reading its provider last gave, shown beside it.
+  return names
+    .filter(n => n.name.startsWith(mention[2].toLowerCase()))
+    .map(n => ({
+      label: `@${n.name}`, description: "", usage: n.usage, level: n.level,
+      start: caret - mention[2].length - 1,
+      end: caret + (value.slice(caret).match(/^[\w-]*/)?.[0].length || 0),
+      text: `@${n.name} `
+    }))
 }
 
 export const Composer = {
@@ -79,6 +82,12 @@ export const Composer = {
       const label = document.createElement("span")
       label.textContent = match.label
       item.append(label)
+      if (match.usage) {
+        const usage = document.createElement("small")
+        usage.className = `usage-chip${match.level === "warn" ? " usage-warn" : ""}`
+        usage.textContent = match.usage
+        item.append(usage)
+      }
       if (match.description) {
         const description = document.createElement("small")
         description.textContent = match.description

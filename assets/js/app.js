@@ -115,6 +115,17 @@ const liveSocket = new LiveSocket("/live", Socket, {
       mounted() { this.el.scrollTop = this.el.scrollHeight; this.follow = true; this.el.addEventListener("scroll", () => { this.follow = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 100 }) },
       updated() { if (this.follow) this.el.scrollTop = this.el.scrollHeight }
     },
+    Usage: {
+      mounted() {
+        this.handleEvent("usage-update", data => {
+          if (data.provider !== this.el.dataset.provider) return
+          this.el.textContent = data.label
+          this.el.classList.toggle("usage-warn", data.level === "warn")
+          if (data.recorded) this.el.setAttribute("title", data.recorded)
+          else this.el.removeAttribute("title")
+        })
+      }
+    },
     Composer
   },
 })
