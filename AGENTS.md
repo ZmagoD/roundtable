@@ -34,7 +34,3 @@ this codebase deliberately differs or goes further:
   the human's quota. Seed demo data without mentions.
 - **User-facing text is written for a person**, in the same voice as the rest of
   the UI: no shouting, no exclamation marks, and say what happens next.
-
-{"docs/PHOENIX.md"}
-Generic Phoenix, Elixir, Ecto, HEEx and LiveView guidance lives in
-[docs/PHOENIX.md](docs/PHOENIX.md) for agents that want the full rules.
