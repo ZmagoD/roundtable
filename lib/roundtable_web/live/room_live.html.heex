@@ -129,28 +129,42 @@
               phx-value-name="agent"
             >+ Add agent</button>
             <%!-- The less-used actions sit behind a native details menu, so
-                 the header keeps its one line at narrow widths; no script. --%>
-            <details class="header-more">
+                 the header keeps its one line at narrow widths. Its open state
+                 is the browser's, so page updates must leave it alone, and
+                 picking an action closes it. --%>
+            <details
+              id="room-more"
+              class="header-more"
+              phx-mounted={JS.ignore_attributes("open")}
+              phx-click-away={JS.remove_attribute("open", to: "#room-more")}
+            >
               <summary class="button secondary">More<span class="more-arrow">▾</span></summary>
               <div class="more-panel">
                 <button
                   id="room-notes-button"
                   class="button secondary"
-                  phx-click="panel"
-                  phx-value-name="notes"
+                  phx-click={
+                    JS.push("panel", value: %{name: "notes"})
+                    |> JS.remove_attribute("open", to: "#room-more")
+                  }
                   title="What this room has learned, given to every participant"
                 >Room notes</button>
                 <button
                   id="schedules-button"
                   class="button secondary"
-                  phx-click="panel"
-                  phx-value-name="schedules"
+                  phx-click={
+                    JS.push("panel", value: %{name: "schedules"})
+                    |> JS.remove_attribute("open", to: "#room-more")
+                  }
                   title="Wake a participant at a time of day"
                 >Schedules</button>
                 <button
                   id="terminal-button"
                   class="button secondary"
-                  phx-click={if @terminal, do: "close-terminal", else: "open-terminal"}
+                  phx-click={
+                    JS.push(if(@terminal, do: "close-terminal", else: "open-terminal"))
+                    |> JS.remove_attribute("open", to: "#room-more")
+                  }
                   title="A shell in this room's directory"
                 >
                   {if @terminal, do: "Close terminal", else: "Terminal"}
@@ -158,14 +172,18 @@
                 <button
                   id="clear-history-button"
                   class="button secondary danger"
-                  phx-click="clear-history"
+                  phx-click={
+                    JS.push("clear-history") |> JS.remove_attribute("open", to: "#room-more")
+                  }
                   data-confirm={"Clear all chat history in #{@room.name}? This stops its active and queued turns, deletes messages, run records and cross-room request links, and resets agent sessions. Agents, the work document, notes, brief and schedules stay. There is no undo."}
                 >Clear chat history</button>
                 <button
                   id="remove-room-button"
                   class="button secondary danger"
-                  phx-click="remove-room"
-                  phx-value-id={@room.id}
+                  phx-click={
+                    JS.push("remove-room", value: %{id: to_string(@room.id)})
+                    |> JS.remove_attribute("open", to: "#room-more")
+                  }
                   data-confirm={"Delete #{@room.name}? Its participants, its whole history and any cross-room requests go with it. There is no undo and nothing is exported."}
                 >Delete room</button>
               </div>

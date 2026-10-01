@@ -1017,6 +1017,20 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert id == agent.id
     end
 
+    # The menu's open state lives in the browser. Without ignoring it, every
+    # page update closed the menu, which while agents run is every second.
+    test "the More menu keeps its open state across updates and closes on an action", %{
+      view: view
+    } do
+      assert has_element?(view, "details#room-more[phx-mounted*=ignore_attrs]")
+      assert has_element?(view, "details#room-more[phx-click-away]")
+
+      for id <-
+            ~w(room-notes-button schedules-button terminal-button clear-history-button remove-room-button) do
+        assert has_element?(view, "##{id}[phx-click*=remove_attr][phx-click*=room-more]")
+      end
+    end
+
     test "a note is saved from the room and listed for the next turn", %{
       view: view,
       room: room
