@@ -175,11 +175,14 @@ defmodule Roundtable.Coordinator do
   end
 
   defp apply_event(state, run, agent, {:session, session}) do
+    worker = state.workers[run.id]
+
+    # A role edited mid-turn has not reached this session yet.
     Chat.change(agent,
       session_id: session,
       session_model: run.model,
-      session_role: agent.role,
-      session_directory: agent.directory
+      session_role: worker.role,
+      session_directory: worker.directory
     )
 
     state
@@ -513,7 +516,9 @@ defmodule Roundtable.Coordinator do
             pid: pid,
             ref: Process.monitor(pid),
             agent_id: agent.id,
-            provider: agent.provider
+            provider: agent.provider,
+            role: agent.role,
+            directory: agent.directory
           }
 
           %{state | workers: Map.put(state.workers, run.id, worker)}

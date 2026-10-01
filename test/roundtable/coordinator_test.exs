@@ -174,7 +174,8 @@ defmodule Roundtable.CoordinatorTest do
     assert lid == linus.id
     GenServer.cast(first, {:finish, "Implementation complete"})
     assert_receive {:agent_started, second, %{id: ^aid}, _, prompt}, 1000
-    assert prompt =~ "Implementation complete"
+    refute prompt =~ "Implementation complete"
+    assert prompt =~ "Earlier standing instructions still apply"
     assert Repo.get!(Run, first_run.id).status == "completed"
     assert Chat.agent!(ada.id).session_id == "session-#{ada.id}"
     GenServer.cast(second, {:finish, "@linus please review the finished implementation"})
@@ -285,8 +286,29 @@ defmodule Roundtable.CoordinatorTest do
     Chat.change(Chat.agent!(ada.id), role: "Write the API after all")
     Coordinator.post(room.id, "@ada carry on")
     assert_receive {:agent_started, _pid, _, _, prompt}, 1000
+    assert prompt =~ "Earlier standing instructions still apply"
+    refute prompt =~ "WHO YOU ARE AND HOW YOU WORK"
     assert prompt =~ "Your role: Write the API after all"
     assert prompt =~ "It used to be: Review changes, never write them"
+    Coordinator.stop(ada.id)
+  end
+
+  test "a role edited mid-turn is delivered on the next resumed turn", %{room: room, ada: ada} do
+    Chat.change(ada, role: "Original role")
+    Coordinator.post(room.id, "@ada first")
+    assert_receive {:agent_started, pid, _, _, prompt}, 1000
+    assert prompt =~ "Your role: Original role"
+    Chat.change(Chat.agent!(ada.id), role: "Changed while running")
+    ref = Process.monitor(pid)
+    GenServer.cast(pid, {:finish, "Done"})
+    assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 1000
+    _ = :sys.get_state(Coordinator)
+    assert Chat.agent!(ada.id).session_role == "Original role"
+
+    Coordinator.post(room.id, "@ada continue")
+    assert_receive {:agent_started, _, _, _, prompt}, 1000
+    assert prompt =~ "Earlier standing instructions still apply"
+    assert prompt =~ "Your role: Changed while running"
     Coordinator.stop(ada.id)
   end
 
@@ -320,7 +342,8 @@ defmodule Roundtable.CoordinatorTest do
     Coordinator.post(room.id, "@ada routine task")
     assert_receive {:agent_started, second, %{model: nil, session_id: nil}, _, prompt}, 1000
     assert prompt =~ "Keep this history"
-    assert prompt =~ "Plan ready"
+    refute prompt =~ "Plan ready"
+    assert prompt =~ "WHO YOU ARE AND HOW YOU WORK"
     ref = Process.monitor(second)
     GenServer.cast(second, {:finish, "Done"})
     assert_receive {:DOWN, ^ref, :process, ^second, :normal}, 1000
@@ -368,7 +391,8 @@ defmodule Roundtable.CoordinatorTest do
     {:ok, _} = Chat.update_organization(organization.id, %{"directory" => System.tmp_dir!()})
     Coordinator.post(room.id, "@ada again")
 
-    assert_receive {:agent_started, _pid, agent, _, _}, 1000
+    assert_receive {:agent_started, _pid, agent, _, prompt}, 1000
+    assert prompt =~ "WHO YOU ARE AND HOW YOU WORK"
     assert agent.session_id == nil
     assert agent.directory == System.tmp_dir!()
     # The old session is gone; a new one records the new folder when it starts.

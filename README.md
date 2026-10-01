@@ -564,12 +564,27 @@ room believes.
 
 ![A participant's role, model and tool approvals](docs/images/agent-setup.png)
 
-Every turn opens the same way: who it is, and the role it works to. The role is
-a standing brief — what this participant is for *and how it should behave* — so
+A new provider session receives its full role and standing instructions. Resumed
+turns get a short reminder that these still apply, and the full role again if it
+changed. The role is a standing brief — what this participant is for *and how it
+should behave* — so
 "Review changes and say what is wrong; never write them yourself" belongs there,
 not only "reviewer". Each turn also carries the working directory, the model and
-cost tier for that assignment, and the roster of everyone else with their roles,
-which is what delegation is decided from.
+cost tier for that assignment, and a current roster with provider/model, cost tier,
+status, usage and each role's first sentence (at most 120 characters). The agent's
+own full role is never shortened when it is sent.
+
+The room brief, project context, carried notes, work document and roster are
+refreshed on every turn, so edits and membership changes are visible immediately.
+Resets, model or folder changes, and quota retries receive full standing
+instructions again. In rooms without a head, unread history excludes system
+messages and the participant's own replies before applying the history limit;
+the assigned message is always included explicitly. Head rooms continue to use
+the work document and assignment instead of automatic chat history.
+
+`mix test test/roundtable/prompt_measurement_test.exs` prints fresh and resumed
+prompt character counts for a five-agent fixture. These measure prompt size,
+not provider token savings; reported tokens remain available on the agent cards.
 
 The role is read fresh for every turn, so changing it takes effect on the next
 one; no reset is needed. Because the provider session still holds the earlier
