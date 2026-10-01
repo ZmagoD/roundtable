@@ -13,7 +13,7 @@ defmodule Roundtable.Coordinator do
   # Turns that may run at once, across every room.
   @max_workers 4
   import Ecto.Query
-  alias Roundtable.{Chat, Repo, Usage}
+  alias Roundtable.{Chat, Git, Repo, Supervision, Usage}
   alias Roundtable.Chat.{Agent, Message, Run}
 
   def start_link(_), do: GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
@@ -28,6 +28,9 @@ defmodule Roundtable.Coordinator do
   def clear_history(room_id), do: GenServer.call(__MODULE__, {:clear_history, room_id})
   def resume_due(now), do: GenServer.call(__MODULE__, {:resume_due, now})
   def retry(run_id), do: GenServer.call(__MODULE__, {:retry, run_id})
+
+  @doc "Runs the watchdog once: see `Roundtable.Watchdog`."
+  def supervise(now), do: GenServer.call(__MODULE__, {:supervise, now})
 
   @doc "Stops a participant's queue, then removes it."
   def remove_agent(agent_id), do: GenServer.call(__MODULE__, {:remove_agent, agent_id})
@@ -129,6 +132,13 @@ defmodule Roundtable.Coordinator do
       )
     end
 
+    {:reply, :ok, schedule(state)}
+  end
+
+  def handle_call({:supervise, now}, _, state) do
+    state = Enum.reduce(state.workers, state, &stop_if_silent(&1, &2, now))
+    Enum.each(Chat.supervision_candidates(now), &supervise_run(&1, now))
+    Enum.each(Chat.rooms_with_head(), &wake_for_uncommitted(&1, now))
     {:reply, :ok, schedule(state)}
   end
 
@@ -237,6 +247,8 @@ defmodule Roundtable.Coordinator do
       finish_turn(status, run, agent, error)
     end)
 
+    if status == "completed", do: wake_if_unhanded(Repo.get!(Run, run.id), agent)
+
     state = forget(state, run.id)
     # A failed turn blocks queued turns for this participant until explicitly retried.
     state = if status != "completed", do: cancel_agent(state, agent.id), else: state
@@ -321,6 +333,141 @@ defmodule Roundtable.Coordinator do
         {:noreply, state}
     end
   end
+
+  # A turn that has gone quiet is stopped and left interrupted, which is what
+  # the rest of the watchdog already knows how to retry.
+  defp stop_if_silent({id, worker}, state, now) do
+    # A row can be gone while its worker is still being torn down.
+    run = Repo.get(Run, id)
+
+    if run && Supervision.silent?(run, now) do
+      DynamicSupervisor.terminate_child(Roundtable.AgentSupervisor, worker.pid)
+
+      Chat.change(run,
+        status: "interrupted",
+        error:
+          "No activity for #{div(Supervision.silent_after(), 60)} minutes, so it was stopped."
+      )
+
+      Chat.broadcast(Chat.agent!(run.agent_id).room_id)
+      forget(state, id)
+    else
+      state
+    end
+  end
+
+  defp supervise_run(run, now) do
+    agent = run.agent
+
+    case Supervision.decide(run, now) do
+      :wait ->
+        :ok
+
+      {:quota, quota} ->
+        if waiting = Chat.wait_for_quota(run, quota.message, quota[:resets_at], now) do
+          notice(agent, "hit its usage limit. Its turn resumes at #{clock(waiting.retry_at)}.")
+        else
+          give_up(run, agent, "hit its usage limit, and automatic quota retry is off for it")
+        end
+
+      {:retry, reason} ->
+        Chat.supervised_retry(run, current_model(run))
+        attempt = run.supervised_retries + 1
+
+        notice(
+          agent,
+          "stopped (#{Supervision.gist(reason)}). Restarting its turn, attempt #{attempt} of #{Supervision.max_retries()}."
+        )
+
+      {:give_up, reason} ->
+        give_up(run, agent, "could not finish (#{Supervision.gist(reason)})")
+    end
+  end
+
+  defp give_up(run, agent, what) do
+    Chat.give_up(run)
+    text = "#{agent.name} #{what}. It needs attention; its turn will not be restarted."
+
+    case wake_target(agent) do
+      nil -> Chat.supervisor_notice(agent.room_id, text, "notice")
+      head -> wake(head, text)
+    end
+  end
+
+  defp notice(agent, what),
+    do: Chat.supervisor_notice(agent.room_id, "#{agent.name} #{what}", "notice")
+
+  # A specialist that finishes without passing the work on leaves it with
+  # nobody. The head is the one who decides what happens next.
+  defp wake_if_unhanded(run, agent) do
+    with head when not is_nil(head) <- wake_target(agent),
+         [] <- Chat.recipients(run.output, Chat.agents(agent.room_id)),
+         true <- String.trim(run.output) != "" do
+      wake(
+        head,
+        "#{agent.name} finished without handing the work on. Its reply begins: " <>
+          "“#{Supervision.gist(run.output)}”"
+      )
+    end
+  end
+
+  # Work left in the tree with nobody running is work nobody is looking at.
+  # One reminder per quiet spell: a new turn has to end before there is another.
+  defp wake_for_uncommitted(room_id, now) do
+    with %DateTime{} = quiet <- Chat.room_quiet_since(room_id),
+         true <- DateTime.diff(now, quiet) >= 600,
+         0 <- Chat.supervisor_notices_since(room_id, "uncommitted", quiet),
+         head when not is_nil(head) <- Chat.team_head(room_id),
+         directory when directory not in [nil, ""] <- Chat.effective_directory(room_id),
+         {:ok, %{entries: [_ | _] = entries}} <- Git.status(directory) do
+      wake(
+        head,
+        "#{length(entries)} uncommitted change(s) have sat in #{directory} for over ten " <>
+          "minutes with no turn running. Commit, park on a wip/ branch, or hand them on.",
+        "uncommitted"
+      )
+    end
+  end
+
+  defp wake_target(agent) do
+    case Chat.team_head(agent.room_id) do
+      %{id: id} when id == agent.id -> nil
+      head -> head
+    end
+  end
+
+  # Bounded so a head and a specialist cannot keep waking each other: past
+  # the limit the notice is still posted, it just starts no turn.
+  @wakes_per_hour 6
+
+  defp wake(head, text, topic \\ "wake") do
+    since = DateTime.add(DateTime.utc_now(:second), -3600, :second)
+
+    wakes =
+      Chat.supervisor_notices_since(head.room_id, "wake", since) +
+        Chat.supervisor_notices_since(head.room_id, "uncommitted", since)
+
+    if wakes < @wakes_per_hour do
+      Chat.supervisor_notice(head.room_id, "@#{head.name} #{text}", topic_for(topic))
+    else
+      Chat.supervisor_notice(head.room_id, "#{head.name}: #{text}", "notice")
+    end
+  end
+
+  defp topic_for("uncommitted"), do: "uncommitted"
+  defp topic_for(_), do: "wake"
+
+  defp clock(%DateTime{} = at) do
+    {{_, _, _}, {hour, minute, _}} =
+      at
+      |> DateTime.to_naive()
+      |> NaiveDateTime.to_erl()
+      |> :calendar.universal_time_to_local_time()
+
+    :io_lib.format("~2..0B:~2..0B", [hour, minute]) |> to_string()
+  end
+
+  defp clock(_), do: "the provider's reset"
 
   # One turn per participant, and @max_workers across the service. A run that
   # cannot start now stays queued and is reconsidered on the next transition.

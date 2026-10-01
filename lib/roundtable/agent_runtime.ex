@@ -16,7 +16,8 @@ defmodule Roundtable.AgentRuntime do
         {DynamicSupervisor, name: Roundtable.AgentSupervisor, strategy: :one_for_one},
         Roundtable.Coordinator,
         Roundtable.Scheduler,
-        Roundtable.QuotaRetry
+        Roundtable.QuotaRetry,
+        Roundtable.Watchdog
       ],
       strategy: :one_for_all
     )

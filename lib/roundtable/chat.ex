@@ -750,6 +750,90 @@ defmodule Roundtable.Chat do
     count == 1
   end
 
+  @doc """
+  Turns the watchdog may still act on: each participant's latest run, when it
+  failed or was interrupted within the last two hours.
+
+  Only the latest, because a participant that has since moved on to other work
+  must not be dragged back to an old failure; and only recent ones, so a service
+  started after a long gap does not replay yesterday.
+  """
+  def supervision_candidates(now) do
+    since = DateTime.add(now, -2 * 3600, :second)
+    latest = from r in Run, group_by: r.agent_id, select: max(r.id)
+
+    Repo.all(
+      from r in Run,
+        where:
+          r.id in subquery(latest) and r.status in ["failed", "interrupted"] and
+            r.updated_at >= ^since,
+        order_by: r.id,
+        preload: :agent
+    )
+  end
+
+  @doc "Queues a turn again on the watchdog's behalf, counting the attempt."
+  def supervised_retry(run, attrs) do
+    change(
+      run,
+      [
+        status: "queued",
+        error: nil,
+        output: "",
+        retry_at: nil,
+        supervised_retries: run.supervised_retries + 1
+      ] ++ attrs
+    )
+  end
+
+  @doc "Marks a turn as one the watchdog has stopped trying to restart."
+  def give_up(run), do: change(run, supervised_retries: Roundtable.Supervision.gave_up())
+
+  @doc """
+  Posts what the watchdog did. A notice that mentions the team head starts the
+  head's turn, which is the point of a wake-up; every other notice names
+  participants without `@` so it wakes nobody.
+
+  Wake-ups start their own chain rather than continuing the one that stalled,
+  because the stalled chain is usually the one that ran out of hops.
+  """
+  def supervisor_notice(room_id, body, topic) do
+    post(room_id, body,
+      sender: "supervisor",
+      kind: "agent",
+      depth: 0,
+      metadata: %{"supervisor" => topic}
+    )
+  end
+
+  @doc "How many notices on `topic` the watchdog has posted in a room since `since`."
+  def supervisor_notices_since(room_id, topic, since) do
+    Repo.aggregate(
+      from(m in Message,
+        where:
+          m.room_id == ^room_id and m.sender == "supervisor" and m.inserted_at >= ^since and
+            fragment("json_extract(?, '$.supervisor')", m.metadata) == ^topic
+      ),
+      :count
+    )
+  end
+
+  @doc "Rooms whose work is routed through a team head."
+  def rooms_with_head,
+    do: Repo.all(from a in Agent, where: a.head, distinct: true, select: a.room_id)
+
+  @doc """
+  When a room's last turn ended, or `nil` while any turn in it is still active
+  or none has ever run.
+  """
+  def room_quiet_since(room_id) do
+    runs = from r in Run, join: a in assoc(r, :agent), where: a.room_id == ^room_id
+
+    if Repo.exists?(where(runs, [r], r.status in ^(@active_statuses ++ ["waiting_quota"]))),
+      do: nil,
+      else: Repo.one(select(runs, [r], max(r.updated_at)))
+  end
+
   defp cancel_disabled_retries(%{auto_retry: true}, %{auto_retry: false} = agent) do
     waiting_or_retrying =
       Repo.exists?(

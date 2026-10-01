@@ -65,6 +65,8 @@ defmodule Roundtable.QuotaRetryTest do
     assert next_agent.session_id == nil
     assert Enum.count(Chat.messages(ctx.room.id), &(&1.body == "T1 complete")) == 1
     Coordinator.stop(ctx.agent.id)
+    # "T1 complete" hands the work to nobody, so the watchdog has woken the head.
+    Coordinator.stop(lead.id)
   end
 
   test "the supervised clock picks up overdue persisted waits", ctx do

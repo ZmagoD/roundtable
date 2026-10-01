@@ -408,6 +408,40 @@ turn without completing the broader goal is not automatically prompted again.
 Roundtable coordinates the named participants in its rooms; provider-internal
 subagents are managed by their provider session.
 
+### Keeping work moving
+
+A watchdog checks every room once a minute, so a turn that stops does not sit
+there until someone notices. Each thing it does is posted in the room as a
+message from **supervisor**, saying what happened and what happens next.
+
+- **Crashes and dropped connections.** A failed or interrupted turn is restarted
+  up to twice, after a short wait that doubles each time (one minute, then two).
+  This includes turns cut off by a service restart.
+- **Usage limits.** A turn stopped by a provider's usage limit waits for the
+  reset and then resumes, when automatic quota retry is on for that participant
+  (see above). Codex's "try again at 12:47 PM" is read as that reset time.
+- **Silent turns.** A turn that reports nothing for 20 minutes is stopped and
+  then restarted like a crash. A turn waiting for your approval is never
+  treated as silent.
+- **Problems a retry cannot fix** — signed out, context too long, billing, no
+  folder, a permission the CLI refused — are not retried. Neither is a turn's
+  third failure. The notice says the participant needs attention.
+
+Only each participant's most recent turn from the last two hours is
+considered, and a turn you stopped yourself is left alone.
+
+With a team head, the watchdog also keeps the head in the loop. The notice
+mentions the head, which starts the head's turn, when:
+
+- a specialist finishes without handing the work to anyone;
+- the watchdog gives up on a specialist's turn;
+- changes have sat uncommitted in the room's folder for ten minutes with no
+  turn running (once per quiet spell).
+
+At most six of these wake-ups start a turn in an hour; past that the notice is
+still posted but wakes nobody, so a head and a specialist cannot keep waking
+each other. The head is never woken about its own turns.
+
 ### Clearing a room's chat
 
 Use **Clear chat history** in the room header or enter `/clear-history` in

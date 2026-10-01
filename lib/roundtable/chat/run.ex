@@ -13,6 +13,9 @@ defmodule Roundtable.Chat.Run do
     field :retry_at, :utc_datetime
     field :retry_count, :integer, default: 0
     field :retry_context, :string, default: ""
+    # How many times `Roundtable.Watchdog` has restarted this turn by itself;
+    # kept apart from `retry_count`, which counts quota waits.
+    field :supervised_retries, :integer, default: 0
     field :token_usage, :map, default: %{}
     field :status, :string, default: "queued"
     field :output, :string, default: ""

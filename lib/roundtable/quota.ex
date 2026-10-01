@@ -10,7 +10,7 @@ defmodule Roundtable.Quota do
     message = Protocol.error_message(error)
 
     if limited?(error, message) do
-      {"rate_limited", %{message: message, resets_at: reset_value(error)}}
+      {"rate_limited", %{message: message, resets_at: reset_value(error) || clock_reset(message)}}
     else
       {"failed", message}
     end
@@ -47,6 +47,52 @@ defmodule Roundtable.Quota do
     do: error["resetsAt"] || error["resets_at"]
 
   defp reset_value(_), do: nil
+
+  @doc """
+  The reset time a provider gives only as a wall-clock time in its message, such
+  as Codex's "try again at 12:47 PM", as a Unix timestamp.
+
+  The clock is the machine's own, as the CLI printing it runs here. A time that
+  has already passed today means tomorrow.
+  """
+  def clock_reset(message, now \\ :calendar.local_time())
+
+  def clock_reset(message, {today, _} = now) when is_binary(message) do
+    case Regex.run(~r/try again at (\d{1,2}):(\d{2})\s*([AP]M)?/i, message) do
+      [_, hour, minute | meridiem] ->
+        time = {to_24h(String.to_integer(hour), meridiem), String.to_integer(minute), 0}
+        day = if {today, time} > now, do: today, else: next_day(today)
+        unix({day, time})
+
+      nil ->
+        nil
+    end
+  end
+
+  def clock_reset(_message, _now), do: nil
+
+  defp to_24h(12, [meridiem]), do: if(String.upcase(meridiem) == "AM", do: 0, else: 12)
+
+  defp to_24h(hour, [meridiem]),
+    do: if(String.upcase(meridiem) == "PM", do: hour + 12, else: hour)
+
+  defp to_24h(hour, _), do: hour
+
+  defp next_day(date),
+    do:
+      date
+      |> :calendar.date_to_gregorian_days()
+      |> Kernel.+(1)
+      |> :calendar.gregorian_days_to_date()
+
+  @unix_epoch 62_167_219_200
+
+  defp unix(local) do
+    case :calendar.local_time_to_universal_time_dst(local) do
+      [utc | _] -> :calendar.datetime_to_gregorian_seconds(utc) - @unix_epoch
+      [] -> nil
+    end
+  end
 
   def retry_at(reset, count, now) do
     fallback = DateTime.add(now, min(900 * Integer.pow(2, min(count, 5)), 21_600), :second)

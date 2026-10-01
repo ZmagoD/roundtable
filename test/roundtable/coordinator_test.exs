@@ -107,7 +107,18 @@ defmodule Roundtable.CoordinatorTest do
     assert_receive {:DOWN, ^ref, :process, ^dev_pid, :normal}, 1000
     _ = :sys.get_state(Coordinator)
     assert Repo.get!(Roundtable.Chat.Message, root.id).metadata["head_restarts"] == 3
-    assert Enum.all?(Chat.runs(ctx.room.id), &(&1.status == "completed"))
+
+    # "done" hands the work to nobody, so the watchdog wakes the head once more,
+    # outside the delegation chain; every turn in the chain itself completed.
+    {woken, chain} =
+      Enum.split_with(Chat.runs(ctx.room.id), fn run ->
+        Repo.get!(Roundtable.Chat.Message, run.message_id).sender == "supervisor"
+      end)
+
+    assert [%{agent_id: head_id}] = woken
+    assert head_id == ctx.ada.id
+    assert Enum.all?(chain, &(&1.status == "completed"))
+    Coordinator.stop(ctx.ada.id)
   end
 
   test "team builder starts, requests approval, and completes through the normal worker" do
@@ -382,5 +393,52 @@ defmodule Roundtable.CoordinatorTest do
     assert run.status == "failed"
     assert run.error =~ "no folder"
     Coordinator.stop(ada.id)
+  end
+
+  test "a turn silent for twenty minutes is stopped and left for the watchdog to retry", ctx do
+    Coordinator.post(ctx.room.id, "@ada long job")
+    assert_receive {:agent_started, pid, _, run, _}, 1000
+    ref = Process.monitor(pid)
+
+    # One pass both stops it and, its backoff long past at this clock, restarts it.
+    Coordinator.supervise(DateTime.add(Repo.get!(Run, run.id).updated_at, 21 * 60, :second))
+
+    assert_receive {:DOWN, ^ref, :process, ^pid, _}, 1000
+    assert_receive {:agent_started, _, _, restarted, _}, 1000
+    assert restarted.id == run.id
+    assert Repo.get!(Run, run.id).supervised_retries == 1
+
+    assert Enum.any?(
+             Chat.messages(ctx.room.id),
+             &(&1.sender == "supervisor" and &1.body =~ "No activity for 20 minutes")
+           )
+
+    Coordinator.stop(ctx.ada.id)
+  end
+
+  test "a specialist that finishes without handing on wakes the head", ctx do
+    Chat.set_team_head(ctx.linus.id)
+    Coordinator.post(ctx.room.id, "@ada build it")
+    assert_receive {:agent_started, pid, %{id: ada_id}, _, _}, 1000
+    assert ada_id == ctx.ada.id
+
+    GenServer.cast(pid, {:finish, "Built it in abc123.\nTests pass."})
+    assert_receive {:agent_started, _, head, _, prompt}, 1000
+    assert head.id == ctx.linus.id
+    assert prompt =~ "ada finished without handing the work on"
+    assert prompt =~ "Built it in abc123."
+    Coordinator.stop(ctx.linus.id)
+  end
+
+  test "a specialist that hands the work on does not wake the head as well", ctx do
+    Chat.set_team_head(ctx.linus.id)
+    Coordinator.post(ctx.room.id, "@ada build it")
+    assert_receive {:agent_started, pid, _, _, _}, 1000
+
+    GenServer.cast(pid, {:finish, "@linus done"})
+    assert_receive {:agent_started, _, head, _, prompt}, 1000
+    assert head.id == ctx.linus.id
+    refute prompt =~ "finished without handing the work on"
+    Coordinator.stop(ctx.linus.id)
   end
 end
