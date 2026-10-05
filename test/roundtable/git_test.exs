@@ -45,6 +45,33 @@ defmodule Roundtable.GitTest do
     refute File.exists?(marker)
   end
 
+  # The command's own text and the filter's name are the agent's to choose,
+  # so neither may stop the filter being found and emptied.
+  test "a filter is emptied whatever its command or name contains", %{dir: dir, git: git} do
+    # Committed first: the test's own plain git would otherwise run the filters.
+    for file <- ~w(other.txt third.txt), do: File.write!(Path.join(dir, file), "x\n")
+    git.(["add", "other.txt", "third.txt"])
+    git.(["commit", "-qm", "more"])
+
+    marker = Path.join(dir, "filtered")
+    git.(["config", "filter.evil.clean", "sh -c 'touch #{marker}; cat' x.sh y"])
+    git.(["config", "filter.a=b.clean", "touch #{marker}.eq; cat"])
+    git.(["config", "filter.dotted.name.clean", "touch #{marker}.dot; cat"])
+
+    File.write!(
+      Path.join([dir, ".git", "info", "attributes"]),
+      "kept.txt filter=evil\nother.txt filter=a=b\nthird.txt filter=dotted.name\n"
+    )
+
+    for file <- ~w(kept.txt other.txt third.txt), do: File.write!(Path.join(dir, file), "y\n")
+
+    assert {:ok, _} = Git.status(dir)
+    assert {:ok, _} = Git.diff(dir)
+    refute File.exists?(marker)
+    refute File.exists?(marker <> ".eq")
+    refute File.exists?(marker <> ".dot")
+  end
+
   test "a clean tree reports its branch and nothing else", %{dir: dir} do
     assert {:ok, status} = Git.status(dir)
     assert status.branch == "work"

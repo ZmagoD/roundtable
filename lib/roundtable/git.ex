@@ -56,11 +56,10 @@ defmodule Roundtable.Git do
   defp run(directory, args) do
     # A room's own .git/config is the agent's to write, so nothing in it may
     # make the service run a program when the changes panel refreshes.
-    safe =
-      ["-c", "core.fsmonitor=false"] ++
-        empty_filters(directory) ++ ["--no-optional-locks", "-C", directory]
-
-    case System.cmd("git", safe ++ args ++ no_external(args), stderr_to_stdout: true) do
+    case System.cmd("git", ["--no-optional-locks", "-C", directory] ++ args ++ no_external(args),
+           stderr_to_stdout: true,
+           env: overrides(directory)
+         ) do
       {output, 0} -> {:ok, String.trim_trailing(output)}
       {output, _} -> {:error, first_line(output)}
     end
@@ -71,34 +70,51 @@ defmodule Roundtable.Git do
 
   # A filter named in .git/config and switched on by .gitattributes or
   # .git/info/attributes runs on status and diff, and no flag turns filters off
-  # wholesale. Reading the config runs nothing, so each configured filter is
-  # found that way and emptied for the call that follows.
-  defp empty_filters(directory) do
-    args = ["--no-optional-locks", "-C", directory, "config", "--get-regexp", ~S"^filter\."]
+  # wholesale. So each configured filter is emptied for the call. Only key names
+  # are read, never values. The overrides go through GIT_CONFIG_PARAMETERS in
+  # git's quoted 'key'='value' form: -c splits a filter name containing "=",
+  # and an empty GIT_CONFIG_VALUE_n never reaches git from an Erlang port.
+  defp overrides(directory) do
+    settings =
+      [{"core.fsmonitor", "false"}] ++
+        for name <- filter_names(directory),
+            {key, value} <- [clean: "", smudge: "", process: "", required: "false"],
+            do: {"filter.#{name}.#{key}", value}
+
+    [{"GIT_CONFIG_PARAMETERS", Enum.map_join(settings, " ", &quoted/1)}]
+  end
+
+  defp quoted({key, value}), do: "#{quote_part(key)}=#{quote_part(value)}"
+  defp quote_part(text), do: "'" <> String.replace(text, "'", ~S"'\''") <> "'"
+
+  defp filter_names(directory) do
+    args =
+      ["--no-optional-locks", "-C", directory] ++
+        ~w(config --null --name-only --get-regexp) ++ [~S"^filter\."]
 
     case System.cmd("git", args, stderr_to_stdout: true) do
       {output, 0} ->
-        for name <- filter_names(output),
-            {key, value} <- [clean: "", smudge: "", process: "", required: "false"],
-            arg <- ["-c", "filter.#{name}.#{key}=#{value}"],
-            do: arg
+        output
+        |> String.split(<<0>>, trim: true)
+        |> Enum.map(&subsection/1)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.uniq()
 
       _no_filters ->
         []
     end
   end
 
-  defp filter_names(output) do
-    output
-    |> String.split("\n", trim: true)
-    |> Enum.flat_map(fn line ->
-      case Regex.run(~r/^filter\.(.+)\.[a-z]+(\s|$)/, line) do
-        [_, name | _] -> [name]
-        _ -> []
-      end
-    end)
-    |> Enum.uniq()
+  # filter.<name>.<key>: the name is everything between the first and the last
+  # dot, which may itself contain dots, spaces or "=".
+  defp subsection("filter." <> rest) do
+    case String.split(rest, ".") do
+      [_key_only] -> nil
+      parts -> parts |> Enum.drop(-1) |> Enum.join(".")
+    end
   end
+
+  defp subsection(_key), do: nil
 
   defp no_external(["diff" | _]), do: ["--no-ext-diff", "--no-textconv"]
   defp no_external(_args), do: []
