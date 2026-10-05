@@ -99,8 +99,18 @@ defmodule Roundtable.Agents.Protocol do
   token goes last so that nothing in the removals can unset it.
   """
   def env(agent) do
-    Roundtable.SpawnEnv.sanitised() ++ token_env(agent)
+    Roundtable.SpawnEnv.sanitised() ++ permission_env(agent) ++ token_env(agent)
   end
+
+  # `opencode run` has no channel to ask on, so anything its configuration
+  # leaves at "ask" is rejected and the turn ends. Approving automatically has
+  # to happen before it starts: OpenCode merges this into the human's own
+  # permissions, and a wildcard rule added last wins over theirs. Off, nothing
+  # is passed and their configuration decides, as it always did.
+  defp permission_env(%{provider: "opencode", auto_approve: true}),
+    do: [{~c"OPENCODE_PERMISSION", ~c({"*":"allow"})}]
+
+  defp permission_env(_agent), do: []
 
   defp token_env(agent) do
     if MCP.offered?(agent),

@@ -140,6 +140,10 @@ roundtable logs | grep auto-approved
 The roster marks who is on it. Turn it back off with *Ask me before each tool*
 or `/auto <agent> off`. OpenCode and Grok have no interactive approval channel —
 they use their own configured permissions and never ask in the first place.
+OpenCode rejects anything its configuration leaves at "ask" (reading outside
+the room's directory, for example), which ends the turn. Turning automatic
+approval on for an OpenCode participant allows every tool for its turns,
+without touching your own OpenCode configuration.
 
 ## Change a model and have it take effect
 

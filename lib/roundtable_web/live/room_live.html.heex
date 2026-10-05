@@ -999,9 +999,10 @@
             Approving automatically suits an agent that orchestrates or runs long
             on its own: it never stops for you, and every granted request is
             written to the server log. Uses your installed CLI and its existing
-            login. Each agent has a separate session. OpenCode uses its configured
-            tool permissions; interactive approvals are currently supported for
-            Codex and Claude.
+            login. Each agent has a separate session. OpenCode cannot ask in the
+            room: asking leaves it to its configured permissions, and approving
+            automatically allows every tool for its turns. Interactive approvals
+            are supported for Codex and Claude.
           </p>
           <button class="button full" type="submit" phx-disable-with="Saving…">
             {if @editing_agent, do: "Save changes", else: "Add agent"}

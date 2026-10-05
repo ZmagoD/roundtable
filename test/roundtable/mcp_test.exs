@@ -775,6 +775,31 @@ defmodule Roundtable.MCPTest do
       assert {~c"RELEASE_COOKIE", false} in Protocol.env(opencode)
     end
 
+    # `opencode run` rejects whatever it would have asked about, which ends the
+    # turn, so the room's answer has to be in place before it starts.
+    test "opencode approves automatically only when told to", %{room: room} do
+      {:ok, asks} = Chat.create_agent(room.id, %{"name" => "otto", "provider" => "opencode"})
+
+      {:ok, trusted} =
+        Chat.create_agent(room.id, %{
+          "name" => "olga",
+          "provider" => "opencode",
+          "auto_approve" => true
+        })
+
+      permission = &List.keyfind(Protocol.env(&1), ~c"OPENCODE_PERMISSION", 0)
+
+      assert permission.(asks) == nil
+      assert {_, value} = permission.(trusted)
+      assert Jason.decode!(to_string(value)) == %{"*" => "allow"}
+    end
+
+    test "no other provider is handed opencode's permissions", %{ada: ada} do
+      {:ok, ada} = Chat.update_agent(ada.id, %{"auto_approve" => true})
+
+      assert List.keyfind(Protocol.env(ada), ~c"OPENCODE_PERMISSION", 0) == nil
+    end
+
     test "and neither is anyone, when the service is not serving", %{ada: ada} do
       Application.put_env(:roundtable, :mcp_url, false)
 
