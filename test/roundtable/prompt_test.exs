@@ -5,6 +5,11 @@ defmodule Roundtable.PromptTest do
   alias Roundtable.Chat.Run
 
   setup do
+    # The tests serve no HTTP, so without an address no participant is offered
+    # the room tools and their section never appears in a prompt.
+    Application.put_env(:roundtable, :mcp_url, "http://127.0.0.1:4002/mcp")
+    on_exit(fn -> Application.delete_env(:roundtable, :mcp_url) end)
+
     {:ok, room} = Chat.create_room(%{"name" => "Build", "directory" => File.cwd!()})
 
     {:ok, agent} =

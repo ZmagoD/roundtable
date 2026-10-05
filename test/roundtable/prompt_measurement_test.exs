@@ -36,6 +36,9 @@ defmodule Roundtable.PromptMeasurementTest do
         agent
       end
 
+    # Measures the mention-routed room; a head adds the same focused-team
+    # section to both prompts and is covered by its own tests.
+    Chat.clear_team_head(room.id)
     agent = Enum.at(agents, 1)
     {:ok, _} = Chat.post(room.id, "Participant setup complete.", sender: "system", kind: "system")
 
