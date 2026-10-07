@@ -46,7 +46,8 @@ defmodule Roundtable.Coordinator do
 
   @impl true
   def init(_) do
-    {:ok, %{workers: %{}, approvals: %{}, noticed_budget: MapSet.new(), budget_override: MapSet.new()},
+    {:ok,
+     %{workers: %{}, approvals: %{}, noticed_budget: MapSet.new(), budget_override: MapSet.new()},
      {:continue, :recover}}
   end
 
