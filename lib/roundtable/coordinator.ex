@@ -573,6 +573,13 @@ defmodule Roundtable.Coordinator do
         {:ok, pid} ->
           Chat.record_prompt(agent, run)
           Chat.broadcast(agent.room_id)
+          # A turn that started is no longer held: drop the bookkeeping so the
+          # sets stay the size of the queues rather than the age of the service.
+          state = %{
+            state
+            | noticed_budget: MapSet.delete(state.noticed_budget, run.id),
+              budget_override: MapSet.delete(state.budget_override, run.id)
+          }
 
           worker = %{
             pid: pid,

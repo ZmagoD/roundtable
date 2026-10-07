@@ -8,10 +8,15 @@ export const PANEL_W = 1.4
 export const PANEL_H = 0.9
 
 // The plain position for index `i` of `count`: the first stays in front and
-// the rest alternate right and left, so a small room reads as a group in
-// front of you rather than a ring you stand inside.
+// the rest alternate right and left, within a spread the outermost panel
+// never leaves — an even share of a small circle would put someone behind
+// your back, so a crowded room compresses toward the front instead. The
+// 80-degree cap keeps every panel in front (cosine stays positive), however
+// many people are in the room.
 export function place(count, i, radius = RADIUS) {
-  const step = (2 * Math.PI) / Math.max(count, 1)
+  const others = Math.max(count - 1, 1)
+  const outermost = Math.ceil(others / 2)
+  const step = Math.min((2 * Math.PI) / Math.max(count, 1), (4 * Math.PI / 9) / outermost)
   const side = i === 0 ? 0 : i % 2 === 1 ? Math.ceil(i / 2) : -Math.ceil(i / 2)
   const angle = side * step
   return {
@@ -34,36 +39,56 @@ export function panelsFor(participants) {
   }))
 }
 
-// One frame of the scene: a quad per participant, lit by its status colour,
-// drawn onto a canvas the page also shows. A headset is another way to look
-// at the room, not a separate application.
-export function drawPanels(gl, panels) {
+// Column-major 4x4 product, the only matrix algebra the view needs.
+export function multiply(a, b) {
+  const out = new Float32Array(16)
+  for (let c = 0; c < 4; c++) {
+    for (let r = 0; r < 4; r++) {
+      out[c * 4 + r] =
+        a[r] * b[c * 4] +
+        a[4 + r] * b[c * 4 + 1] +
+        a[8 + r] * b[c * 4 + 2] +
+        a[12 + r] * b[c * 4 + 3]
+    }
+  }
+  return out
+}
+
+// Column-major model matrix: scale the unit quad to panel size, rotate it to
+// face the centre of the circle, then move it to its place.
+export function modelMatrix({x, y, z, angle}) {
+  const c = Math.cos(angle)
+  const s = Math.sin(angle)
+  return new Float32Array([
+    c * PANEL_W, 0, s * PANEL_W, 0,
+    0, PANEL_H, 0, 0,
+    -s, 0, c, 0,
+    x, y, z, 1
+  ])
+}
+
+// One frame of the scene, once per eye: a quad per participant, lit by its
+// status colour, projected the way this eye sees the room. A headset is
+// another way to look at the room, not a separate application.
+export function drawPanels(gl, panels, layer, pose) {
   gl.clearColor(0.05, 0.06, 0.05, 1)
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
   const program = panelProgram(gl)
   if (!program) return
   gl.useProgram(program)
   bindPanelGeometry(gl, program)
-  for (const panel of panels) {
-    setPanelColor(gl, program, panel.status)
-    gl.uniformMatrix4fv(program.model, false, modelMatrix(panel.position))
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
-  }
-}
 
-// Column-major model matrix: rotate the quad to face the centre, then move it
-// to its place on the circle.
-function modelMatrix({x, y, z, angle}) {
-  const c = Math.cos(angle)
-  const s = Math.sin(angle)
-  const w = PANEL_W / 2
-  const h = PANEL_H / 2
-  return new Float32Array([
-    c * w, 0, s * w, 0,
-    0, h, 0, 0,
-    -s * w, 0, c * w, 0,
-    x, y, z, 1
-  ])
+  for (const view of pose.views) {
+    const viewport = layer.getViewport(view)
+    gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height)
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+    const eye = multiply(view.projectionMatrix, view.transform.inverse.matrix)
+    for (const panel of panels) {
+      setPanelColor(gl, program, panel.status)
+      const mvp = multiply(eye, modelMatrix(panel.position))
+      gl.uniformMatrix4fv(program.model, false, mvp)
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    }
+  }
 }
 
 function panelProgram(gl) {
@@ -140,7 +165,8 @@ export async function enterXR(canvas, participants, onEnd) {
     if (pose) {
       const layer = session.renderState.baseLayer
       gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer)
-      drawPanels(gl, panels)
+      gl.enable(gl.DEPTH_TEST)
+      drawPanels(gl, panels, layer, pose)
     }
     session.requestAnimationFrame(render)
   }
