@@ -514,19 +514,24 @@ defmodule Roundtable.Coordinator do
 
     if map_size(state.workers) < @max_workers and not busy and
          not Chat.waiting_for_quota?(run.agent_id) do
-      case Chat.budget_left(room_id_of(run)) do
-        left when is_integer(left) and left <= 0 ->
-          if MapSet.member?(state.budget_override, run.id) do
-            start_worker(run, state)
-          else
-            budget_notice(run, state)
-          end
-
-        _ ->
-          start_worker(run, state)
-      end
+      start_within_budget(run, state)
     else
       state
+    end
+  end
+
+  # The budget is the last question a turn is asked before it starts, so the
+  # answer fits in one level: over it, a held turn its human retried goes, a
+  # new one waits and is told why.
+  defp start_within_budget(run, state) do
+    case Chat.budget_left(room_id_of(run)) do
+      left when is_integer(left) and left <= 0 ->
+        if MapSet.member?(state.budget_override, run.id),
+          do: start_worker(run, state),
+          else: budget_notice(run, state)
+
+      _ ->
+        start_worker(run, state)
     end
   end
 
