@@ -67,7 +67,7 @@ defmodule Roundtable.BudgetTest do
     Coordinator.post(ctx.room.id, "@ada second turn")
     refute_receive {:agent_started, _, _, _, _}, 200
 
-    Repo.update_all(Run, set: [inserted_at: ~U[2020-01-01 00:00:00Z])
+    Repo.update_all(Run, set: [inserted_at: ~U[2020-01-01 00:00:00Z]])
     Coordinator.resume_due(DateTime.utc_now(:second))
     assert_receive {:agent_started, _, _, _, _}, 1000
   end
