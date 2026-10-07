@@ -1160,6 +1160,14 @@ defmodule RoundtableWeb.RoomLive do
       else: known
   end
 
+  # Who is in the room, for the XR view: the same status the sidebar shows,
+  # as plain data the client module can lay out without knowing LiveView.
+  defp xr_participants(agents, runs) do
+    Enum.map(agents, fn agent ->
+      %{id: agent.id, name: agent.name, status: status(agent, runs), head: agent.head}
+    end)
+  end
+
   defp status(agent, runs) do
     own = Enum.filter(runs, &(&1.agent_id == agent.id))
 

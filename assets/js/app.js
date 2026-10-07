@@ -27,6 +27,7 @@ import {hooks as colocatedHooks} from "phoenix-colocated/roundtable"
 import topbar from "../vendor/topbar"
 import {Terminal} from "../vendor/xterm"
 import {FitAddon} from "../vendor/xterm-fit"
+import {enterXR} from "./xr-room.mjs"
 
 // Theme is applied before the socket connects so the page never flashes the
 // wrong one. "system" is the absence of an override, not a third palette.
@@ -123,6 +124,23 @@ const liveSocket = new LiveSocket("/live", Socket, {
           this.el.classList.toggle("usage-warn", data.level === "warn")
           if (data.recorded) this.el.setAttribute("title", data.recorded)
           else this.el.removeAttribute("title")
+        })
+      }
+    },
+    // The room in a headset: the same participants, as panels in a circle.
+    // LiveView only has to say who is in the room; the module does the rest,
+    // and a browser without XR keeps the button hidden.
+    RoomXR: {
+      mounted() {
+        this.el.addEventListener("click", async () => {
+          const canvas = document.getElementById("xr-canvas")
+          if (!canvas || this.inXR) return
+          const participants = JSON.parse(this.el.dataset.participants || "[]")
+          const result = await enterXR(canvas, participants, () => { this.inXR = false })
+          if (!result.ok)
+            this.el.dataset.unsupported = "true"
+          else
+            this.inXR = true
         })
       }
     },

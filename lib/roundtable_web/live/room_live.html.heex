@@ -117,6 +117,13 @@
               class="live-badge"
               title="Input plus output this team has spent in the last rolling day"
             >{@token_budget}</span><button
+              :if={@agents != []}
+              id="xr-button"
+              phx-hook="RoomXR"
+              class="button secondary"
+              data-participants={Jason.encode!(xr_participants(@agents, @runs))}
+              title="View this team around you in a VR headset"
+            >View in XR</button><button
               id="edit-room-button"
               class="button secondary"
               phx-click="edit-room"
@@ -193,6 +200,7 @@
               </div>
             </details>
           </div>
+          <canvas id="xr-canvas" class="xr-canvas" hidden></canvas>
         </header>
         <div class="room-body">
           <section class="conversation" aria-label="Conversation">

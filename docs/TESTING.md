@@ -16,7 +16,7 @@ mix test --cover
 
 `mix precommit` runs the default suite with compilation, formatting and Credo
 checks. The browser shell's PTY bridge tests run in the same suite. JavaScript
-composer tests run with `node --test assets/test/*.test.mjs`.
+composer and XR layout tests run with `node --test assets/test/*.test.mjs`.
 
 Coverage reports are written to `cover/`; the default threshold is 90%.
 Coverage records execution rather than proof of correctness.
