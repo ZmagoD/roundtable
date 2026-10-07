@@ -6,6 +6,7 @@ defmodule Roundtable.SpendReportTest do
 
   setup do
     {:ok, room} = Chat.create_room(%{"name" => "Reported", "directory" => File.cwd!()})
+
     {:ok, ada} =
       Chat.create_agent(room.id, %{
         "name" => "ada",
