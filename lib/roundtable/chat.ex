@@ -52,6 +52,43 @@ defmodule Roundtable.Chat do
     |> Map.new(fn {id, counts} -> {id, Usage.sum(counts)} end)
   end
 
+  @doc """
+  The tokens a room has spent today, every kind the providers report summed
+  together. Budgets are a planning aid against a human's own quota, not a
+  bill, so cached and cache-write counts weigh the same as fresh tokens.
+  """
+  def tokens_today(room_id, now \\ DateTime.utc_now(:second)) do
+    since = DateTime.add(now, -1 * 24 * 3600, :second)
+
+    Repo.all(
+      from r in Run,
+        join: a in assoc(r, :agent),
+        where: a.room_id == ^room_id and r.inserted_at >= ^since,
+        select: r.token_usage
+    )
+    |> Enum.map(&Usage.sum(Map.values(&1)))
+    |> Enum.reduce(%{}, &Usage.sum([&2, &1]))
+  end
+
+  @doc """
+  Whether a room's next turn fits the budget the human set for it.
+
+  The room's budget wins when it has one, otherwise the service-wide default
+  applies; neither means the room runs free. Only tokens this room itself
+  reported count: a budget is per team, not a share of a global pool.
+  """
+  def budget_left(room_id, now \\ DateTime.utc_now(:second)) do
+    budget =
+      room!(room_id).token_budget || Application.get_env(:roundtable, :daily_token_budget)
+
+    case budget do
+      nil -> :unlimited
+      budget -> budget * 1000 - sum_tokens(tokens_today(room_id, now))
+    end
+  end
+
+  defp sum_tokens(counts), do: counts |> Map.values() |> Enum.sum()
+
   @doc "Every project, oldest first, so the list does not reorder as names change."
   def organizations, do: Repo.all(from o in Organization, order_by: [asc: o.id])
 

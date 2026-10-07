@@ -46,7 +46,8 @@ defmodule Roundtable.Coordinator do
 
   @impl true
   def init(_) do
-    {:ok, %{workers: %{}, approvals: %{}}, {:continue, :recover}}
+    {:ok, %{workers: %{}, approvals: %{}, noticed_budget: MapSet.new(), budget_override: MapSet.new()},
+     {:continue, :recover}}
   end
 
   @impl true
@@ -129,16 +130,23 @@ defmodule Roundtable.Coordinator do
   def handle_call({:retry, run_id}, _, state) do
     run = Repo.get!(Run, run_id)
 
-    if run.status in ["failed", "interrupted", "stopped", "waiting_quota"] do
+    held_by_budget = run.status == "queued" and MapSet.member?(state.noticed_budget, run.id)
+
+    if run.status in ["failed", "interrupted", "stopped", "waiting_quota"] or held_by_budget do
       Chat.change(
         run,
         [status: "queued", error: nil, output: "", retry_at: nil] ++ current_model(run)
       )
 
       Chat.release_held(run.agent_id)
-    end
 
-    {:reply, :ok, schedule(state)}
+      # A human's retry is the one way past a spent budget: the turn was held,
+      # not refused, and the person in front of it has said to spend.
+      state = %{state | budget_override: MapSet.put(state.budget_override, run.id)}
+      {:reply, :ok, schedule(state)}
+    else
+      {:reply, :ok, schedule(state)}
+    end
   end
 
   def handle_call({:supervise, now}, _, state) do
@@ -497,13 +505,52 @@ defmodule Roundtable.Coordinator do
 
   # One turn per participant, and @max_workers across the service. A run that
   # cannot start now stays queued and is reconsidered on the next transition.
+  # A room over its daily token budget is the same kind of not-now: the turn
+  # waits and the watchdog says why, and neither a running turn nor one the
+  # provider itself has benched is pushed aside by it.
   defp start_if_free(run, state) do
     busy = Enum.any?(state.workers, fn {_, w} -> w.agent_id == run.agent_id end)
 
     if map_size(state.workers) < @max_workers and not busy and
-         not Chat.waiting_for_quota?(run.agent_id),
-       do: start_worker(run, state),
-       else: state
+         not Chat.waiting_for_quota?(run.agent_id) do
+      case Chat.budget_left(room_id_of(run)) do
+        left when is_integer(left) and left <= 0 ->
+          if MapSet.member?(state.budget_override, run.id) do
+            start_worker(run, state)
+          else
+            budget_notice(run, state)
+          end
+
+        _ ->
+          start_worker(run, state)
+      end
+    else
+      state
+    end
+  end
+
+  defp room_id_of(run), do: Repo.get!(Agent, run.agent_id).room_id
+
+  # One notice per held turn, so a busy room behind its budget says it once
+  # and not once per scheduling pass; a retried turn is a new id and tells its
+  # own story if it is still held.
+  defp budget_notice(run, state) do
+    if MapSet.member?(state.noticed_budget, run.id) do
+      state
+    else
+      agent = Repo.get!(Agent, run.agent_id)
+      room = Chat.room!(agent.room_id)
+
+      Chat.supervisor_notice(
+        agent.room_id,
+        "#{agent.name}'s turn is held: this team has spent its daily token budget " <>
+          "(#{room.token_budget || "the service default"} thousand). It resumes on its own " <>
+          "when the window moves on, or retry the turn to run it anyway.",
+        "notice"
+      )
+
+      %{state | noticed_budget: MapSet.put(state.noticed_budget, run.id)}
+    end
   end
 
   defp start_worker(run, state) do

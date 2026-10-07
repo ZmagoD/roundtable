@@ -2,6 +2,12 @@ import Config
 
 if System.get_env("PHX_SERVER"), do: config(:roundtable, RoundtableWeb.Endpoint, server: true)
 
+# A daily cap, in thousands of tokens, on what a room without a budget of its
+# own may spend; unset means uncapped. A room's own budget always wins.
+if default = System.get_env("ROUNDTABLE_DAILY_TOKEN_BUDGET") do
+  config :roundtable, :daily_token_budget, String.to_integer(default)
+end
+
 port = String.to_integer(System.get_env("PORT", "4317"))
 
 if port in [3000, 4000] or port < 1024 or port > 65535 do

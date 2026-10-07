@@ -112,7 +112,11 @@
             </p>
           </div>
           <div class="header-actions">
-            <span class="live-badge"><span class="online-dot"></span> Live</span><button
+            <span class="live-badge"><span class="online-dot"></span> Live</span><span
+              :if={@token_budget}
+              class="live-badge"
+              title="Input plus output this team has spent in the last rolling day"
+            >{@token_budget}</span><button
               id="edit-room-button"
               class="button secondary"
               phx-click="edit-room"
@@ -829,6 +833,16 @@
             Every participant here opens each turn with this, alongside its own role,
             so shared goals and conventions belong here rather than being repeated
             in each role.
+          </p>
+          <.input
+            field={@room_form[:token_budget]}
+            label="Daily token budget (thousands, optional)"
+            type="number"
+            placeholder="e.g. 500"
+          />
+          <p class="form-note">
+            Input plus output this team may spend per rolling day. Over it, new turns wait
+            instead of starting; leave empty for no cap.
           </p>
           <div :if={@editing_room} class="input-field">
             <%= if @custom_directory do %>

@@ -519,7 +519,12 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   def handle_event("edit-room", _, %{assigns: %{room: room}} = socket) when not is_nil(room) do
-    attrs = %{"name" => room.name, "directory" => room.directory, "context" => room.context}
+    attrs = %{
+      "name" => room.name,
+      "directory" => room.directory,
+      "context" => room.context,
+      "token_budget" => room.token_budget
+    }
 
     {:noreply,
      assign(socket,
@@ -1051,6 +1056,7 @@ defmodule RoundtableWeb.RoomLive do
       agents: Chat.agents(id),
       provider_usage: Chat.provider_usage(),
       participant_tokens: Chat.participant_tokens(id),
+      token_budget: budget_reading(id),
       schedules: Chat.schedules(id),
       notes: Chat.room_notes(id),
       runs: Chat.runs(id),
@@ -1063,6 +1069,19 @@ defmodule RoundtableWeb.RoomLive do
         |> Enum.filter(&(&1.room_id == id))
         |> Enum.sort_by(&{&1.run_id, &1.request_id})
     )
+  end
+
+  # The day's spend against the room's budget, as the header shows it: the
+  # tokens this team reported today, set against the cap in thousands.
+  defp budget_reading(room_id) do
+    budget = Chat.room!(room_id).token_budget
+
+    if budget do
+      spent = Chat.tokens_today(room_id) |> Map.values() |> Enum.sum()
+      "#{spent} of #{budget * 1000} budget tokens today"
+    else
+      nil
+    end
   end
 
   # The teams of one project. Without a project — an installation with none
