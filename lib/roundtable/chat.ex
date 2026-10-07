@@ -89,6 +89,53 @@ defmodule Roundtable.Chat do
 
   defp sum_tokens(counts), do: counts |> Map.values() |> Enum.sum()
 
+  @doc """
+  Where this room's tokens went: each participant's spend and each provider's,
+  over the rolling day and the rolling week.
+
+  Totals come from the same run records the budget counts, so the report and
+  the cap can never disagree about what a day spent. A participant with no
+  runs in a window is absent rather than zero, so the table says who actually
+  worked rather than listing everyone.
+  """
+  def spend_report(room_id, now \\ DateTime.utc_now(:second)) do
+    week = spend_since(room_id, DateTime.add(now, -7 * 24 * 3600, :second))
+    day = spend_since(room_id, DateTime.add(now, -24 * 3600, :second))
+
+    %{
+      day: %{by_agent: by_agent(day), by_provider: by_provider(day)},
+      week: %{by_agent: by_agent(week), by_provider: by_provider(week)}
+    }
+  end
+
+  defp spend_since(room_id, since) do
+    Repo.all(
+      from r in Run,
+        join: a in assoc(r, :agent),
+        where: a.room_id == ^room_id and r.inserted_at >= ^since,
+        select: {r.agent_id, a.provider, r.token_usage}
+    )
+    |> Enum.map(fn {agent_id, provider, attempts} ->
+      {agent_id, provider, Usage.sum(Map.values(attempts))}
+    end)
+  end
+
+  defp by_agent(rows) do
+    rows
+    |> Enum.group_by(fn {agent_id, _, _} -> agent_id end)
+    |> Map.new(fn {agent_id, rows} ->
+      {agent_id, rows |> Enum.map(&elem(&1, 2)) |> Usage.sum()}
+    end)
+  end
+
+  defp by_provider(rows) do
+    rows
+    |> Enum.group_by(fn {_, provider, _} -> provider end)
+    |> Map.new(fn {provider, rows} ->
+      {provider, rows |> Enum.map(&elem(&1, 2)) |> Usage.sum()}
+    end)
+  end
+
   @doc "Every project, oldest first, so the list does not reorder as names change."
   def organizations, do: Repo.all(from o in Organization, order_by: [asc: o.id])
 
