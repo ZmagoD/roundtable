@@ -49,7 +49,8 @@ defmodule Roundtable.SpendReportTest do
     {:ok, message} = Chat.post(ctx.room.id, "@ada old work")
     run = Repo.one!(from r in Run, where: r.message_id == ^message.id)
     Chat.record_tokens(run, "attempt-1", %{"input" => 1_000})
-    Repo.update_all(Run, set: [inserted_at: ~U[2020-01-01 00:00:00Z]])
+    two_days_ago = DateTime.add(DateTime.utc_now(:second), -2 * 24 * 3600, :second)
+    Repo.update_all(Run, set: [inserted_at: two_days_ago])
 
     report = Chat.spend_report(ctx.room.id)
     assert report.day.by_agent == %{}
