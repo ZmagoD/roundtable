@@ -33,7 +33,9 @@ defmodule Roundtable.BudgetTest do
   test "a room under its budget starts turns", ctx do
     assert Chat.budget_left(ctx.room.id) == 10_000
     Coordinator.post(ctx.room.id, "@ada have a look")
-    assert_receive {:agent_started, _, _, _, _}, 1000
+    assert_receive {:agent_started, pid, _, run, _}, 1000
+    GenServer.cast(pid, {:finish, "done"})
+    await_completed(run.id)
   end
 
   test "spending the budget holds the next turn, which says so once", ctx do
@@ -69,7 +71,9 @@ defmodule Roundtable.BudgetTest do
 
     Repo.update_all(Run, set: [inserted_at: ~U[2020-01-01 00:00:00Z]])
     Coordinator.resume_due(DateTime.utc_now(:second))
-    assert_receive {:agent_started, _, _, _, _}, 1000
+    assert_receive {:agent_started, pid, _, run, _}, 1000
+    GenServer.cast(pid, {:finish, "done"})
+    await_completed(run.id)
   end
 
   test "retrying a held turn runs it anyway", ctx do
@@ -84,7 +88,9 @@ defmodule Roundtable.BudgetTest do
 
     assert [held] = Repo.all(from r in Run, where: r.status == "queued")
     Coordinator.retry(held.id)
-    assert_receive {:agent_started, _, _, _, _}, 1000
+    assert_receive {:agent_started, pid, _, run, _}, 1000
+    GenServer.cast(pid, {:finish, "done"})
+    await_completed(run.id)
   end
 
   test "the service-wide default applies when the room sets no budget of its own", ctx do
