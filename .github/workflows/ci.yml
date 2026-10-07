@@ -31,3 +31,13 @@ jobs:
       # before any Elixir code runs.
       - run: bash -n install.sh && bash -n bin/roundtable
       - run: shellcheck --severity=error install.sh bin/roundtable
+  javascript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The browser modules (composer, the XR room layout) are plain ES
+      # modules, so node's built-in runner is enough — no npm install.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test assets/test/*.test.mjs
