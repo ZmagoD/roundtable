@@ -11,6 +11,18 @@ defmodule RoundtableWeb.RoomLiveTest do
     Jason.decode!(value)
   end
 
+  # The headset view never worked without WebXR hardware and was removed;
+  # this keeps a stray hook or button from coming back with a merge.
+  test "the room header offers no XR view", %{conn: conn} do
+    {:ok, room} = Chat.create_room(%{name: "No XR", directory: File.cwd!()})
+    {:ok, _} = Chat.create_agent(room.id, %{name: "ada", provider: "claude"})
+
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+    assert has_element?(view, "#edit-room-button")
+    refute has_element?(view, "#xr-button")
+    refute has_element?(view, "#xr-canvas")
+  end
+
   test "a participant's request is a card the human accepts or dismisses", %{conn: conn} do
     {:ok, room} = Chat.create_room(%{name: "Requests", directory: File.cwd!()})
     {:ok, _} = Chat.create_agent(room.id, %{name: "ada", provider: "claude"})
