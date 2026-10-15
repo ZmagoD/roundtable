@@ -1276,6 +1276,30 @@ defmodule RoundtableWeb.RoomLive do
       else: known
   end
 
+  # A provider with no reading at all never sends quota, which reads
+  # differently from one whose last reading has expired.
+  defp quota_left(nil), do: "not reported by this provider"
+  defp quota_left(reading), do: Roundtable.Usage.left_label(reading)
+
+  defp quota_window(nil), do: nil
+
+  defp quota_window(reading) do
+    data = reading.data
+
+    if Roundtable.Usage.stale?(data) do
+      nil
+    else
+      resets =
+        if is_integer(data["resets_at"]),
+          do: "resets " <> Calendar.strftime(DateTime.from_unix!(data["resets_at"]), "%H:%M UTC")
+
+      case Enum.reject([Roundtable.Usage.window_label(data), resets], &is_nil/1) do
+        [] -> nil
+        parts -> Enum.join(parts, " · ")
+      end
+    end
+  end
+
   defp status(agent, runs) do
     own = Enum.filter(runs, &(&1.agent_id == agent.id))
 

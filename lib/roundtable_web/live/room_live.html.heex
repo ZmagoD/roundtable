@@ -581,8 +581,22 @@
               </div>
               <div class="agent-usage" id={"agent-usage-#{agent.id}"}>
                 <span id={"provider-usage-#{agent.id}"}>
-                  Provider usage: {Roundtable.Usage.label(@provider_usage[agent.provider])}
+                  Quota: {quota_left(@provider_usage[agent.provider])}
                 </span>
+                <meter
+                  :if={left = Roundtable.Usage.left_percent(@provider_usage[agent.provider])}
+                  id={"quota-meter-#{agent.id}"}
+                  min="0"
+                  max="100"
+                  value={left}
+                  class={Roundtable.Usage.level(@provider_usage[agent.provider])}
+                  aria-label={"#{agent.provider} quota left"}
+                >{left}%</meter>
+                <span
+                  :if={window = quota_window(@provider_usage[agent.provider])}
+                  id={"quota-window-#{agent.id}"}
+                  class="quota-window"
+                >{window}</span>
                 <time
                   :if={@provider_usage[agent.provider]}
                   datetime={DateTime.to_iso8601(@provider_usage[agent.provider].recorded_at)}

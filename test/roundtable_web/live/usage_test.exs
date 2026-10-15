@@ -3,6 +3,40 @@ defmodule RoundtableWeb.UsageTest do
   import Phoenix.LiveViewTest
   alias Roundtable.Chat
 
+  test "a card names the quota window and its reset, and drops both once it has passed", %{
+    conn: conn
+  } do
+    {:ok, room} = Chat.create_room(%{name: "Quota window", directory: File.cwd!()})
+    {:ok, ada} = Chat.create_agent(room.id, %{name: "ada", provider: "codex"})
+    {:ok, bob} = Chat.create_agent(room.id, %{name: "bob", provider: "claude"})
+    resets = DateTime.utc_now() |> DateTime.add(3600) |> DateTime.truncate(:second)
+
+    Chat.record_provider_usage("codex", %{
+      "percent" => 71,
+      "window" => "primary",
+      "resets_at" => DateTime.to_unix(resets)
+    })
+
+    Chat.record_provider_usage("claude", %{
+      "percent" => 90,
+      "window" => "five_hours",
+      "resets_at" => 1
+    })
+
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+    assert has_element?(view, "#provider-usage-#{ada.id}", "29% left")
+
+    assert has_element?(
+             view,
+             "#quota-window-#{ada.id}",
+             "short window · resets " <> Calendar.strftime(resets, "%H:%M UTC")
+           )
+
+    assert has_element?(view, "#provider-usage-#{bob.id}", "not reported")
+    refute has_element?(view, "#quota-meter-#{bob.id}")
+    refute has_element?(view, "#quota-window-#{bob.id}")
+  end
+
   test "cards show percentage, status, unknown usage, timestamps and per-agent tokens", %{
     conn: conn
   } do
@@ -21,9 +55,12 @@ defmodule RoundtableWeb.UsageTest do
     [run] = Chat.runs(room.id)
     Chat.record_tokens(run, "attempt", %{"input" => 100, "output" => 20, "cached" => 80})
     {:ok, view, _} = live(conn, "/rooms/#{room.id}")
-    assert has_element?(view, "#provider-usage-#{ada.id}", "42.0%")
+    assert has_element?(view, "#provider-usage-#{ada.id}", "58% left")
+    assert has_element?(view, "#quota-meter-#{ada.id}")
     assert has_element?(view, "#provider-usage-#{bob.id}", "near limit")
-    assert has_element?(view, "#provider-usage-#{cora.id}", "not reported")
+    refute has_element?(view, "#quota-meter-#{bob.id}")
+    assert has_element?(view, "#provider-usage-#{cora.id}", "not reported by this provider")
+    refute has_element?(view, "#quota-meter-#{cora.id}")
     assert has_element?(view, "#agent-usage-#{ada.id} time[datetime]")
     refute has_element?(view, "#agent-usage-#{cora.id} time")
     assert has_element?(view, "#token-usage-#{ada.id}", "100 input")

@@ -127,12 +127,24 @@ defmodule Roundtable.Usage do
   def label(%{data: data}), do: label(data)
   def label(reading), do: if(stale?(reading), do: "not reported", else: reading_label(reading))
 
-  defp reading_label(%{"percent" => n}) when is_number(n), do: "#{Float.round(n / 1, 1)}%"
+  @doc "The percentage left, formatted for display."
+  def left_label(%{data: data}), do: left_label(data)
 
-  defp reading_label(%{"status" => status}) when status in ["OK", "near limit", "limited"],
-    do: status
+  def left_label(reading),
+    do: if(stale?(reading), do: "not reported", else: reading_left_label(reading))
 
-  defp reading_label(_), do: "not reported"
+  @doc "The percentage left as an integer 0-100, or nil if not available."
+  def left_percent(%{data: data}), do: left_percent(data)
+  def left_percent(reading), do: if(stale?(reading), do: nil, else: reading_left_percent(reading))
+
+  @doc "The window label for display, or nil if not available."
+  def window_label(%{data: data}), do: window_label(data)
+  def window_label(%{"window" => "five_hours"}), do: "5-hour window"
+  def window_label(%{"window" => "seven_day"}), do: "weekly window"
+  # Codex names its windows by rank, not length; primary is the shorter one.
+  def window_label(%{"window" => "primary"}), do: "short window"
+  def window_label(%{"window" => "secondary"}), do: "long window"
+  def window_label(_), do: nil
 
   def token_label(usage) when map_size(usage) == 0, do: "not reported"
 
@@ -150,6 +162,26 @@ defmodule Roundtable.Usage do
       end
     )
   end
+
+  defp reading_label(%{"percent" => n}) when is_number(n), do: "#{Float.round(n / 1, 1)}%"
+
+  defp reading_label(%{"status" => status}) when status in ["OK", "near limit", "limited"],
+    do: status
+
+  defp reading_label(_), do: "not reported"
+
+  defp reading_left_label(%{"percent" => n}) when is_number(n),
+    do: "#{reading_left_percent(%{"percent" => n})}% left"
+
+  defp reading_left_label(%{"status" => status}) when status in ["OK", "near limit", "limited"],
+    do: status
+
+  defp reading_left_label(_), do: "not reported"
+
+  defp reading_left_percent(%{"percent" => n}) when is_number(n),
+    do: (100 - n) |> round() |> max(0) |> min(100)
+
+  defp reading_left_percent(_), do: nil
 
   defp percent(n) when is_number(n) and n >= 0, do: Float.round(n * 100.0, 6)
   defp percent(_), do: nil

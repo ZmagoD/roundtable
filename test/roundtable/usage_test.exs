@@ -311,6 +311,48 @@ defmodule Roundtable.UsageTest do
     end
   end
 
+  describe "left_label/1" do
+    test "formats percentage left, clamped to 0-100" do
+      assert Usage.left_label(%{"percent" => 71}) == "29% left"
+      assert Usage.left_label(%{"percent" => 100.4}) == "0% left"
+      assert Usage.left_label(%{"percent" => -5}) == "100% left"
+    end
+
+    test "shows status when no percentage is available" do
+      assert Usage.left_label(%{"status" => "OK"}) == "OK"
+      assert Usage.left_label(%{"status" => "near limit"}) == "near limit"
+      assert Usage.left_label(%{"status" => "limited"}) == "limited"
+    end
+
+    test "shows not reported for stale or nil readings" do
+      assert Usage.left_label(%{"percent" => 50, "resets_at" => 0}) == "not reported"
+      assert Usage.left_label(nil) == "not reported"
+      assert Usage.left_label(%{}) == "not reported"
+    end
+  end
+
+  describe "left_percent/1" do
+    test "returns integer percentage left or nil" do
+      assert Usage.left_percent(%{"percent" => 71}) == 29
+      assert Usage.left_percent(%{"percent" => 100.4}) == 0
+      assert Usage.left_percent(%{"percent" => -5}) == 100
+      assert Usage.left_percent(%{"status" => "OK"}) == nil
+      assert Usage.left_percent(%{"percent" => 50, "resets_at" => 0}) == nil
+      assert Usage.left_percent(nil) == nil
+    end
+  end
+
+  describe "window_label/1" do
+    test "returns appropriate labels for known windows" do
+      assert Usage.window_label(%{"window" => "five_hours"}) == "5-hour window"
+      assert Usage.window_label(%{"window" => "seven_day"}) == "weekly window"
+      assert Usage.window_label(%{"window" => "primary"}) == "short window"
+      assert Usage.window_label(%{"window" => "secondary"}) == "long window"
+      assert Usage.window_label(%{"window" => "unknown"}) == nil
+      assert Usage.window_label(nil) == nil
+    end
+  end
+
   describe "how loud a reading is" do
     test "warn at 80% or more, near limit or limited; quiet otherwise" do
       assert Usage.level(%{"percent" => 79.9}) == "ok"
