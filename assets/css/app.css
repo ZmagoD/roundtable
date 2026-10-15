@@ -635,6 +635,14 @@ h1, h2, h3, p { margin: 0; }
 .approval-card { padding: 17px; border: 1px solid var(--warm-soft-3); border-radius: 9px; background: var(--warm-surface-6); margin: 15px 0; }
 .approval-card h3 { font-size: 13px; margin: 8px 0; }
 .approval-card pre, .run-error pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10px; max-height: 180px; overflow: auto; margin: 10px 0 15px; }
+.proposal-card { padding: 13px 15px; border: 1px solid var(--warm-soft-3); border-radius: 9px; background: var(--warm-surface-6); margin: 10px 0 4px; font-size: 12px; }
+.proposal-card:not(.pending) { border-color: var(--line); background: transparent; }
+.proposal-card dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 13px; margin: 0 0 10px; }
+.proposal-card dt { color: var(--muted); }
+.proposal-card dd { margin: 0; overflow-wrap: anywhere; }
+.proposal-card pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10px; max-height: 180px; overflow: auto; margin: 0 0 13px; }
+.proposal-card p { margin: 0 0 8px; }
+.proposal-card p:last-child { margin-bottom: 0; }
 .run-errors { margin: 20px 0; color: var(--warm-mid-3); font-size: 11px; }
 .run-error { padding: 15px; background: var(--warm-surface-5); margin-top: 10px; border-radius: 8px; }
 .run-error p { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 150px; overflow: auto; margin: 10px 0; font-size: 10px; }

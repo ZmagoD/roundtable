@@ -729,9 +729,14 @@ projects with no folder set, the caller’s room folder is the boundary. To make
 a room elsewhere, use the browser.
 
 Participants added through tools always start with automatic approval off,
-even when a saved profile has it on. Only Claude Code and Codex participants
-can be added through tools; add OpenCode, Grok or Vibe yourself in the browser,
-because they have no tool approval channel. Tools cannot change the role or
+even when a saved profile has it on. Claude Code and Codex participants join
+straight away. OpenCode, Grok and Vibe have no tool approval channel, so asking
+for one checks the details and leaves a card in the room instead, showing the
+name, provider, model and role; the participant joins when you click **Add**.
+Making someone the team head and removing a participant work the same way,
+through `set_team_head` and `remove_participant`: the agent asks, and nothing
+changes until you accept the card. **Dismiss** leaves everything as it was.
+Tools cannot change the role or
 model of a participant with automatic approval on. Make that change in the
 browser, or switch automatic approval off first. The tools cannot enable
 automatic approval; change that yourself in the browser if you want unattended work.

@@ -10,7 +10,10 @@ defmodule Roundtable.MCP do
   Everything goes through `Roundtable.Chat`, so a participant building a room is
   held to the browser form’s validation, with narrower permissions for agents. Nothing here removes
   anything: a room that should not have been made is one the human deletes,
-  rather than history an agent can lose on a misreading.
+  rather than history an agent can lose on a misreading. What only the human
+  may do — a participant with no approval channel, a new team head, a removal —
+  is proposed instead, as a card the human accepts or dismisses
+  (`Roundtable.Proposals`).
 
   Who is calling is a signed token, minted for a participant when its turn
   starts and handed to that CLI for that turn alone. It is what makes "this
@@ -219,7 +222,10 @@ defmodule Roundtable.MCP do
         name: "add_participant",
         description:
           "Adds a participant to a room, from a saved profile or from scratch. It works in " <>
-            "the room's directory and gets its own session, with automatic approval off. Only Claude and Codex can be added here.",
+            "the room's directory and gets its own session, with automatic approval off. " <>
+            "Claude and Codex join at once. Other providers cannot ask before using a tool, " <>
+            "so for them this checks the details and shows the human a card to accept; " <>
+            "they join when the human clicks Add.",
         inputSchema:
           object(%{
             "room" => room_property(),
@@ -251,6 +257,35 @@ defmodule Roundtable.MCP do
               "model" => string("Model id for its provider."),
               "role" => role_property(),
               "cost_tier" => cost_tier_property()
+            },
+            ["participant"]
+          )
+      },
+      %{
+        name: "set_team_head",
+        description:
+          "Asks the human to make a participant the team head, who receives the human's " <>
+            "unaddressed messages and hands work to the rest. Shows the human a card; " <>
+            "nothing changes until they accept it.",
+        inputSchema:
+          object(
+            %{
+              "participant" => string("Who should lead, by name or id."),
+              "room" => room_property()
+            },
+            ["participant"]
+          )
+      },
+      %{
+        name: "remove_participant",
+        description:
+          "Asks the human to remove a participant from a room. Shows the human a card; " <>
+            "nothing is removed until they accept it, and what it said stays in the room.",
+        inputSchema:
+          object(
+            %{
+              "participant" => string("Who to remove, by name or id."),
+              "room" => room_property()
             },
             ["participant"]
           )
@@ -431,13 +466,58 @@ defmodule Roundtable.MCP do
 
   def call(agent, "add_participant", args) do
     with :ok <- refuse_approvals(args),
-         {:ok, room} <- room(agent, args),
-         {:ok, added} <- add(room, args) do
-      done(
-        agent,
-        "added #{added.name} to room #{room.id}, #{room.name}, running on " <>
-          "#{added.provider}#{model_suffix(added)}."
-      )
+         {:ok, room} <- room(agent, args) do
+      case add(agent, room, args) do
+        {:ok, {:proposed, name, provider}} ->
+          {:ok,
+           "Asked the human to add #{name} to room #{room.id}, #{room.name}, running on " <>
+             "#{provider}. #{provider_label(provider)} cannot ask before using a tool, so " <>
+             "it joins when they click Add on the card in this room."}
+
+        {:ok, added} ->
+          done(
+            agent,
+            "added #{added.name} to room #{room.id}, #{room.name}, running on " <>
+              "#{added.provider}#{model_suffix(added)}."
+          )
+
+        error ->
+          error
+      end
+    end
+  end
+
+  def call(agent, "set_team_head", args) do
+    with {:ok, room} <- room(agent, args),
+         {:ok, target} <- participant_in(room, args["participant"]) do
+      if target.head do
+        {:ok, "#{target.name} is already the team head of #{room.name}."}
+      else
+        {:ok, _} =
+          Chat.propose(agent.room_id, agent.name, "set_team_head", %{
+            "room_id" => room.id,
+            "agent_id" => target.id
+          })
+
+        {:ok,
+         "Asked the human to make #{target.name} the team head of #{room.name}. " <>
+           "Nothing changes until they accept the card in this room."}
+      end
+    end
+  end
+
+  def call(agent, "remove_participant", args) do
+    with {:ok, room} <- room(agent, args),
+         {:ok, target} <- participant_in(room, args["participant"]) do
+      {:ok, _} =
+        Chat.propose(agent.room_id, agent.name, "remove_participant", %{
+          "room_id" => room.id,
+          "agent_id" => target.id
+        })
+
+      {:ok,
+       "Asked the human to remove #{target.name} from #{room.name}. " <>
+         "Nothing is removed until they accept the card in this room."}
     end
   end
 
@@ -552,21 +632,59 @@ defmodule Roundtable.MCP do
   defp schedule_in(room, _reference),
     do: {:error, "Say which schedule in #{room.name} to change, by id."}
 
-  defp add(room, %{"profile" => reference} = args) when is_binary(reference) do
-    with {:ok, profile} <- profile(reference),
-         :ok <- approval_provider(profile.provider),
-         do:
-           write(Chat.add_profile_to_room(room.id, profile.id, args["name"], auto_approve: false))
+  defp add(agent, room, %{"profile" => reference} = args) when is_binary(reference) do
+    with {:ok, profile} <- profile(reference) do
+      if profile.provider in @providers do
+        write(Chat.add_profile_to_room(room.id, profile.id, args["name"], auto_approve: false))
+      else
+        name = args["name"] || profile.name
+
+        attrs = %{
+          "name" => name,
+          "provider" => profile.provider,
+          "model" => profile.model,
+          "role" => profile.role,
+          "cost_tier" => profile.cost_tier
+        }
+
+        propose_agent(agent, room, attrs, %{
+          "room_id" => room.id,
+          "profile_id" => profile.id,
+          "name" => args["name"]
+        })
+      end
+    end
   end
 
-  defp add(room, args) do
+  defp add(agent, room, args) do
     attrs =
       args
       |> take(Map.put(participant_fields(), "provider", "provider"))
       |> Map.put_new("provider", "")
 
-    with :ok <- approval_provider(attrs["provider"]),
-         do: write(Chat.create_agent(room.id, Map.put(attrs, "auto_approve", false)))
+    if attrs["provider"] in @providers do
+      write(Chat.create_agent(room.id, Map.put(attrs, "auto_approve", false)))
+    else
+      propose_agent(agent, room, attrs, %{"room_id" => room.id, "attrs" => attrs})
+    end
+  end
+
+  # Checked now so the agent hears about a taken name while it can still pick
+  # another, rather than the human finding out on a card that will not work.
+  defp propose_agent(agent, room, attrs, params) do
+    with :ok <- write_check(Chat.check_agent(room.id, attrs)),
+         {:ok, _} <- Chat.propose(agent.room_id, agent.name, "add_participant", params),
+         do: {:ok, {:proposed, String.downcase(attrs["name"]), attrs["provider"]}}
+  end
+
+  defp write_check(:ok), do: :ok
+  defp write_check({:error, changeset}), do: {:error, invalid(changeset)}
+
+  defp provider_label(provider) do
+    case Enum.find(Agents.providers(), &(&1.id == provider)) do
+      %{label: label} -> label
+      _ -> provider
+    end
   end
 
   # The human is watching a conversation, not a database, so anything a
@@ -594,13 +712,6 @@ defmodule Roundtable.MCP do
   end
 
   defp room(agent, _args), do: {:ok, Chat.room!(agent.room_id)}
-
-  defp approval_provider(provider) when provider in @providers, do: :ok
-
-  defp approval_provider(_provider),
-    do:
-      {:error,
-       "This provider cannot be added through room tools. Ask the human to add it in the browser; only Claude and Codex have a tool approval channel here."}
 
   defp protect_approved_participant(%{auto_approve: true}, args) do
     if Map.has_key?(args, "role") or Map.has_key?(args, "model"),

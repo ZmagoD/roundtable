@@ -604,21 +604,61 @@ defmodule Roundtable.MCPTest do
       assert browser_added.auto_approve
     end
 
-    test "providers without approval channels are refused directly and through profiles", %{
+    test "providers without approval channels are proposed, directly and through profiles", %{
       ada: ada,
       room: room
     } do
       for provider <- ["opencode", "grok", "vibe"] do
-        {:ok, profile} = Chat.create_agent_profile(%{"name" => provider, "provider" => provider})
+        {:ok, profile} =
+          Chat.create_agent_profile(%{
+            "name" => "#{provider}-dev",
+            "provider" => provider,
+            "auto_approve" => true
+          })
 
         for args <- [%{"name" => provider, "provider" => provider}, %{"profile" => profile.name}] do
-          assert {:error, message} = MCP.call(ada, "add_participant", args)
-          assert message =~ "human"
-          assert message =~ "browser"
+          assert {:ok, text} = MCP.call(ada, "add_participant", args)
+          assert text =~ "click Add"
         end
       end
 
       assert Enum.map(Chat.agents(room.id), & &1.id) == [ada.id]
+
+      proposals = Repo.all(from m in Message, where: m.kind == "proposal")
+      assert length(proposals) == 6
+      assert Enum.all?(proposals, &(&1.metadata["status"] == "pending" and &1.sender == "ada"))
+      assert Repo.all(from r in Run, where: r.message_id in ^Enum.map(proposals, & &1.id)) == []
+    end
+
+    test "a proposal that could not be accepted is refused while the agent can fix it", %{
+      ada: ada
+    } do
+      assert {:error, message} =
+               MCP.call(ada, "add_participant", %{"name" => "ada", "provider" => "opencode"})
+
+      assert message =~ "already used"
+
+      assert {:error, _} =
+               MCP.call(ada, "add_participant", %{"name" => "otto", "provider" => "nobody"})
+
+      assert Repo.all(from m in Message, where: m.kind == "proposal") == []
+    end
+
+    test "the team head and removals are proposed, never done", %{ada: ada, room: room} do
+      {:ok, bea} = Chat.create_agent(room.id, %{"name" => "bea", "provider" => "codex"})
+
+      assert {:ok, _} = MCP.call(ada, "set_team_head", %{"participant" => "bea"})
+      assert {:ok, _} = MCP.call(ada, "remove_participant", %{"participant" => "ada"})
+      assert {:error, _} = MCP.call(ada, "remove_participant", %{"participant" => "nobody"})
+
+      assert Chat.team_head(room.id).id == ada.id
+      assert Enum.map(Chat.agents(room.id), & &1.id) == [ada.id, bea.id]
+
+      assert ["remove_participant", "set_team_head"] ==
+               from(m in Message, where: m.kind == "proposal")
+               |> Repo.all()
+               |> Enum.map(& &1.metadata["proposal"])
+               |> Enum.sort()
     end
 
     test "role and model edits cannot redirect an automatically approved participant", %{ada: ada} do

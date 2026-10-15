@@ -261,14 +261,51 @@
                         reading={usage_of(@provider_usage, @agents, message.sender)}
                       />
                     </div>
-                    <div :if={message.metadata != %{}} class="assignment-meta">
+                    <div
+                      :if={message.metadata != %{} and message.kind != "proposal"}
+                      class="assignment-meta"
+                    >
                       <span>{message.metadata["name"]}</span><span>{message.metadata["model"] ||
                         "Provider default"}</span><span class={[
                         "cost-tier",
                         message.metadata["cost_tier"]
                       ]}>{message.metadata["cost_tier"]}</span><span>{message.metadata["purpose"]}</span>
                     </div>
-                    <.message body={message.body} /><small
+                    <.message body={message.body} /><div
+                      :if={message.kind == "proposal"}
+                      id={"proposal-#{message.id}"}
+                      class={["proposal-card", message.metadata["status"]]}
+                    >
+                      <% details = proposal_details(message.metadata) %>
+                      <p :if={room_name = proposal_room(message.metadata, @room)} class="muted">
+                        In {room_name}.
+                      </p>
+                      <dl :if={details.rows != []}>
+                        <%= for {label, value} <- details.rows do %>
+                          <dt>{label}</dt>
+                          <dd>{value}</dd>
+                        <% end %>
+                      </dl>
+                      <pre :if={details.role}>{details.role}</pre>
+                      <div :if={message.metadata["status"] == "pending"} class="actions">
+                        <button
+                          class="button"
+                          phx-click="accept-proposal"
+                          phx-value-id={message.id}
+                          data-confirm={
+                            message.metadata["proposal"] == "remove_participant" &&
+                              "Remove this participant? What it said stays in the room."
+                          }
+                        >{proposal_action(message.metadata["proposal"])}</button><button
+                          class="button secondary"
+                          phx-click="dismiss-proposal"
+                          phx-value-id={message.id}
+                        >Dismiss</button>
+                      </div>
+                      <p :if={outcome = proposal_outcome(message.metadata)} class="muted">
+                        {outcome}
+                      </p>
+                    </div><small
                       :if={message.depth >= 4}
                       class="muted"
                     >Handoff limit reached. Mention an agent to start another round.</small>

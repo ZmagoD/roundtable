@@ -11,6 +11,36 @@ defmodule RoundtableWeb.RoomLiveTest do
     Jason.decode!(value)
   end
 
+  test "a participant's request is a card the human accepts or dismisses", %{conn: conn} do
+    {:ok, room} = Chat.create_room(%{name: "Requests", directory: File.cwd!()})
+    {:ok, _} = Chat.create_agent(room.id, %{name: "ada", provider: "claude"})
+
+    {:ok, add} =
+      Chat.propose(room.id, "ada", "add_participant", %{
+        "room_id" => room.id,
+        "attrs" => %{"name" => "otto", "provider" => "opencode", "role" => "Writes the tests."}
+      })
+
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+    assert has_element?(view, "#proposal-#{add.id} dd", "opencode")
+    assert has_element?(view, "#proposal-#{add.id} pre", "Writes the tests.")
+
+    view |> element("#proposal-#{add.id} button", "Add") |> render_click()
+    assert Enum.map(Chat.agents(room.id), & &1.name) == ["ada", "otto"]
+    assert has_element?(view, "#proposal-#{add.id}", "otto joined")
+    refute has_element?(view, "#proposal-#{add.id} button")
+
+    {:ok, removal} =
+      Chat.propose(room.id, "ada", "remove_participant", %{
+        "room_id" => room.id,
+        "agent_id" => Enum.find(Chat.agents(room.id), &(&1.name == "otto")).id
+      })
+
+    view |> element("#proposal-#{removal.id} button", "Dismiss") |> render_click()
+    assert has_element?(view, "#proposal-#{removal.id}", "Nothing changed")
+    assert Enum.map(Chat.agents(room.id), & &1.name) == ["ada", "otto"]
+  end
+
   test "composer offers and runs commands without posting them to agents", %{conn: conn} do
     {:ok, room} = Chat.create_room(%{name: "Commands", directory: File.cwd!()})
     {:ok, agent} = Chat.create_agent(room.id, %{name: "ada", provider: "claude"})

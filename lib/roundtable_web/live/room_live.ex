@@ -1,6 +1,6 @@
 defmodule RoundtableWeb.RoomLive do
   use RoundtableWeb, :live_view
-  alias Roundtable.{Chat, Coordinator}
+  alias Roundtable.{Chat, Coordinator, Proposals}
   alias Roundtable.Chat.RoomNote
   alias RoundtableWeb.ComposerCommands
   import RoundtableWeb.AgentAvatar, only: [agent_avatar: 1]
@@ -147,6 +147,27 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   def handle_event("clear-team-head", _params, socket), do: {:noreply, socket}
+
+  def handle_event("accept-proposal", %{"id" => id}, socket) do
+    case Proposals.accept(String.to_integer(id)) do
+      {:ok, message} ->
+        {:noreply,
+         socket
+         |> stream_insert(:messages, message)
+         |> put_flash(:info, message.metadata["note"])
+         |> refresh()}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, reason)}
+    end
+  end
+
+  def handle_event("dismiss-proposal", %{"id" => id}, socket) do
+    case Proposals.dismiss(String.to_integer(id)) do
+      {:ok, message} -> {:noreply, stream_insert(socket, :messages, message)}
+      {:error, reason} -> {:noreply, put_flash(socket, :error, reason)}
+    end
+  end
 
   def handle_event("open-work", _, %{assigns: %{room: room}} = socket) do
     document = Chat.work_document(room.id)
@@ -937,6 +958,13 @@ defmodule RoundtableWeb.RoomLive do
 
   def handle_info(:room_updated, socket), do: {:noreply, refresh(socket)}
 
+  # The stream only appends, so an answered proposal is redrawn in place.
+  def handle_info({:message_updated, message}, socket) do
+    if socket.assigns.room && socket.assigns.room.id == message.room_id,
+      do: {:noreply, stream_insert(socket, :messages, message)},
+      else: {:noreply, socket}
+  end
+
   def handle_info(:provider_usage_updated, %{assigns: %{provider_usage: before}} = socket) do
     usage = Chat.provider_usage()
 
@@ -1145,6 +1173,61 @@ defmodule RoundtableWeb.RoomLive do
       _ -> socket.assigns.directory
     end
   end
+
+  # Drawn from what accepting will actually do — the current profile, the ids
+  # in the request — so the card cannot say one thing and the button another.
+  defp proposal_details(%{"params" => %{"profile_id" => id} = params}) do
+    case Enum.find(Chat.agent_profiles(), &(&1.id == id)) do
+      nil ->
+        %{rows: [{"Profile", "Deleted"}], role: nil}
+
+      profile ->
+        agent_details(%{
+          "name" => params["name"] || profile.name,
+          "provider" => profile.provider,
+          "model" => profile.model,
+          "cost_tier" => profile.cost_tier,
+          "role" => profile.role
+        })
+    end
+  end
+
+  defp proposal_details(%{"params" => %{"attrs" => attrs}}), do: agent_details(attrs)
+
+  defp proposal_details(_metadata), do: %{rows: [], role: nil}
+
+  defp agent_details(agent) do
+    %{
+      rows: [
+        {"Name", agent["name"]},
+        {"Provider", agent["provider"]},
+        {"Model", blank_as(agent["model"], "Provider default")},
+        {"Cost tier", blank_as(agent["cost_tier"], "unknown")},
+        {"Tool approval", "Off. Turn it on from the participant's card if you want it."}
+      ],
+      role: blank_as(agent["role"], nil)
+    }
+  end
+
+  defp blank_as(value, fallback) when value in [nil, ""], do: fallback
+  defp blank_as(value, _fallback), do: value
+
+  defp proposal_room(%{"params" => %{"room_id" => room_id}}, room) when room_id != room.id do
+    case Enum.find(Chat.rooms(), &(&1.id == room_id)) do
+      nil -> "a room that no longer exists"
+      other -> other.name
+    end
+  end
+
+  defp proposal_room(_metadata, _room), do: nil
+
+  defp proposal_action("add_participant"), do: "Add"
+  defp proposal_action("set_team_head"), do: "Make team head"
+  defp proposal_action("remove_participant"), do: "Remove"
+
+  defp proposal_outcome(%{"status" => "accepted", "note" => note}), do: "Accepted. #{note}"
+  defp proposal_outcome(%{"status" => "dismissed"}), do: "Dismissed. Nothing changed."
+  defp proposal_outcome(_metadata), do: nil
 
   defp errors(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->

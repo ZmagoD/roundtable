@@ -579,7 +579,10 @@ defmodule Roundtable.Chat do
     Use only available providers and discovered model IDs; leave the model at its
     provider default when uncertain. Keep automatic approval off unless the human asks.
     Check existing participants before adding anyone so you do not duplicate the team.
-    Set up schedules if requested. Do not implement the project or start teammates'
+    Set up schedules if requested. Some changes need the human: adding a provider
+    without an approval channel, choosing the team head, removing a participant.
+    The tools turn those into cards in this room; list which cards are waiting so
+    the human knows what to accept. Do not implement the project or start teammates'
     work while assembling the team. Finish with a short roster and how to start work.
     """
   end
@@ -915,6 +918,93 @@ defmodule Roundtable.Chat do
       {:error, changeset} ->
         {:error, changeset}
     end
+  end
+
+  @doc """
+  Checks a participant the way `create_agent/2` would, without adding it.
+
+  A proposal is only worth a human's click if clicking it works, so a name
+  already taken or a provider that does not exist is refused when it is asked
+  for rather than when it is accepted.
+  """
+  def check_agent(room_id, attrs) do
+    room = room!(room_id)
+    attrs = normalise(attrs)
+
+    changeset =
+      %Agent{room_id: room_id}
+      |> Agent.changeset(Map.put(attrs, "directory", effective_directory(room)))
+      |> valid_directory()
+
+    name = Ecto.Changeset.get_field(changeset, :name)
+
+    changeset =
+      if Enum.any?(agents(room_id), &(&1.name == name)),
+        do: Ecto.Changeset.add_error(changeset, :name, "is already used in this room"),
+        else: changeset
+
+    case Ecto.Changeset.apply_action(changeset, :insert) do
+      {:ok, _agent} -> :ok
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  @doc """
+  Records something a participant asked the human to do in the browser.
+
+  It is a message of its own kind, so it sits in the conversation where it was
+  asked for and survives a reload. What it would do is kept as ids in its
+  metadata, and the card is drawn from those, never from the agent's wording:
+  the human is approving what will run, not a description of it. It starts no
+  turn.
+  """
+  def propose(room_id, sender, action, params) do
+    message =
+      Repo.insert!(%Message{
+        room_id: room_id,
+        sender: sender,
+        kind: "proposal",
+        body: proposal_summary(action, params),
+        metadata: %{"proposal" => action, "params" => params, "status" => "pending"}
+      })
+
+    broadcast(room_id)
+    {:ok, message}
+  end
+
+  defp proposal_summary("add_participant", %{"profile_id" => id} = params),
+    do: "Asks you to add the profile #{agent_profile!(id).name}#{as_name(params)}."
+
+  defp proposal_summary("add_participant", %{"attrs" => attrs}),
+    do: "Asks you to add #{attrs["name"]}, running on #{attrs["provider"]}."
+
+  defp proposal_summary("set_team_head", %{"agent_id" => id}),
+    do: "Asks you to make #{agent!(id).name} the team head."
+
+  defp proposal_summary("remove_participant", %{"agent_id" => id}),
+    do: "Asks you to remove #{agent!(id).name}."
+
+  defp as_name(%{"name" => name}) when is_binary(name) and name != "", do: " as #{name}"
+  defp as_name(_params), do: ""
+
+  def proposal!(message_id),
+    do: Repo.one!(from m in Message, where: m.id == ^message_id and m.kind == "proposal")
+
+  @doc """
+  Marks a proposal accepted, failed or dismissed, with what the human should
+  read about it. Open pages redraw the card in place rather than appending it.
+  """
+  def resolve_proposal(%Message{} = message, status, note \\ nil) do
+    metadata = Map.merge(message.metadata, %{"status" => status, "note" => note})
+    updated = change(message, metadata: metadata)
+
+    Phoenix.PubSub.broadcast(
+      Roundtable.PubSub,
+      topic(message.room_id),
+      {:message_updated, updated}
+    )
+
+    {:ok, updated}
   end
 
   @doc """
