@@ -970,6 +970,22 @@
             packages are Debian names, installed into the image. The first turn builds
             it, which takes a few minutes. Containers share your network.
           </p>
+          <.input
+            :if={@editing_room}
+            field={@room_form[:head_answers_approvals]}
+            label="Who answers tool approvals"
+            type="select"
+            options={[
+              {"Only you", "false"},
+              {"The team head, for its teammates", "true"}
+            ]}
+          />
+          <p :if={@editing_room} class="form-note">
+            With the team head answering, a teammate waiting on a tool here or in a task room
+            this team opened wakes the head, which allows or declines it once and posts its
+            reason in that room. The head's own requests still come to you, and you can
+            answer any card yourself.
+          </p>
           <div :if={@editing_room} class="input-field">
             <%= if @custom_directory do %>
               <.input field={@room_form[:directory]} label="Project directory" autocomplete="off" />

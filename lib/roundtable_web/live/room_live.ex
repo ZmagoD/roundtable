@@ -554,7 +554,8 @@ defmodule RoundtableWeb.RoomLive do
       "context" => room.context,
       "token_budget" => room.token_budget,
       "sandbox" => to_string(room.sandbox),
-      "sandbox_packages" => room.sandbox_packages
+      "sandbox_packages" => room.sandbox_packages,
+      "head_answers_approvals" => to_string(room.head_answers_approvals)
     }
 
     {:noreply,

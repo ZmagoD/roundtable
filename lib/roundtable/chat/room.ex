@@ -21,6 +21,10 @@ defmodule Roundtable.Chat.Room do
     # `Roundtable.Sandbox`. The packages are Debian ones, added to the image.
     field :sandbox, :boolean, default: false
     field :sandbox_packages, :string, default: ""
+    # Whether the team head may answer its teammates' tool approvals, here and
+    # in the task rooms it runs. Only the browser form sets it: room tools
+    # never cast it, so a participant cannot widen its own authority.
+    field :head_answers_approvals, :boolean, default: false
     belongs_to :organization, Roundtable.Chat.Organization
     timestamps(type: :utc_datetime)
   end
@@ -44,7 +48,8 @@ defmodule Roundtable.Chat.Room do
       :organization_id,
       :token_budget,
       :sandbox,
-      :sandbox_packages
+      :sandbox_packages,
+      :head_answers_approvals
     ])
     |> validate_required([:name, :organization_id])
     |> validate_length(:name, max: 80)

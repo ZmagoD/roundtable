@@ -636,6 +636,17 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert Enum.any?(Chat.agents(room.id), &(&1.name == "reviewer" and &1.auto_approve))
     end
 
+    test "only the human hands the team head its teammates' approvals", %{view: view, room: room} do
+      view |> element("#edit-room-button") |> render_click()
+      assert has_element?(view, "#room-form select[name='room[head_answers_approvals]']")
+
+      view
+      |> form("#room-form", room: %{head_answers_approvals: "true"})
+      |> render_submit()
+
+      assert Chat.room!(room.id).head_answers_approvals
+    end
+
     test "the room brief is edited in place and shown back", %{view: view, room: room} do
       view |> element("#edit-room-button") |> render_click()
 

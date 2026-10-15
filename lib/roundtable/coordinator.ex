@@ -44,6 +44,11 @@ defmodule Roundtable.Coordinator do
     do: GenServer.call(__MODULE__, {:approve, run_id, request_id, decision})
 
   def approvals, do: GenServer.call(__MODULE__, :approvals)
+
+  @doc "Answers a teammate's approval as the team head the human allowed to."
+  def answer_for(head_id, run_id, request_id, decision, reason),
+    do: GenServer.call(__MODULE__, {:answer_for, head_id, run_id, request_id, decision, reason})
+
   def event(run_id, event), do: GenServer.cast(__MODULE__, {:event, run_id, event})
 
   @impl true
@@ -165,19 +170,34 @@ defmodule Roundtable.Coordinator do
   end
 
   def handle_call({:approve, id, request_id, decision}, _, state) do
-    key = {id, request_id}
+    case answer(state, id, request_id, decision) do
+      {:ok, state} -> {:reply, :ok, state}
+      :error -> {:reply, {:error, "This approval is no longer pending."}, state}
+    end
+  end
 
-    with %{pid: pid} <- state.workers[id],
-         approval when not is_nil(approval) <- state.approvals[key],
-         true <- decision in ["accept", "decline"] do
-      send(pid, {:approval, request_id, decision})
-      state = %{state | approvals: Map.delete(state.approvals, key)}
-      run = Repo.get!(Run, id)
-      resume_if_last_approval(state, run)
-      Chat.broadcast(Chat.agent!(run.agent_id).room_id)
+  # The same answer the human gives on the card, given by the team head the
+  # human chose to trust with it. Who may answer is decided again here, at the
+  # moment of answering, so a permission withdrawn or a head replaced since the
+  # request arrived is honoured.
+  def handle_call({:answer_for, head_id, run_id, request_id, decision, reason}, _, state) do
+    with {:ok, approval} <- pending(state, run_id, request_id),
+         run = Repo.get!(Run, run_id),
+         requester = Chat.agent!(run.agent_id),
+         %{id: ^head_id} = head <- Chat.approval_delegate(requester),
+         {:ok, state} <- answer(state, run_id, approval.request_id, decision) do
+      verb = if decision == "accept", do: "allowed", else: "declined"
+
+      note =
+        "#{head.name} (team head) #{verb} #{requester.name} to use " <>
+          "#{tool_name(approval.params)}: #{reason}"
+
+      Chat.post(requester.room_id, String.replace(note, "@", ""), sender: "system", kind: "agent")
       {:reply, :ok, state}
     else
-      _ -> {:reply, {:error, "This approval is no longer pending."}, state}
+      {:error, message} -> {:reply, {:error, message}, state}
+      :error -> {:reply, {:error, "This approval is no longer pending."}, state}
+      _ -> {:reply, {:error, "Only the human can answer this approval."}, state}
     end
   end
 
@@ -244,11 +264,13 @@ defmodule Roundtable.Coordinator do
         run_id: run.id,
         request_id: request_id,
         agent: agent.name,
+        agent_id: agent.id,
         room_id: agent.room_id,
         params: params
       }
 
-      %{state | approvals: Map.put(state.approvals, {run.id, request_id}, approval)}
+      state = %{state | approvals: Map.put(state.approvals, {run.id, request_id}, approval)}
+      if wake_delegate(agent, params), do: schedule(state), else: state
     end
   end
 
@@ -287,6 +309,54 @@ defmodule Roundtable.Coordinator do
         else: state
 
     schedule(state)
+  end
+
+  defp answer(state, id, request_id, decision) do
+    key = {id, request_id}
+
+    with %{pid: pid} <- state.workers[id],
+         approval when not is_nil(approval) <- state.approvals[key],
+         true <- decision in ["accept", "decline"] do
+      send(pid, {:approval, request_id, decision})
+      state = %{state | approvals: Map.delete(state.approvals, key)}
+      run = Repo.get!(Run, id)
+      resume_if_last_approval(state, run)
+      Chat.broadcast(Chat.agent!(run.agent_id).room_id)
+      {:ok, state}
+    else
+      _ -> :error
+    end
+  end
+
+  # A head reads request ids back as text, while a provider may have sent a
+  # number, so the two are compared as text.
+  defp pending(state, run_id, request_id) do
+    Enum.find_value(state.approvals, {:error, "This approval is no longer pending."}, fn
+      {{^run_id, id}, approval} -> if to_string(id) == to_string(request_id), do: {:ok, approval}
+      _ -> nil
+    end)
+  end
+
+  # The head hears about a request in its own room, as a turn, because nothing
+  # else would make it look. Only the tool's name travels in the message; what
+  # it would run stays on the card and in list_approvals.
+  defp wake_delegate(agent, params) do
+    with %{} = head <- Chat.approval_delegate(agent),
+         false <- Chat.approval_wake_queued?(head.id),
+         {:ok, _message} <-
+           Chat.post(
+             head.room_id,
+             "@#{head.name} #{agent.name} in #{Chat.room!(agent.room_id).name} is waiting for " <>
+               "approval to use #{tool_name(params)}. Read it with list_approvals and answer " <>
+               "with answer_approval; leave anything you are unsure of to the human.",
+             sender: "system",
+             kind: "agent",
+             metadata: %{"approval_wake" => true}
+           ) do
+      true
+    else
+      _ -> false
+    end
   end
 
   # A turn's last approval is what unblocks it; the others were answered while

@@ -372,6 +372,36 @@ defmodule Roundtable.MCP do
             },
             ["profile"]
           )
+      },
+      %{
+        name: "list_approvals",
+        description:
+          "Tool approvals your teammates are waiting on that the human has let you, as team " <>
+            "head, answer: here and in the task rooms this team opened. Empty when there are " <>
+            "none or when the human answers them all.",
+        inputSchema: object(%{})
+      },
+      %{
+        name: "answer_approval",
+        description:
+          "Allows or declines one approval from list_approvals, once. The answer and your " <>
+            "reason are posted in that participant's room. Decline anything destructive, " <>
+            "outside the task, or that you cannot read; the human can still answer it on the " <>
+            "card while you do not.",
+        inputSchema:
+          object(
+            %{
+              "run_id" => %{type: "integer", description: "run_id from list_approvals."},
+              "request_id" => string("request_id from list_approvals, as text."),
+              "decision" => %{
+                type: "string",
+                enum: ["accept", "decline"],
+                description: "accept runs the tool this once; decline refuses it."
+              },
+              "reason" => string("One sentence the human will read: why this is safe, or not.")
+            },
+            ["run_id", "request_id", "decision", "reason"]
+          )
       }
     ]
   end
@@ -590,8 +620,57 @@ defmodule Roundtable.MCP do
     end
   end
 
+  def call(agent, "list_approvals", _args) do
+    approvals =
+      for {_key, approval} <- Coordinator.approvals(),
+          requester = requester(approval),
+          requester != nil,
+          match?(%{id: id} when id == agent.id, Chat.approval_delegate(requester)) do
+        %{
+          run_id: approval.run_id,
+          request_id: to_string(approval.request_id),
+          participant: approval.agent,
+          room: Chat.room!(approval.room_id).name,
+          request: approval.params
+        }
+      end
+
+    {:ok, json(approvals)}
+  end
+
+  def call(agent, "answer_approval", %{
+        "run_id" => run_id,
+        "request_id" => request_id,
+        "decision" => decision,
+        "reason" => reason
+      })
+      when is_integer(run_id) and decision in ["accept", "decline"] and is_binary(reason) do
+    reason = String.trim(reason)
+
+    if reason == "" or String.length(reason) > 500 do
+      {:error, "Give a reason of up to 500 characters; the human reads it."}
+    else
+      case Coordinator.answer_for(agent.id, run_id, to_string(request_id), decision, reason) do
+        :ok -> {:ok, "Answered. The participant's room has your reason."}
+        {:error, message} -> {:error, message}
+      end
+    end
+  end
+
+  def call(_agent, "answer_approval", _args),
+    do:
+      {:error,
+       "Give run_id and request_id from list_approvals, decision accept or decline, and a reason."}
+
   def call(_agent, name, _args),
     do: {:error, "There is no tool called #{name} here."}
+
+  # Requests from before approvals carried the participant's id, still held
+  # by a coordinator that reloaded its code, are found by name in their room.
+  defp requester(%{agent_id: id}), do: Chat.agent(id)
+
+  defp requester(approval),
+    do: Enum.find(Chat.agents(approval.room_id), &(&1.name == approval.agent))
 
   # Deliberately without auto_approve. Whether a participant stops to ask is the
   # switch that makes every other tool here safe, so it is the human's alone —
