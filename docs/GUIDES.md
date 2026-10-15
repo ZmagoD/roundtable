@@ -203,3 +203,36 @@ about the remote host is stored by Roundtable itself. The
 `roundtable status` prints the URL and the recent log; `roundtable logs`
 follows it. Rooms and history live in one SQLite file under
 `~/.local/share/roundtable` — back that up and you have backed up everything.
+
+## A captain and isolated task rooms
+
+Keep your primary contact (the captain) in the original project room. Give it
+implementation tasks there. It can call `create_room` with `isolated: true`, add
+participants, and assign each task through `@room-slug/agent` mentions. Each task
+room records its creating agent as supervisor. Subagents send questions and
+results back to that supervisor; the captain resolves them or asks you for a
+decision. Existing mention depth limits still prevent unbounded reply loops.
+
+An isolated room clones the source repository's committed HEAD into an independent
+folder and creates `roundtable/task-<timestamp>-<uuid>`. It does not copy local
+uncommitted, untracked or ignored files. Its `origin` points to the source's push
+remote, so agents can commit and push the task branch using their normal Git
+credentials. No remote is created and no push happens merely by creating a room.
+Multiple agents in one task room share that room's checkout.
+
+After the subagent reports completion, the captain calls `finish_task` from its
+own room. The browser also has **Finish task and remove copy**. Finishing requires
+no queued, running, approval-waiting or quota-waiting turns, a clean working tree,
+and the task branch's exact HEAD verified on its original remote. It removes
+only the owned clone; it keeps the room history, remote branch and original
+project. A finished room cannot launch more work. A failed push, dirty tree or
+failed ownership check leaves the copy in place. Finish a task before deleting
+its room. Pushes and cleanup do not merge the branch into the original project.
+
+Storage defaults to `~/.local/share/roundtable/checkouts`, with at most eight
+retained copies. Configure `:task_checkout_root` and `:task_checkout_limit` under
+`:roundtable` to change these. Ownership records survive restarts and count
+unfinished copies against the limit. Copies are never evicted to make space;
+finish a retained task first. Keep the configured storage path stable while tasks
+are active. The checkout is file isolation, not a security boundary for agent
+processes; the separate room container option controls process isolation.

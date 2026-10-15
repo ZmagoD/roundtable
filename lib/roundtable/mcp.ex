@@ -184,6 +184,11 @@ defmodule Roundtable.MCP do
           object(
             %{
               "name" => string("What the room is called, as a person would say it."),
+              "isolated" => %{
+                type: "boolean",
+                description:
+                  "Create a managed clone of committed files on a unique task branch. The original directory is preserved."
+              },
               "directory" =>
                 string(
                   "Absolute path to the working tree this room is about. Defaults to the " <>
@@ -193,6 +198,12 @@ defmodule Roundtable.MCP do
             },
             ["name"]
           )
+      },
+      %{
+        name: "finish_task",
+        description:
+          "Finish an idle task room after its agents have committed and pushed. Verifies the remote branch before removing only its managed clone. History remains. Call from the parent room after the task's turns finish.",
+        inputSchema: object(%{"room" => room_property()})
       },
       %{
         name: "update_room",
@@ -381,17 +392,31 @@ defmodule Roundtable.MCP do
     with {:ok, directory} <- room_directory(caller_room, args["directory"]),
          {:ok, room} <-
            write(
-             Chat.create_room(%{
-               "name" => args["name"],
-               "directory" => directory,
-               "context" => args["brief"] || "",
-               "organization_id" => caller_room.organization_id
-             })
+             Chat.create_room(
+               %{
+                 "name" => args["name"],
+                 "isolated" => args["isolated"] || false,
+                 "directory" => directory,
+                 "context" => args["brief"] || "",
+                 "organization_id" => caller_room.organization_id
+               },
+               supervisor_id: if(args["isolated"] == true, do: agent.id)
+             )
            ) do
       done(
         agent,
         "created room #{room.id}, #{room.name}, working in #{Chat.effective_directory(room)}. " <>
           "It has no participants yet."
+      )
+    end
+  end
+
+  def call(agent, "finish_task", args) do
+    with {:ok, room} <- room(agent, args),
+         {:ok, finished} <- Coordinator.finish_task(room.id) do
+      done(
+        agent,
+        "finished task #{finished.name}. Its managed copy was removed; its history remains."
       )
     end
   end
@@ -712,6 +737,8 @@ defmodule Roundtable.MCP do
       name: room.name,
       directory: Chat.effective_directory(room),
       brief: room.context,
+      task_branch: room.checkout_branch,
+      task_finished: room.checkout_finished,
       participants: Enum.map(Chat.agents(room.id), & &1.name)
     }
   end

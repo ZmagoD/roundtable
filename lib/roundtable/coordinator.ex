@@ -36,6 +36,8 @@ defmodule Roundtable.Coordinator do
   def remove_agent(agent_id), do: GenServer.call(__MODULE__, {:remove_agent, agent_id})
 
   @doc "Stops every participant in a room, then removes the room and its history."
+  def finish_task(room_id), do: GenServer.call(__MODULE__, {:finish_task, room_id}, :infinity)
+
   def remove_room(room_id), do: GenServer.call(__MODULE__, {:remove_room, room_id})
 
   def approve(run_id, request_id, decision),
@@ -100,6 +102,10 @@ defmodule Roundtable.Coordinator do
     result = Chat.delete_agent(agent_id)
     discard_containers([agent_id])
     {:reply, result, state}
+  end
+
+  def handle_call({:finish_task, room_id}, _, state) do
+    {:reply, Chat.finish_task(room_id), state}
   end
 
   def handle_call({:remove_room, room_id}, _, state) do

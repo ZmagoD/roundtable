@@ -3,6 +3,11 @@ defmodule Roundtable.Chat.Room do
   import Ecto.Changeset
 
   schema "rooms" do
+    field :checkout_supervisor_id, :integer
+    field :checkout_id, :string
+    field :checkout_branch, :string
+    field :checkout_finished, :boolean, default: false
+    field :isolated, :boolean, virtual: true, default: false
     field :name, :string
     field :directory, :string
     # The room's shared brief: what this team is doing and how it works.
@@ -32,6 +37,7 @@ defmodule Roundtable.Chat.Room do
 
     room
     |> cast(attrs, [
+      :isolated,
       :name,
       :directory,
       :context,

@@ -112,6 +112,14 @@
             </p>
           </div>
           <div class="header-actions">
+            <span :if={@room.checkout_finished} class="live-badge">Task finished</span>
+            <button
+              :if={@room.checkout_id && not @room.checkout_finished}
+              id="finish-task"
+              class="button"
+              phx-click="finish-task"
+              phx-disable-with="Checking remote…"
+            >Finish task and remove copy</button>
             <span class="live-badge"><span class="online-dot"></span> Live</span><span
               :if={@token_budget}
               class="live-badge"
@@ -978,6 +986,20 @@
           </ul>
           <p :if={is_nil(@editing_room)} class="form-note">
             Type to narrow, or click to go in. An existing absolute path on this machine.
+          </p>
+          <.input
+            :if={is_nil(@editing_room)}
+            field={@room_form[:isolated]}
+            type="select"
+            label="Working copy"
+            options={[
+              {"Use the project directory", "false"},
+              {"Create an isolated task checkout", "true"}
+            ]}
+          />
+          <p :if={is_nil(@editing_room)} class="form-note">
+            Clone committed files into a separate folder and branch. Commit and push the task
+            branch, then finish the task to remove its copy. The original folder stays in place.
           </p>
           <button class="button full" type="submit" phx-disable-with="Saving…">
             {if @editing_room, do: "Save changes", else: "Create room"}

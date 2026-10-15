@@ -543,6 +543,30 @@ defmodule Roundtable.Chat do
     notify_rooms(result)
   end
 
+  defp task_instructions(%{checkout_id: nil}), do: ""
+
+  defp task_instructions(room) do
+    "This is an isolated task checkout on branch #{room.checkout_branch}. " <>
+      "Work only in this checkout. Commit and push this branch to origin when the task is complete. " <>
+      task_supervisor(room) <>
+      " The parent can call finish_task after all " <>
+      "turns here finish to verify the push and remove this copy. Never delete the original project."
+  end
+
+  defp task_supervisor(%{checkout_supervisor_id: nil}),
+    do: "Report the branch and result to the parent room."
+
+  defp task_supervisor(room) do
+    supervisor = agent!(room.checkout_supervisor_id)
+    parent = room!(supervisor.room_id)
+
+    "Your supervisor is @#{room_slug(parent)}/#{supervisor.name}. Send questions, blockers and " <>
+      "results to that supervisor. When answering a cross-room assignment, your final response " <>
+      "is already delivered back: do not repeat the supervisor mention and create a second request. " <>
+      "Otherwise use that exact cross-room mention in your final response. " <>
+      "The supervisor resolves questions first and asks the human only when it cannot decide."
+  end
+
   defp team_builder_role do
     """
     Help the human assemble a small, useful team for their project. If this room is
@@ -560,12 +584,86 @@ defmodule Roundtable.Chat do
     """
   end
 
-  def create_room(attrs) do
+  def create_room(attrs, opts \\ []) do
     new_room()
+    |> Ecto.Changeset.change(checkout_supervisor_id: opts[:supervisor_id])
     |> Room.changeset(attrs)
     |> valid_room_directory()
-    |> Repo.insert()
+    |> insert_task_room()
     |> notify_rooms()
+  end
+
+  defp insert_task_room(%{valid?: false} = changeset), do: {:error, changeset}
+
+  defp insert_task_room(changeset) do
+    if Ecto.Changeset.get_field(changeset, :isolated),
+      do: clone_task_room(changeset),
+      else: Repo.insert(changeset)
+  end
+
+  defp clone_task_room(changeset) do
+    room = Ecto.Changeset.apply_changes(changeset)
+
+    source =
+      if room.directory in [nil, ""],
+        do: organization!(room.organization_id).directory,
+        else: room.directory
+
+    case Roundtable.TaskCheckouts.create(source) do
+      {:ok, checkout} -> persist_task_room(changeset, checkout)
+      {:error, reason} -> {:error, Ecto.Changeset.add_error(changeset, :directory, reason)}
+    end
+  end
+
+  defp persist_task_room(changeset, checkout) do
+    result =
+      changeset
+      |> Ecto.Changeset.change(
+        directory: checkout.path,
+        checkout_id: checkout.id,
+        checkout_branch: checkout.branch
+      )
+      |> Repo.insert()
+
+    if match?({:error, _}, result), do: Roundtable.TaskCheckouts.discard_new(checkout)
+    result
+  rescue
+    error ->
+      Roundtable.TaskCheckouts.discard_new(checkout)
+      reraise error, __STACKTRACE__
+  end
+
+  def finish_task(room_id) do
+    room = room!(room_id)
+
+    busy =
+      Repo.exists?(
+        from r in Run,
+          join: a in Agent,
+          on: a.id == r.agent_id,
+          where:
+            a.room_id == ^room_id and
+              r.status in ["queued", "running", "approval", "waiting_quota"]
+      )
+
+    cond do
+      is_nil(room.checkout_id) ->
+        {:error, "This room does not own a task checkout."}
+
+      room.checkout_finished ->
+        {:ok, room}
+
+      busy ->
+        {:error, "Wait for this room's queued and running turns to finish first."}
+
+      true ->
+        with :ok <- Roundtable.TaskCheckouts.finish(room.checkout_id, room.directory) do
+          room
+          |> Ecto.Changeset.change(checkout_finished: true)
+          |> Repo.update()
+          |> notify_rooms()
+        end
+    end
   end
 
   # The project is on the struct rather than put into the changeset, so that
@@ -642,9 +740,17 @@ defmodule Roundtable.Chat do
 
     room
     |> Room.changeset(Map.put(attrs, "directory", Map.get(attrs, "directory", room.directory)))
-    |> valid_room_directory()
+    |> protect_task_directory(room)
     |> Repo.update()
     |> notify_rooms()
+  end
+
+  defp protect_task_directory(changeset, %{checkout_id: nil}), do: valid_room_directory(changeset)
+
+  defp protect_task_directory(changeset, room) do
+    if Ecto.Changeset.get_field(changeset, :directory) == room.directory,
+      do: changeset,
+      else: Ecto.Changeset.add_error(changeset, :directory, "is managed by this task")
   end
 
   @doc """
@@ -711,11 +817,12 @@ defmodule Roundtable.Chat do
              where: r.id == ^room_id,
              join: o in Organization,
              on: o.id == r.organization_id,
-             select: {r.directory, o.directory}
+             select: {r.directory, o.directory, r.checkout_finished}
            )
          ) do
-      {own, _organization} when own not in [nil, ""] -> own
-      {_, organization} -> organization
+      {_, _, true} -> nil
+      {own, _organization, false} when own not in [nil, ""] -> own
+      {_, organization, false} -> organization
     end
   end
 
@@ -820,7 +927,18 @@ defmodule Roundtable.Chat do
   def delete_room(room_id) do
     room = room!(room_id)
 
-    case Repo.delete(room) do
+    result =
+      if room.checkout_id && not room.checkout_finished,
+        do:
+          {:error,
+           Ecto.Changeset.add_error(
+             Ecto.Changeset.change(room),
+             :directory,
+             "finish this task before deleting its room"
+           )},
+        else: Repo.delete(room)
+
+    case result do
       {:ok, room} ->
         Phoenix.PubSub.broadcast(Roundtable.PubSub, "rooms", :rooms_updated)
         {:ok, room}
@@ -1116,7 +1234,8 @@ defmodule Roundtable.Chat do
     else
       result =
         Repo.transaction(fn ->
-          room!(room_id)
+          ensure_open_task(room!(room_id))
+
           opts = delegation_options(room_id, body, opts)
           message = insert_message(room_id, body, opts)
 
@@ -1130,6 +1249,11 @@ defmodule Roundtable.Chat do
       result
     end
   end
+
+  defp ensure_open_task(%{checkout_finished: true}),
+    do: Repo.rollback("This task is finished. Create another task room to continue.")
+
+  defp ensure_open_task(_room), do: :ok
 
   defp insert_message(room_id, body, opts) do
     Repo.insert!(%Message{
@@ -1462,6 +1586,9 @@ defmodule Roundtable.Chat do
       to_room.id == from_message.room_id ->
         {:error, "@#{to_agent.name} is already in this room; mention them directly."}
 
+      to_room.checkout_finished ->
+        {:error, "That task is finished. Create a new task room to continue."}
+
       from_message.depth >= @max_depth ->
         {:error, "Too many hops from the original message; ask again yourself."}
 
@@ -1617,6 +1744,7 @@ defmodule Roundtable.Chat do
 
     THIS ROOM#{project(room.organization_id)}
     Room: #{room.name}. Working directory: #{agent.directory}
+    #{task_instructions(room)}
     What this room is working on, and how: #{context(room)}
     That is the shared brief for everyone here. Where it and your own role both apply, follow both;
     where they genuinely conflict, say so rather than quietly picking one.#{learned(room.id)}
@@ -1709,7 +1837,9 @@ defmodule Roundtable.Chat do
     Avoid unnecessary mentions, acknowledgements, or reply loops. Delegation stops after four hops.
     A participant whose status is running, approval, queued or waiting_quota already has work; mentioning it queues
     more behind that. Prefer an idle participant, or say why the busy one has to be the one.
-    You can ask the human for clarification. Do not spawn additional agents outside this room.#{tools(agent)}
+    Route questions and blockers to your supervisor or primary contact first; they ask the human
+    when they cannot resolve a decision. Use Roundtable room tools to create task rooms and participants;
+    do not launch unmanaged agent processes.#{tools(agent)}
 
     """
   end
@@ -1749,7 +1879,7 @@ defmodule Roundtable.Chat do
         Room history is not automatically included. Work from this document and your assigned message.
         Use read_room_history for missing context when available, or ask for the specific information.
         #{if agent.id == head.id,
-          do: "Maintain the work document with update_work_document. Delegate bounded tasks with task IDs, relevant files, constraints and acceptance criteria. Consolidate results and report to the human.",
+          do: "Maintain the work document with update_work_document. You are the captain: resolve subagents' questions before escalating unresolved decisions to the human. For parallel coding tasks, use create_room with isolated: true, add_participant, then @room-slug/name mentions to assign work. Keep task IDs and branch names in the work document. After a subagent reports its branch pushed and its turns finish, call finish_task for its room. Delegate bounded tasks with task IDs, relevant files, constraints and acceptance criteria. Consolidate results and report to the human.",
           else: "Work only on your assigned task. Each assignment starts a fresh session. Return a short result to @#{head.name}, including task ID, files changed, checks and blockers. The primary contact merges your result into the work document."}
         Do not repeat conversation history, quote entire reports, or send acknowledgement-only replies.
         If work-document tools are unavailable, give the human a concise proposed document update.
@@ -1854,9 +1984,12 @@ defmodule Roundtable.Chat do
       document is part of the primary contact's assignment; use its revision to avoid overwriting edits.
       You also have setup tools for the rooms here. Use them to see who is where, and — when the human asks for
       it — to make a room, give it its brief, add participants to it from the saved profiles or from
-      scratch, and set standing instructions that wake a participant at a time of day. Only when
-      asked: never to give yourself help, and never to start the work in a room you have just made.
-      Setting one up is the whole job; hand it back.\
+      scratch, and set standing instructions that wake a participant at a time of day.
+      When coordinating implementation as the primary contact, create one isolated task room per
+      independent task, add its subagent and assign work with @room/agent. Resolve its questions
+      first and ask the human only for decisions you cannot resolve. After its branch is pushed
+      and its turns finish, use finish_task to remove its checkout while retaining history.
+      If asked only to assemble a team, set it up and hand it back without starting implementation.\
       """
     else
       ""

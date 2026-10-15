@@ -30,6 +30,8 @@ defmodule Roundtable.Agents.Worker do
       final_output: nil,
       pending: %{},
       finished: false,
+      completion: nil,
+      task_checkout: not is_nil(Roundtable.Chat.room!(agent.room_id).checkout_id),
       session: agent.session_id,
       flush: nil,
       sandbox: false,
@@ -175,6 +177,10 @@ defmodule Roundtable.Agents.Worker do
     end
   end
 
+  defp finish(%{task_checkout: true} = state, status, error) do
+    {:stop, :normal, %{state | completion: {status, error}}}
+  end
+
   defp finish(state, status, error) do
     Coordinator.event(state.run.id, {:output, state.output})
     Coordinator.event(state.run.id, {:done, status, error})
@@ -192,6 +198,15 @@ defmodule Roundtable.Agents.Worker do
     if state.sandbox and not state.exited, do: Roundtable.Sandbox.interrupt(state.agent)
 
     close_port(state[:port])
+
+    # An idle task may be removed immediately; report completion only after
+    # the provider and its children can no longer write into the checkout.
+    if state.completion do
+      {status, error} = state.completion
+      Coordinator.event(state.run.id, {:output, state.output})
+      Coordinator.event(state.run.id, {:done, status, error})
+    end
+
     :ok
   end
 

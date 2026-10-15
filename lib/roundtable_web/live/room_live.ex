@@ -519,6 +519,13 @@ defmodule RoundtableWeb.RoomLive do
     end
   end
 
+  def handle_event("finish-task", _, %{assigns: %{room: room}} = socket) do
+    case Coordinator.finish_task(room.id) do
+      {:ok, _} -> {:noreply, socket |> close_terminal() |> reload_room()}
+      {:error, reason} -> {:noreply, put_flash(socket, :error, reason)}
+    end
+  end
+
   def handle_event("edit-room", _, %{assigns: %{room: room}} = socket) when not is_nil(room) do
     attrs = %{
       "name" => room.name,
