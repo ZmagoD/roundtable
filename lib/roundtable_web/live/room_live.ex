@@ -534,6 +534,10 @@ defmodule RoundtableWeb.RoomLive do
              |> put_flash(:info, "#{room.name} and everything in it is gone.")
              |> push_patch(to: ~p"/")}
 
+          {:error, %Ecto.Changeset{} = changeset} ->
+            {:noreply,
+             put_flash(socket, :error, "#{room.name} was not deleted: #{refusal(changeset)}.")}
+
           {:error, _} ->
             {:noreply, put_flash(socket, :error, "Could not remove #{room.name}.")}
         end
@@ -1235,6 +1239,8 @@ defmodule RoundtableWeb.RoomLive do
   defp proposal_outcome(%{"status" => "dismissed"}), do: "Dismissed. Nothing changed."
   defp proposal_outcome(_metadata), do: nil
 
+  defp refusal(changeset), do: Enum.map_join(changeset.errors, "; ", fn {_, {msg, _}} -> msg end)
+
   defp errors(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
       Enum.reduce(opts, msg, fn {key, val}, acc ->
@@ -1413,6 +1419,65 @@ defmodule RoundtableWeb.RoomLive do
   # echoed here by looking the sender up among the current agents; someone
   # since removed, or writing from another room, reports nothing.
   defp usage_of(usage, agents, name), do: usage[provider_of(agents, name)]
+
+  @doc """
+  The rooms under one parent, each followed by its own sub-rooms as a nested
+  list, so a screen reader hears the same structure the indent shows.
+
+  A room whose parent is not in the list, such as one in another project, is
+  shown at the top level rather than lost.
+  """
+  attr :rooms, :list, required: true
+  attr :parent_id, :integer, default: nil
+  attr :current, :map, default: nil
+
+  def room_tree(assigns) do
+    assigns = assign(assigns, :level, level(assigns.rooms, assigns.parent_id))
+
+    ~H"""
+    <ul :if={@level != []} class={["room-tree", @parent_id && "sub-rooms"]}>
+      <li :for={room <- @level}>
+        <.link
+          patch={~p"/rooms/#{room.id}"}
+          class={["room-link", @current && @current.id == room.id && "selected"]}
+          aria-current={if @current && @current.id == room.id, do: "page"}
+          title={room.name}
+        >
+          <span class="hash">#</span><span>{room.name}</span><span
+            :if={@current && @current.id == room.id}
+            class="selected-dot"
+          ></span>
+        </.link>
+        <.room_tree rooms={@rooms} parent_id={room.id} current={@current} />
+      </li>
+    </ul>
+    """
+  end
+
+  defp level(rooms, nil) do
+    ids = MapSet.new(rooms, & &1.id)
+    Enum.filter(rooms, &(is_nil(&1.parent_id) or &1.parent_id not in ids))
+  end
+
+  defp level(rooms, parent_id), do: Enum.filter(rooms, &(&1.parent_id == parent_id))
+
+  defp parent_of(%{parent_id: nil}, _rooms), do: nil
+  defp parent_of(room, rooms), do: Enum.find(rooms, &(&1.id == room.parent_id))
+
+  defp sub_rooms_clause(room, rooms) do
+    case length(descendants(rooms, [room.id])) do
+      0 -> ""
+      1 -> " and its sub-room"
+      n -> " and its #{n} sub-rooms"
+    end
+  end
+
+  defp descendants(_rooms, []), do: []
+
+  defp descendants(rooms, ids) do
+    children = Enum.filter(rooms, &(&1.parent_id in ids))
+    children ++ descendants(rooms, Enum.map(children, & &1.id))
+  end
 
   @doc """
   The reading a participant's provider last gave, as a small chip in the chat.

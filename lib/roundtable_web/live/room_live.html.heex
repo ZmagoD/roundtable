@@ -28,18 +28,7 @@
         ><.icon name="hero-plus" class="size-4" /></button>
       </div>
       <nav aria-label="Rooms">
-        <.link
-          :for={room <- @rooms}
-          patch={~p"/rooms/#{room.id}"}
-          class={["room-link", @room && @room.id == room.id && "selected"]}
-          aria-current={if @room && @room.id == room.id, do: "page"}
-          title={room.name}
-        >
-          <span class="hash">#</span><span>{room.name}</span><span
-            :if={@room && @room.id == room.id}
-            class="selected-dot"
-          ></span>
-        </.link>
+        <.room_tree rooms={@rooms} current={@room} />
         <p :if={@rooms == []} class="sidebar-empty">A little space for your next big idea.</p>
       </nav>
       <div class="workspace-actions" id="workspace-navigation">
@@ -102,9 +91,13 @@
       <%= if @room do %>
         <header class="room-header">
           <div>
-            <div class="eyebrow">TEAM ROOM</div><h1><span>#</span> {@room.name}</h1><p title={
-              @effective_directory
-            }>
+            <div class="eyebrow">TEAM ROOM</div><p
+              :for={parent <- List.wrap(parent_of(@room, @rooms))}
+              id="sub-room-of"
+              class="sub-room-of"
+            >
+              Sub-room of <.link patch={~p"/rooms/#{parent.id}"}>{parent.name}</.link>
+            </p><h1><span>#</span> {@room.name}</h1><p title={@effective_directory}>
               <span :if={@changes} class="branch-badge" title="Current branch">
                 {@changes.branch}
               </span>
@@ -205,7 +198,7 @@
                     JS.push("remove-room", value: %{id: to_string(@room.id)})
                     |> JS.remove_attribute("open", to: "#room-more")
                   }
-                  data-confirm={"Delete #{@room.name}? Its participants, its whole history and any cross-room requests go with it. There is no undo and nothing is exported."}
+                  data-confirm={"Delete #{@room.name}#{sub_rooms_clause(@room, @rooms)}? Its participants, its whole history and any cross-room requests go with it. There is no undo and nothing is exported."}
                 >Delete room</button>
               </div>
             </details>

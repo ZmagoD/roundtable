@@ -114,11 +114,18 @@ defmodule Roundtable.Coordinator do
   end
 
   def handle_call({:remove_room, room_id}, _, state) do
-    agents = Chat.agents(room_id)
-    state = Enum.reduce(agents, state, &cancel_agent(&2, &1.id))
-    result = Chat.delete_room(room_id)
-    discard_containers(Enum.map(agents, & &1.id))
-    {:reply, result, state}
+    # Checked before cancelling, so a refused delete leaves every turn running.
+    case Chat.room_deletion(room_id) do
+      {:ok, rooms} ->
+        agents = Enum.flat_map(rooms, &Chat.agents(&1.id))
+        state = Enum.reduce(agents, state, &cancel_agent(&2, &1.id))
+        result = Chat.delete_room(room_id)
+        discard_containers(Enum.map(agents, & &1.id))
+        {:reply, result, state}
+
+      error ->
+        {:reply, error, state}
+    end
   end
 
   def handle_call({:clear_history, room_id}, _, state) do
