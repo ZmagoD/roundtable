@@ -1517,53 +1517,6 @@ defmodule Roundtable.Chat do
   end
 
   @doc """
-  A human asking or delegating from `room_id`, addressed as `room/agent`.
-
-  The request is recorded in the asking room first, so the transcript shows what
-  was asked before the answer arrives out of nowhere.
-  """
-  def request_from_room(kind, room_id, target, body) do
-    with {:ok, room, agent} <- resolve_target(target, room!(room_id).organization_id),
-         {:ok, note} <-
-           post(
-             room_id,
-             "#{(kind == "ask" && "Asked") || "Delegated to"} @#{room_slug(room)}/#{agent.name}: #{body}",
-             sender: "you",
-             kind: "human",
-             metadata: %{"cross_room" => "outgoing"}
-           ) do
-      request(kind, note, room, agent, body)
-    end
-  end
-
-  defp resolve_target(target, organization_id) do
-    with {:ok, room_ref, agent_name} <- split_target(target),
-         {:ok, room} <- find_room(room_ref, organization_id) do
-      find_target_agent(room, agent_name)
-    end
-  end
-
-  defp split_target(target) do
-    case String.split(String.trim(target), "/", parts: 2) do
-      [room_ref, agent_name] when agent_name != "" -> {:ok, room_ref, agent_name}
-      _ -> {:error, "Address it as room/agent, for example design-team/grace."}
-    end
-  end
-
-  defp find_target_agent(room, agent_name) do
-    members = agents(room.id)
-
-    case Enum.find(members, &(&1.name == String.downcase(agent_name))) do
-      nil ->
-        names = Enum.map_join(members, ", ", &"@#{&1.name}")
-        {:error, "No @#{agent_name} in #{room.name}. It has: #{names}"}
-
-      agent ->
-        {:ok, room, agent}
-    end
-  end
-
-  @doc """
   Carries a finished turn back to the room that asked for it.
 
   Called for every completed run; only the ones that answer a request do

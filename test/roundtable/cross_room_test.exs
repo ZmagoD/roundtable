@@ -24,6 +24,12 @@ defmodule Roundtable.CrossRoomTest do
     %{platform: platform, design: design, captain: captain, grace: grace}
   end
 
+  # How a person asks another room from the browser: a mention in their message.
+  defp human_ask(room_id, body) do
+    {:ok, _} = Chat.post(room_id, body)
+    Repo.one!(CrossRoomRequest)
+  end
+
   defp answer(request_message_id, text) do
     Chat.deliver_answer(request_message_id, text)
   end
@@ -52,13 +58,7 @@ defmodule Roundtable.CrossRoomTest do
   end
 
   test "a human ask reaches the other room and comes back", ctx do
-    assert {:ok, request} =
-             Chat.request_from_room(
-               "ask",
-               ctx.platform.id,
-               "design-team/grace",
-               "how should pagination look?"
-             )
+    request = human_ask(ctx.platform.id, "@design-team/grace how should pagination look?")
 
     assert request.kind == "ask"
     assert request.status == "delivered"
@@ -72,7 +72,7 @@ defmodule Roundtable.CrossRoomTest do
     assert agent_id == ctx.grace.id
 
     # Platform's transcript records the question before any answer arrives.
-    assert Enum.any?(Chat.messages(ctx.platform.id), &(&1.body =~ "Asked @design-team/grace"))
+    assert Enum.any?(Chat.messages(ctx.platform.id), &(&1.body =~ "@design-team/grace how"))
 
     answer(request.to_message_id, "two pages, cursor based")
 
@@ -104,27 +104,21 @@ defmodule Roundtable.CrossRoomTest do
   end
 
   test "a human ask does not schedule anyone in the asking room", ctx do
-    {:ok, request} = Chat.request_from_room("ask", ctx.platform.id, "design-team/grace", "ping")
+    request = human_ask(ctx.platform.id, "@design-team/grace ping")
     answer(request.to_message_id, "pong")
 
     assert Chat.runs(ctx.platform.id) == []
   end
 
   test "delivering a request never asks the same question again", ctx do
-    {:ok, _} =
-      Chat.request_from_room(
-        "ask",
-        ctx.platform.id,
-        "design-team/grace",
-        "@design-team/grace recurse?"
-      )
+    human_ask(ctx.platform.id, "@design-team/grace recurse?")
 
     # The delivered message quotes the mention; scanning it would loop forever.
     assert length(Repo.all(CrossRoomRequest)) == 1
   end
 
   test "an answer quoting a mention does not bounce back", ctx do
-    {:ok, request} = Chat.request_from_room("ask", ctx.platform.id, "design-team/grace", "how?")
+    request = human_ask(ctx.platform.id, "@design-team/grace how?")
     answer(request.to_message_id, "ask @design-team/grace again")
 
     assert length(Repo.all(CrossRoomRequest)) == 1
@@ -150,26 +144,13 @@ defmodule Roundtable.CrossRoomTest do
   end
 
   test "a failed turn reports back without waking the asker", ctx do
-    {:ok, request} = Chat.request_from_room("ask", ctx.platform.id, "design-team/grace", "how?")
+    request = human_ask(ctx.platform.id, "@design-team/grace how?")
     Chat.fail_request(request.to_message_id, "OpenCode exited (1).")
 
     assert Repo.get!(CrossRoomRequest, request.id).status == "failed"
     reply = Chat.messages(ctx.platform.id) |> List.last()
     assert reply.body =~ "could not finish"
     refute reply.body =~ "@captain"
-  end
-
-  test "unresolvable targets explain themselves", ctx do
-    assert {:error, reason} = Chat.request_from_room("ask", ctx.platform.id, "ghost/grace", "hi")
-    assert reason =~ "No team called ghost in this project"
-
-    assert {:error, reason} =
-             Chat.request_from_room("ask", ctx.platform.id, "design-team/ghost", "hi")
-
-    assert reason =~ "It has: @grace"
-
-    assert {:error, reason} = Chat.request_from_room("ask", ctx.platform.id, "design-team", "hi")
-    assert reason =~ "room/agent"
   end
 
   test "each room's prompt lists the others, and only the others", ctx do

@@ -91,7 +91,7 @@ defmodule Roundtable.RemovalTest do
     {:ok, design} = Chat.create_room(%{"name" => "Design", "directory" => File.cwd!()})
     {:ok, _} = Chat.create_agent(design.id, %{"name" => "grace", "provider" => "opencode"})
 
-    {:ok, _} = Chat.request_from_room("ask", room.id, "design/grace", "how wide?")
+    {:ok, _} = Chat.post(room.id, "@design/grace how wide?")
     assert Repo.aggregate(CrossRoomRequest, :count) == 1
 
     {:ok, _} = Coordinator.remove_room(design.id)
@@ -99,7 +99,7 @@ defmodule Roundtable.RemovalTest do
     assert Repo.aggregate(CrossRoomRequest, :count) == 0
     # The asking room survives, with the record of having asked.
     assert Repo.get(Room, room.id)
-    assert Enum.any?(Chat.messages(room.id), &(&1.body =~ "Asked @design/grace"))
+    assert Enum.any?(Chat.messages(room.id), &(&1.body =~ "@design/grace how wide?"))
   end
 
   test "other rooms are untouched", %{room: room} do

@@ -176,7 +176,7 @@ defmodule Roundtable.QuotaRetryTest do
 
   test "cross-room requests remain open during a quota wait", _ctx do
     {:ok, other} = Chat.create_room(%{name: "Asker", directory: File.cwd!()})
-    {:ok, _} = Chat.request_from_room("ask", other.id, "quota/ada", "Check T1")
+    {:ok, _} = Chat.post(other.id, "@quota/ada Check T1")
     Coordinator.resume_due(DateTime.utc_now(:second))
     assert_receive {:agent_started, pid, _, run, _}, 1000
     ref = Process.monitor(pid)

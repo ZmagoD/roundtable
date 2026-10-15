@@ -1,6 +1,7 @@
 defmodule Roundtable.OrganizationsTest do
   use Roundtable.DataCase, async: false
   alias Roundtable.Chat
+  alias Roundtable.Chat.CrossRoomRequest
 
   describe "the organization every existing room was put in" do
     test "is there, and is the one a room lands in when nobody said which" do
@@ -273,13 +274,8 @@ defmodule Roundtable.OrganizationsTest do
           "directory" => File.cwd!()
         })
 
-      assert {:ok, _request} =
-               Chat.request_from_room(
-                 "ask",
-                 ctx.alpha_eng.id,
-                 "sales/grace",
-                 "what is the price?"
-               )
+      {:ok, _} = Chat.post(ctx.alpha_eng.id, "@sales/grace what is the price?")
+      assert Repo.aggregate(CrossRoomRequest, :count) == 1
     end
 
     test "an ask does not cross into another project", ctx do
@@ -290,10 +286,8 @@ defmodule Roundtable.OrganizationsTest do
           "directory" => File.cwd!()
         })
 
-      assert {:error, reason} =
-               Chat.request_from_room("ask", ctx.beta_eng.id, "sales/grace", "what is the price?")
-
-      assert reason =~ "No team called sales in this project"
+      {:ok, _} = Chat.post(ctx.beta_eng.id, "@sales/grace what is the price?")
+      assert Repo.aggregate(CrossRoomRequest, :count) == 0
     end
   end
 
