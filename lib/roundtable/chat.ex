@@ -391,10 +391,10 @@ defmodule Roundtable.Chat do
   The team head who may answer this participant's tool approvals, or nil when
   only the human may.
 
-  The nearest room up the chain — the participant's own, then the room whose
-  participant opened its task room — whose human turned the permission on and
-  which has a head. A head never answers for itself: when the nearest such room
-  is one it heads, its own request stays with the human.
+  The nearest room up the chain — the participant's own, then its parent, and
+  so on — whose human turned the permission on and which has a head. A head
+  never answers for itself: when the nearest such room is one it heads, its
+  own request stays with the human.
   """
   def approval_delegate(%Agent{} = requester),
     do: requester.room_id |> room!() |> approval_delegate(requester.id, MapSet.new())
@@ -412,16 +412,10 @@ defmodule Roundtable.Chat do
     end
   end
 
-  # A task room belongs to the room of the participant that opened it. Once
-  # that participant is removed the link is gone, and so is the delegation.
-  defp parent_room(%Room{checkout_supervisor_id: nil}), do: nil
-
-  defp parent_room(%Room{checkout_supervisor_id: id}) do
-    case agent(id) do
-      nil -> nil
-      supervisor -> room!(supervisor.room_id)
-    end
-  end
+  # Delegation follows the same parent link the sidebar and deletion use, so a
+  # head answers for exactly the rooms shown under its own.
+  defp parent_room(%Room{parent_id: nil}), do: nil
+  defp parent_room(%Room{parent_id: id}), do: Repo.get(Room, id)
 
   @doc """
   Makes one participant the team's head, and the others not.

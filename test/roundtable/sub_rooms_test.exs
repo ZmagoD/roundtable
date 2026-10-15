@@ -134,7 +134,7 @@ defmodule Roundtable.SubRoomsTest do
       migration = Module.concat(Roundtable.Repo.Migrations, "GiveRoomsAParent")
 
       Code.ensure_loaded?(migration) ||
-        Code.require_file("priv/repo/migrations/20261015200000_give_rooms_a_parent.exs")
+        Code.require_file("priv/repo/migrations/20261015200100_give_rooms_a_parent.exs")
 
       Repo.query!(migration.backfill())
     end

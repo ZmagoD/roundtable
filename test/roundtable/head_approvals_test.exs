@@ -42,7 +42,8 @@ defmodule Roundtable.HeadApprovalsTest do
 
     {:ok, task} =
       Chat.create_room(%{"name" => "Task one", "directory" => File.cwd!()},
-        supervisor_id: lead.id
+        supervisor_id: lead.id,
+        parent_id: team.id
       )
 
     {:ok, bob} =
