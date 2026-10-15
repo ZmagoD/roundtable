@@ -1,7 +1,7 @@
 # Roundtable
 
 A local workspace where you and your coding agents share one conversation.
-Bring named Codex, Claude Code, OpenCode and Grok sessions into a room, give
+Bring named Codex, Claude Code, OpenCode, Grok and Mistral Vibe sessions into a room, give
 each a role, assign work with `@mentions`, and keep the history when you close
 the browser. Phoenix LiveView, OTP and SQLite; room history is stored locally.
 Provider CLIs connect to their configured services to run the models.
@@ -186,6 +186,32 @@ fill the field and go a level in. Only directories are offered, never files,
 hidden ones only once you type a dot, and a git repository is marked as one —
 usually that is the directory you meant.
 
+### Running a team's agents in containers
+
+In a team's settings, **Where agents run** can be *In a container per agent*.
+Each participant then gets a Docker container of its own and every turn runs
+inside it with `docker exec`. Roundtable owns all of it: the image is built
+from `priv/sandbox/Dockerfile`, tagged by that file's hash, and nothing is
+written into your project. You need Docker running and your user able to reach
+it (the `docker` group, or rootless Docker).
+
+A container sees the team's folder, mounted at the same path so sessions
+resume, and its own provider's login directory (`~/.claude`, `~/.codex`,
+`~/.vibe` and so on), and nothing else of your home. It runs as your uid, so
+files it writes in the project are yours. It shares your network, which is how
+it reaches the room tools on loopback: the sandbox protects your files, not
+your network, and not the provider account it is signed in to.
+
+The image carries git, Node, Python and the agent CLIs. **Extra packages** adds
+Debian packages for that team in a layer of its own, for example `elixir
+erlang` (Debian's versions, not your mise ones). The first turn builds the
+image, which takes a few minutes. Whatever an agent installs stays in its
+container until the container is made again, which happens when the image, the
+folder or the provider changes. Stopping a turn kills the container, and the
+next turn starts it again with its files intact. Removing the participant
+removes its container. To pick up newer CLI versions, remove the
+`roundtable-agent` images with `docker rmi`.
+
 ### As a desktop app
 
 `roundtable open` starts the service if it is not running and opens the UI in a
@@ -211,7 +237,9 @@ for names and nothing else, because an unauthenticated CLI explains itself
 instead of listing and that explanation must not end up offered as a model.
 Claude Code has no listing command, so the aliases its own `--help` documents
 are offered (`fable`, `opus`, `sonnet`); it takes full names too. Codex has
-neither, so nothing is suggested rather than a list invented here.
+neither, so nothing is suggested rather than a list invented here. Neither has
+Vibe: type one of the model aliases from your `~/.vibe/config.toml`, and it is
+passed as `VIBE_ACTIVE_MODEL` because the CLI has no model flag.
 
 In the browser the model is a list you pick from, not a box you type into —
 except for a provider that cannot name its models, which gets a free text
@@ -702,7 +730,7 @@ a room elsewhere, use the browser.
 
 Participants added through tools always start with automatic approval off,
 even when a saved profile has it on. Only Claude Code and Codex participants
-can be added through tools; add OpenCode or Grok yourself in the browser,
+can be added through tools; add OpenCode, Grok or Vibe yourself in the browser,
 because they have no tool approval channel. Tools cannot change the role or
 model of a participant with automatic approval on. Make that change in the
 browser, or switch automatic approval off first. The tools cannot enable
@@ -710,7 +738,7 @@ automatic approval; change that yourself in the browser if you want unattended w
 
 The tools are wired in per turn, with a token that says which participant is
 calling, so the rooms only ever change on behalf of someone who is actually in
-one. OpenCode and Grok participants are not given them: their CLIs read MCP
+one. OpenCode, Grok and Vibe participants are not given them: their CLIs read MCP
 servers from their own configuration and have no approval channel back to the
 room, and a tool that rearranges rooms with nowhere to say no is not one worth
 having. The service answers them at `/mcp` on its own loopback port; turn them
@@ -830,6 +858,7 @@ parallel work, keep separate named agents for your regular model/role combinatio
 | Claude Code | `claude -p`, streaming JSON/control protocol | Session ID | Tool approval |
 | Grok | `grok -p`, Anthropic Messages wire format | Session ID | CLI configuration only |
 | OpenCode | `opencode run --format json` | Session ID | CLI configuration only |
+| Mistral Vibe | `vibe -p --output streaming`, completed history entries | Session ID | `accept-edits`, or all with automatic approval |
 
 Adding one is a module, not a fork: adapters implement
 `Roundtable.Agents.Adapter` and are registered in application configuration, so

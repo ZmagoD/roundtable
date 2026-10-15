@@ -57,7 +57,7 @@
           phx-click="panel"
           phx-value-name="room"
         >
-          <.icon name="hero-plus" class="size-4" /><span>Create an empty room</span>
+          <.icon name="hero-plus" class="size-4" /><span>New room</span>
         </button>
         <.link id="workspace-schedules-link" class="sidebar-action" navigate={~p"/schedules"}>
           <.icon name="hero-calendar-days" class="size-4" /><span>Schedules</span>
@@ -636,9 +636,45 @@
           <span class="welcome-label">ROUNDTABLE / LOCAL WORKSPACE</span><div class="welcome-symbol">
             ✳
           </div><h1>Your teams.<br />A shared place to work.</h1><p>
-            Start with a team for marketing, sales, product, or engineering.<br />Describe its goal, then work with named agents in a shared room.
-          </p><button class="button" phx-click="panel" phx-value-name="team">Build your first team
-          <.icon name="hero-arrow-up-right" class="size-4" /></button><div class="welcome-providers">
+            Say what you are working on. A team builder sets up the room with you in chat,<br />and asks before it changes anything.
+          </p>
+          <.form
+            :if={builder = team_builder(@providers)}
+            for={@start_form}
+            id="start-form"
+            class="composer welcome-start"
+            phx-submit="start-team"
+          >
+            <.input
+              field={@start_form[:context]}
+              type="textarea"
+              rows="4"
+              required
+              maxlength="4000"
+              aria-label="What are you working on?"
+              placeholder="e.g. I'm building a billing service in Elixir and want someone to plan, someone to implement and someone to review."
+            />
+            <p :if={@form_error} class="form-error" role="alert">{@form_error}</p>
+            <div class="composer-footer">
+              <span class="welcome-start-note">
+                {builder.label} in {start_folder(@organization, @directory)}
+              </span>
+              <button class="button small" type="submit" phx-disable-with="Starting…">
+                Start <.icon name="hero-arrow-up-right" class="size-4" />
+              </button>
+            </div>
+          </.form>
+          <p :if={is_nil(team_builder(@providers))} class="welcome-start-note">
+            The team builder needs Codex or Claude Code on your PATH. Install one and log in, then reload this page.
+          </p>
+          <button
+            id="team-details-button"
+            class="button secondary small"
+            phx-click="panel"
+            phx-value-name="team"
+          >
+            Or fill in the details yourself
+          </button><div class="welcome-providers">
             <span :for={provider <- @providers}><span class={
               if provider.installed, do: "online-dot", else: "offline-dot"
             }></span>{provider.label}</span>
@@ -780,9 +816,8 @@
         <.form :if={@panel == "team"} for={@team_form} id="team-form" phx-submit="build-team">
           <.input
             field={@team_form[:name]}
-            label="Team name"
-            placeholder="e.g. Billing"
-            required
+            label="Team name (optional)"
+            placeholder="Leave empty and the team builder names it"
             maxlength="80"
           />
           <.input
@@ -860,6 +895,29 @@
           <p class="form-note">
             Input plus output this team may spend per rolling day. Over it, new turns wait
             instead of starting; leave empty for no cap.
+          </p>
+          <.input
+            field={@room_form[:sandbox]}
+            label="Where agents run"
+            type="select"
+            options={[
+              {"On this machine, as you", "false"},
+              {"In a container per agent", "true"}
+            ]}
+          />
+          <.input
+            :if={@room_form[:sandbox].value in [true, "true"]}
+            field={@room_form[:sandbox_packages]}
+            label="Extra packages (optional)"
+            placeholder="e.g. elixir erlang build-essential"
+            maxlength="1000"
+          />
+          <p :if={@room_form[:sandbox].value in [true, "true"]} class="form-note">
+            Each agent gets its own Docker container with the team's folder and its own
+            provider login, and nothing else of your home. Roundtable builds the image
+            and manages the containers; nothing is added to your project. Extra
+            packages are Debian names, installed into the image. The first turn builds
+            it, which takes a few minutes. Containers share your network.
           </p>
           <div :if={@editing_room} class="input-field">
             <%= if @custom_directory do %>

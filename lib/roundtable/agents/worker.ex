@@ -31,7 +31,9 @@ defmodule Roundtable.Agents.Worker do
       pending: %{},
       finished: false,
       session: agent.session_id,
-      flush: nil
+      flush: nil,
+      sandbox: false,
+      exited: false
     }
 
     {:ok, state, {:continue, :launch}}
@@ -39,8 +41,33 @@ defmodule Roundtable.Agents.Worker do
 
   @impl true
   def handle_continue(:launch, state) do
-    {exe, args} = state.adapter.command(state.agent, state.prompt)
+    env = Roundtable.Agents.Protocol.env(state.agent)
 
+    case launch(state, env) do
+      {:ok, state, command} -> open(state, command, env)
+      {:error, message} -> finish(state, "failed", message)
+    end
+  rescue
+    error -> finish(state, "failed", Exception.message(error))
+  end
+
+  # A sandboxed participant's CLI is inside its container, so it is docker
+  # that has to be on this machine's PATH, and the container that is stopped
+  # if the turn is cut short.
+  defp launch(state, env) do
+    command = state.adapter.command(state.agent, state.prompt)
+
+    if Roundtable.Sandbox.enabled?(state.agent) do
+      with :ok <- Roundtable.Sandbox.prepare(state.agent),
+           do:
+             {:ok, %{state | sandbox: true},
+              Roundtable.Sandbox.command(state.agent, command, env)}
+    else
+      {:ok, state, command}
+    end
+  end
+
+  defp open(state, {exe, args}, env) do
     with executable when not is_nil(executable) <- System.find_executable(exe),
          python when not is_nil(python) <- System.find_executable("python3") do
       runner = Application.app_dir(:roundtable, "priv/agent_exec.py")
@@ -53,7 +80,7 @@ defmodule Roundtable.Agents.Worker do
           :stderr_to_stdout,
           args: [runner],
           cd: state.agent.directory,
-          env: Roundtable.Agents.Protocol.env(state.agent)
+          env: env
         ])
 
       {:os_pid, pid} = Port.info(port, :os_pid)
@@ -70,8 +97,6 @@ defmodule Roundtable.Agents.Worker do
           "#{exe} or python3 is not installed on PATH. Log in to the CLI in a terminal first."
         )
     end
-  rescue
-    error -> finish(state, "failed", Exception.message(error))
   end
 
   @impl true
@@ -110,6 +135,7 @@ defmodule Roundtable.Agents.Worker do
   end
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
+    state = %{state | exited: true}
     {result, error} = state.adapter.exit_status(status, state)
     finish(state, result, error)
   end
@@ -162,6 +188,8 @@ defmodule Roundtable.Agents.Worker do
       System.cmd("kill", ["-TERM", "--", "-#{state.os_pid}"], stderr_to_stdout: true)
       System.cmd("kill", ["-KILL", "--", "-#{state.os_pid}"], stderr_to_stdout: true)
     end
+
+    if state.sandbox and not state.exited, do: Roundtable.Sandbox.interrupt(state.agent)
 
     close_port(state[:port])
     :ok

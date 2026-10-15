@@ -248,6 +248,74 @@ defmodule RoundtableWeb.RoomLiveTest do
     assert [_] = Chat.runs(room.id)
   end
 
+  # Mount is when the app looks for CLIs, so the fake has to be on PATH first.
+  defp with_fake_cli(name) do
+    path = System.get_env("PATH")
+
+    directory =
+      Path.join(System.tmp_dir!(), "roundtable-provider-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(directory)
+    File.write!(Path.join(directory, name), "#!/bin/sh\nexit 0\n")
+    File.chmod!(Path.join(directory, name), 0o755)
+    System.put_env("PATH", directory)
+
+    on_exit(fn ->
+      System.put_env("PATH", path)
+      File.rm_rf!(directory)
+    end)
+  end
+
+  test "the welcome screen starts a team from one message", %{conn: conn} do
+    with_fake_cli("claude")
+    {:ok, view, _} = live(conn, "/")
+    assert has_element?(view, "#start-form", "Claude Code in")
+
+    view
+    |> form("#start-form", start: %{context: "Plan, build and review a billing service."})
+    |> render_submit()
+
+    [room] = Chat.rooms()
+    assert room.name == "New team"
+
+    assert [%{name: "team-builder", provider: "claude", head: true} = agent] =
+             Chat.agents(room.id)
+
+    assert File.dir?(agent.directory)
+    assert [%{status: "queued"}] = Chat.runs(room.id)
+    assert has_element?(view, ".message-text", "Plan, build and review a billing service.")
+  end
+
+  test "the welcome screen says the team will work in its project's folder", %{conn: conn} do
+    with_fake_cli("claude")
+    folder = System.tmp_dir!()
+    {:ok, _} = Chat.update_organization(Chat.default_organization().id, %{directory: folder})
+    {:ok, view, _} = live(conn, "/")
+
+    assert has_element?(view, "#start-form", "Claude Code in #{folder}")
+  end
+
+  test "an empty first message starts nothing and says why", %{conn: conn} do
+    with_fake_cli("codex")
+    {:ok, view, _} = live(conn, "/")
+    view |> form("#start-form", start: %{context: "  "}) |> render_submit()
+
+    assert has_element?(view, "#start-form [role=alert]")
+    assert Chat.rooms() == []
+  end
+
+  test "without a team builder installed, the welcome screen says what to install", %{
+    conn: conn
+  } do
+    with_fake_cli("opencode")
+    {:ok, view, _} = live(conn, "/")
+
+    refute has_element?(view, "#start-form")
+    assert render(view) =~ "needs Codex or Claude Code on your PATH"
+    view |> element("#team-details-button") |> render_click()
+    assert has_element?(view, "#team-form")
+  end
+
   test "team builder defaults to an installed supported provider", %{conn: conn} do
     path = System.get_env("PATH")
 
@@ -532,6 +600,51 @@ defmodule RoundtableWeb.RoomLiveTest do
 
       view |> element("#edit-room-button") |> render_click()
       assert render(view) =~ "Elixir and Phoenix. Tests first."
+    end
+
+    test "a team is moved into containers from its settings, with extra packages", %{
+      view: view,
+      room: room
+    } do
+      view |> element("#edit-room-button") |> render_click()
+      refute has_element?(view, "#room-form input[name='room[sandbox_packages]']")
+
+      view
+      |> form("#room-form", room: %{name: "Handlers", sandbox: "true"})
+      |> render_change()
+
+      assert has_element?(view, "#room-form input[name='room[sandbox_packages]']")
+      assert render(view) =~ "nothing is added to your project"
+
+      view
+      |> form("#room-form",
+        room: %{name: "Handlers", sandbox: "true", sandbox_packages: "elixir, erlang"}
+      )
+      |> render_submit()
+
+      assert %{sandbox: true, sandbox_packages: "elixir erlang"} = Chat.room!(room.id)
+
+      # Reopening shows what was saved, not the defaults.
+      view |> element("#edit-room-button") |> render_click()
+      assert has_element?(view, "#room-form option[value=true][selected]")
+      assert has_element?(view, "#room-form input[value='elixir erlang']")
+    end
+
+    test "packages that are not package names are refused with a reason", %{
+      view: view,
+      room: room
+    } do
+      view |> element("#edit-room-button") |> render_click()
+      view |> form("#room-form", room: %{name: "Handlers", sandbox: "true"}) |> render_change()
+
+      view
+      |> form("#room-form",
+        room: %{name: "Handlers", sandbox: "true", sandbox_packages: "curl; rm -rf /"}
+      )
+      |> render_submit()
+
+      assert has_element?(view, "[role=alert]", "are not package names")
+      refute Chat.room!(room.id).sandbox
     end
 
     test "tool approvals are switched on from the participant's own form", %{
@@ -845,6 +958,17 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert html =~ ~s(data-theme-choice="system")
       assert html =~ ~s(data-theme-choice="light")
       assert html =~ ~s(data-theme-choice="dark")
+    end
+
+    test "the new room button is labeled 'New room' and opens the room creation panel", %{
+      conn: conn
+    } do
+      {:ok, view, _} = live(conn, "/")
+      assert has_element?(view, "#new-room-button span", "New room")
+
+      view |> element("#new-room-button") |> render_click()
+      assert has_element?(view, "#room-form")
+      assert has_element?(view, "#modal-title", "Create a room")
     end
 
     test "an agent can be renamed and re-roled from the browser", %{view: view, agent: agent} do

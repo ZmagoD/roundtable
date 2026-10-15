@@ -100,7 +100,7 @@ handed back rather than started.
 
 Every call stops for your approval like any other tool use, unless that
 participant approves its own, and each change is written into the room as it
-happens. OpenCode and Grok participants do not get the tools: they have no
+happens. OpenCode, Grok and Vibe participants do not get the tools: they have no
 approval channel, so there would be nowhere to say no.
 
 ## Have a room start its own morning
@@ -143,7 +143,9 @@ they use their own configured permissions and never ask in the first place.
 OpenCode rejects anything its configuration leaves at "ask" (reading outside
 the room's directory, for example), which ends the turn. Turning automatic
 approval on for an OpenCode participant allows every tool for its turns,
-without touching your own OpenCode configuration.
+without touching your own OpenCode configuration. Vibe runs its turns under
+its `accept-edits` agent, which denies anything else it would have asked about;
+automatic approval runs them with `--auto-approve` instead.
 
 ## Change a model and have it take effect
 

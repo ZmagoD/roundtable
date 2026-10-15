@@ -13,7 +13,8 @@ defmodule Roundtable.Agents do
         Roundtable.Agents.Codex,
         Roundtable.Agents.Claude,
         Roundtable.Agents.Grok,
-        Roundtable.Agents.OpenCode
+        Roundtable.Agents.OpenCode,
+        Roundtable.Agents.Vibe
       ]
   end
 

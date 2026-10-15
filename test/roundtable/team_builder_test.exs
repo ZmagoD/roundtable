@@ -37,9 +37,15 @@ defmodule Roundtable.TeamBuilderTest do
     end
   end
 
+  test "a team started from a request alone is named by its builder later" do
+    assert {:ok, room} = Chat.build_team(attrs(%{name: " "}))
+    assert room.name == "New team"
+    assert [builder] = Chat.agents(room.id)
+    assert builder.role =~ ~s(still called "New team")
+  end
+
   test "invalid inputs leave no rooms, participants, messages or runs" do
     invalid = [
-      %{name: ""},
       %{name: String.duplicate("x", 81)},
       %{context: " "},
       %{context: String.duplicate("x", 4001)},

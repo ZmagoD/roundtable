@@ -97,16 +97,17 @@ defmodule Roundtable.Coordinator do
   def handle_call({:remove_agent, agent_id}, _, state) do
     # Cancel before deleting: a worker mid-turn holds a row that is about to go.
     state = cancel_agent(state, agent_id)
-    {:reply, Chat.delete_agent(agent_id), state}
+    result = Chat.delete_agent(agent_id)
+    discard_containers([agent_id])
+    {:reply, result, state}
   end
 
   def handle_call({:remove_room, room_id}, _, state) do
-    state =
-      room_id
-      |> Chat.agents()
-      |> Enum.reduce(state, &cancel_agent(&2, &1.id))
-
-    {:reply, Chat.delete_room(room_id), state}
+    agents = Chat.agents(room_id)
+    state = Enum.reduce(agents, state, &cancel_agent(&2, &1.id))
+    result = Chat.delete_room(room_id)
+    discard_containers(Enum.map(agents, & &1.id))
+    {:reply, result, state}
   end
 
   def handle_call({:clear_history, room_id}, _, state) do
@@ -699,4 +700,9 @@ defmodule Roundtable.Coordinator do
       state
     end
   end
+
+  # Whether or not the room still runs in containers: one that was switched off
+  # may have left some behind. Docker can take seconds, and the queue cannot.
+  defp discard_containers(agent_ids),
+    do: Task.start(fn -> Enum.each(agent_ids, &Roundtable.Sandbox.remove/1) end)
 end

@@ -330,6 +330,8 @@ defmodule Roundtable.Chat do
 
   @purposes ["general", "planning", "implementation", "verification"]
 
+  @unnamed_team "New team"
+
   # How far a chain of mentions can travel from a human message, across rooms
   # as well as within one.
   @max_depth 4
@@ -490,9 +492,20 @@ defmodule Roundtable.Chat do
 
   defp topic(id), do: "room:#{id}"
 
-  @doc "Creates a room, its team builder and the first request together."
+  @doc """
+  Creates a room, its team builder and the first request together.
+
+  Only the request is needed. A team started from one message has no name yet,
+  so it gets a placeholder the builder is told to replace once it knows what
+  the team is for.
+  """
   def build_team(attrs) do
     attrs = normalise(attrs)
+
+    attrs =
+      if String.trim(attrs["name"] || "") == "",
+        do: Map.put(attrs, "name", @unnamed_team),
+        else: attrs
 
     changeset =
       new_room()
@@ -532,8 +545,10 @@ defmodule Roundtable.Chat do
 
   defp team_builder_role do
     """
-    Help the human assemble a small, useful team for their project. Use Roundtable's
-    tools to inspect this room, available providers, model presets and agent profiles.
+    Help the human assemble a small, useful team for their project. If this room is
+    still called "#{@unnamed_team}", give it a short name that fits with update_room.
+    Use Roundtable's tools to inspect this room, available providers, model presets
+    and agent profiles.
     Ask focused questions in the conversation only when essential details are missing.
     Otherwise set the room brief and add suitable participants here, reusing profiles
     where appropriate. Give each participant a clear role and explain your choices.

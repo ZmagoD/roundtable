@@ -43,6 +43,7 @@ defmodule RoundtableWeb.RoomLive do
        note_seq: 0,
        editing_note: nil,
        team_form: to_form(%{}, as: :team),
+       start_form: to_form(%{}, as: :start),
        room_form: to_form(%{}, as: :room),
        agent_form: to_form(%{}, as: :agent),
        runs: [],
@@ -523,7 +524,9 @@ defmodule RoundtableWeb.RoomLive do
       "name" => room.name,
       "directory" => room.directory,
       "context" => room.context,
-      "token_budget" => room.token_budget
+      "token_budget" => room.token_budget,
+      "sandbox" => to_string(room.sandbox),
+      "sandbox_packages" => room.sandbox_packages
     }
 
     {:noreply,
@@ -682,6 +685,28 @@ defmodule RoundtableWeb.RoomLive do
          assign(socket,
            form_error: errors(changeset),
            team_form: to_form(attrs, as: :team)
+         )}
+    end
+  end
+
+  # The welcome screen asks only for the request. Where the team works and who
+  # builds it are the defaults the detailed form would have opened on.
+  def handle_event("start-team", %{"start" => %{"context" => context}}, socket) do
+    attrs = %{
+      "context" => context,
+      "directory" => team_default_directory(socket),
+      "provider" => team_provider(socket.assigns.providers)
+    }
+
+    case Coordinator.build_team(attrs) do
+      {:ok, room} ->
+        {:noreply, push_patch(socket, to: ~p"/rooms/#{room.id}")}
+
+      {:error, changeset} ->
+        {:noreply,
+         assign(socket,
+           form_error: errors(changeset),
+           start_form: to_form(%{"context" => context}, as: :start)
          )}
     end
   end
@@ -1226,11 +1251,23 @@ defmodule RoundtableWeb.RoomLive do
   # The first provider that is installed and can name its models, so the form
   # opens on something with a list rather than an empty one.
   defp team_provider(providers) do
-    case Enum.find(providers, &(&1.installed and &1.id in ["codex", "claude"])) do
+    case team_builder(providers) do
       nil -> "codex"
       provider -> provider.id
     end
   end
+
+  # Only these two can be handed the rooms as tools, which is all a team
+  # builder is: see `Roundtable.MCP`.
+  defp team_builder(providers),
+    do: Enum.find(providers, &(&1.installed and &1.id in ["codex", "claude"]))
+
+  # Where a team started from the welcome screen will work, said before it is.
+  defp start_folder(%{directory: directory}, _workspace)
+       when is_binary(directory) and directory != "",
+       do: directory
+
+  defp start_folder(_organization, workspace), do: workspace
 
   defp default_provider do
     providers = Roundtable.Agents.providers()

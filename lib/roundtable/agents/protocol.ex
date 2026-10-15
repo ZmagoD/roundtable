@@ -99,7 +99,8 @@ defmodule Roundtable.Agents.Protocol do
   token goes last so that nothing in the removals can unset it.
   """
   def env(agent) do
-    Roundtable.SpawnEnv.sanitised() ++ permission_env(agent) ++ token_env(agent)
+    Roundtable.SpawnEnv.sanitised() ++
+      permission_env(agent) ++ model_env(agent) ++ token_env(agent)
   end
 
   # `opencode run` has no channel to ask on, so anything its configuration
@@ -111,6 +112,14 @@ defmodule Roundtable.Agents.Protocol do
     do: [{~c"OPENCODE_PERMISSION", ~c({"*":"allow"})}]
 
   defp permission_env(_agent), do: []
+
+  # Vibe has no model flag. Any config field can be overridden from the
+  # environment, and the model it runs is one of the aliases in its own
+  # config.toml.
+  defp model_env(%{provider: "vibe", model: model}) when is_binary(model) and model != "",
+    do: [{~c"VIBE_ACTIVE_MODEL", String.to_charlist(model)}]
+
+  defp model_env(_agent), do: []
 
   defp token_env(agent) do
     if MCP.offered?(agent),

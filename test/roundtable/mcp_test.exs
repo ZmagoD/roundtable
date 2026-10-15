@@ -608,7 +608,7 @@ defmodule Roundtable.MCPTest do
       ada: ada,
       room: room
     } do
-      for provider <- ["opencode", "grok"] do
+      for provider <- ["opencode", "grok", "vibe"] do
         {:ok, profile} = Chat.create_agent_profile(%{"name" => provider, "provider" => provider})
 
         for args <- [%{"name" => provider, "provider" => provider}, %{"profile" => profile.name}] do

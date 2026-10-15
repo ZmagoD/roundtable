@@ -614,6 +614,10 @@ h1, h2, h3, p { margin: 0; }
 .welcome-symbol { font-size: 78px; color: var(--green-mid-2); margin: 26px 0 15px; }
 .welcome h1 { font-family: Georgia, serif; font-size: clamp(40px, 5vw, 68px); letter-spacing: -2px; line-height: 1.1; font-weight: 400; color: var(--green-ink-8); }
 .welcome > p { color: var(--green-mid-16); font-size: 13px; line-height: 1.9; margin: 24px 0 28px; }
+.welcome-start { max-width: 560px; margin: 0 auto 16px; text-align: left; background: var(--neutral-surface-1); }
+.welcome-start .form-error { margin: 0 17px; background: var(--warm-surface-3); color: var(--warm-mid-8); padding: 10px; border-radius: 6px; font-size: 11px; }
+.welcome-start-note { font-size: 10px; color: var(--green-mid-9); overflow-wrap: anywhere; margin-bottom: 16px; }
+.welcome-start .welcome-start-note { margin: 0; padding-right: 12px; }
 .welcome-providers { display: flex; justify-content: center; gap: 26px; margin-top: 38px; font-size: 10px; color: var(--green-mid-13); }
 .welcome-providers > span { display: flex; gap: 7px; align-items: center; }
 .modal-backdrop { position: fixed; inset: 0; background: var(--green-ink-2); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 25px; z-index: 40; }
