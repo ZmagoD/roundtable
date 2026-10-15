@@ -23,6 +23,17 @@ defmodule RoundtableWeb.RoomLiveTest do
     refute has_element?(view, "#xr-canvas")
   end
 
+  # Finishing a task deletes its checkout, and the room page still opens.
+  test "a finished task room opens without a folder to read", %{conn: conn} do
+    {:ok, room} = Chat.create_room(%{name: "Finished", directory: File.cwd!()})
+    Chat.change(room, checkout_finished: true)
+
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+    send(view.pid, :poll_git)
+    assert render(view) =~ "Finished"
+    refute has_element?(view, ".changes-summary")
+  end
+
   test "a participant's request is a card the human accepts or dismisses", %{conn: conn} do
     {:ok, room} = Chat.create_room(%{name: "Requests", directory: File.cwd!()})
     {:ok, _} = Chat.create_agent(room.id, %{name: "ada", provider: "claude"})

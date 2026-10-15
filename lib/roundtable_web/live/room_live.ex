@@ -1070,6 +1070,10 @@ defmodule RoundtableWeb.RoomLive do
   # Git runs off the socket: a large repository must not hold up a render.
   defp poll_git(%{assigns: %{room: nil}} = socket), do: socket
 
+  # A finished task's checkout has been removed, so there is no tree to read.
+  defp poll_git(%{assigns: %{effective_directory: nil}} = socket),
+    do: assign(socket, changes: nil)
+
   defp poll_git(socket) do
     case Roundtable.Git.status(socket.assigns.effective_directory) do
       {:ok, changes} -> assign(socket, changes: changes)
@@ -1078,6 +1082,7 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   defp read_diff(%{assigns: %{room: nil}}), do: nil
+  defp read_diff(%{assigns: %{effective_directory: nil}}), do: "This team has no folder to read."
 
   defp read_diff(socket) do
     case Roundtable.Git.diff(socket.assigns.effective_directory) do
