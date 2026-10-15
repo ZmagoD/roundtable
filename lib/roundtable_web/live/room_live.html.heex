@@ -170,6 +170,15 @@
                   title="Wake a participant at a time of day"
                 >Schedules</button>
                 <button
+                  id="spend-button"
+                  class="button secondary"
+                  phx-click={
+                    JS.push("panel", value: %{name: "spend"})
+                    |> JS.remove_attribute("open", to: "#room-more")
+                  }
+                  title="Where this team's tokens went, by participant and provider"
+                >Token spend</button>
+                <button
                   id="terminal-button"
                   class="button secondary"
                   phx-click={
@@ -1137,6 +1146,46 @@ Verification"
               data-confirm="Discard your draft and load the latest work document?"
             >Reload latest</button>
           </.form>
+        </div>
+        <div :if={@panel == "spend"}>
+          <h3>Token spend</h3>
+          <p class="form-note">
+            Reported tokens from this team's turns, counted the same way its
+            budget counts. A participant with no turns in a window is left out.
+          </p>
+          <%= for {window, label} <- [day: "Rolling day", week: "Rolling week"] do %>
+            <h4>{label}</h4>
+            <table class="spend-table">
+              <thead>
+                <tr>
+                  <th>Participant</th><th>Provider</th><th>Tokens</th>
+                </tr>
+              </thead>
+              <tbody>
+                <%= for agent <- @agents,
+                        count = Map.get(@spend[window].by_agent, agent.id, nil),
+                        not is_nil(count) do %>
+                  <tr>
+                    <td>@{agent.name}</td>
+                    <td>{agent.provider}</td>
+                    <td>{Roundtable.Usage.token_label(count)}</td>
+                  </tr>
+                <% end %>
+                <%= for {provider, count} <- Enum.sort(@spend[window].by_provider) do %>
+                  <tr class="spend-total">
+                    <td colspan="2">{provider} total</td>
+                    <td>{Roundtable.Usage.token_label(count)}</td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+            <p :if={@spend[window].by_agent == %{}} class="form-note">
+              Nothing spent in the {String.downcase(label)}.
+            </p>
+          <% end %>
+          <p :if={@room.token_budget} class="form-note">
+            This team's budget is {@room.token_budget} thousand tokens a day.
+          </p>
         </div>
         <div :if={@panel == "notes"}>
           <div :if={@notes != []}>

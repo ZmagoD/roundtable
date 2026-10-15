@@ -521,6 +521,9 @@ h1, h2, h3, p { margin: 0; }
 .header-more[open] .more-arrow { transform: rotate(180deg); }
 .more-panel { position: absolute; right: 0; top: calc(100% + 7px); z-index: 30; display: grid; gap: 6px; min-width: 180px; padding: 9px; background: var(--neutral-surface-1); border: 1px solid var(--green-surface-21); border-radius: 9px; }
 .more-panel .button { width: 100%; margin: 0; justify-content: flex-start; }
+.spend-table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0 12px; }
+.spend-table th, .spend-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--green-surface-21); }
+.spend-total td { font-weight: 550; }
 .xr-canvas { display: none; }
 .live-badge { color: var(--green-mid-19); display: flex; gap: 6px; align-items: center; font-size: 11px; }
 .button { border: 1px solid var(--green-ink-13); background: var(--green-ink-13); color: var(--neutral-surface-1); padding: 10px 16px; border-radius: 7px; font-weight: 550; font-size: 12px; display: inline-flex; gap: 16px; justify-content: center; align-items: center; }

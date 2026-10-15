@@ -1057,6 +1057,7 @@ defmodule RoundtableWeb.RoomLive do
       provider_usage: Chat.provider_usage(),
       participant_tokens: Chat.participant_tokens(id),
       token_budget: budget_reading(id),
+      spend: Chat.spend_report(id),
       schedules: Chat.schedules(id),
       notes: Chat.room_notes(id),
       runs: Chat.runs(id),
