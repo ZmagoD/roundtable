@@ -8,10 +8,12 @@ defmodule Roundtable.Agents.Codex do
   """
   @behaviour Roundtable.Agents.Adapter
   import Roundtable.Agents.Worker, only: [write: 2, put_output: 2, joined: 1, approval: 3]
+  alias Roundtable.Agents.Protocol
   alias Roundtable.Coordinator
   def id, do: "codex"
   def label, do: "Codex"
-  def command(_agent, _prompt), do: {"codex", ["app-server"]}
+  # Through `Protocol.command/1`, which is where the room tools are added.
+  def command(agent, _prompt), do: Protocol.command(Map.put(agent, :provider, "codex"))
 
   def start(state),
     do:
@@ -20,6 +22,15 @@ defmodule Roundtable.Agents.Codex do
         method: "initialize",
         params: %{clientInfo: %{name: "roundtable", version: "0.1.0"}}
       })
+
+  # A tool call on an MCP server, the room's own included, is approved through
+  # an MCP elicitation rather than Codex's own approval requests, and answered
+  # with an elicitation's action.
+  def approve(state, id, "accept", %{"_meta" => %{"codex_approval_kind" => "mcp_tool_call"}}),
+    do: write(state, %{id: id, result: %{action: "accept", content: %{}}})
+
+  def approve(state, id, _decision, %{"_meta" => %{"codex_approval_kind" => "mcp_tool_call"}}),
+    do: write(state, %{id: id, result: %{action: "decline"}})
 
   def approve(state, id, decision, _request),
     do: write(state, %{id: id, result: %{decision: decision}})
@@ -149,6 +160,24 @@ defmodule Roundtable.Agents.Codex do
   def handle_event(%{"id" => id, "method" => method, "params" => params}, state)
       when method in ["item/commandExecution/requestApproval", "item/fileChange/requestApproval"] do
     approval(state, id, params)
+  end
+
+  def handle_event(
+        %{
+          "id" => id,
+          "method" => "mcpServer/elicitation/request",
+          "params" => %{"_meta" => %{"codex_approval_kind" => "mcp_tool_call"}} = params
+        },
+        state
+      ),
+      do: approval(state, id, params)
+
+  # Any other elicitation is a form for the human that the room has no way to
+  # show, so it is declined the way the protocol expects, not refused as an
+  # unknown request.
+  def handle_event(%{"id" => id, "method" => "mcpServer/elicitation/request"}, state) do
+    write(state, %{id: id, result: %{action: "decline"}})
+    state
   end
 
   def handle_event(%{"id" => id, "method" => method}, state) do

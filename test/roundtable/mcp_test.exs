@@ -755,6 +755,21 @@ defmodule Roundtable.MCPTest do
       refute Enum.any?(args, &String.contains?(&1, to_string(token)))
     end
 
+    # The worker launches whatever the adapter returns, so that is the command
+    # that has to carry the tools, not just the builder behind it. Codex's
+    # adapter once bypassed the builder and every Codex turn ran without them.
+    test "the command a turn actually launches carries the tools", %{room: room, ada: ada} do
+      {:ok, codex} = Chat.create_agent(room.id, %{"name" => "linus", "provider" => "codex"})
+      turn(codex)
+
+      for agent <- [ada, codex] do
+        {_executable, args} = Roundtable.Agents.fetch!(agent.provider).command(agent, "go")
+
+        assert Enum.any?(args, &(&1 =~ "/mcp")),
+               "#{agent.provider} launches without the room tools: #{inspect(args)}"
+      end
+    end
+
     test "a provider with no way to say no is given nothing", %{room: room} do
       {:ok, opencode} = Chat.create_agent(room.id, %{"name" => "otto", "provider" => "opencode"})
 

@@ -563,6 +563,60 @@ defmodule Roundtable.Agents.ProtocolTest do
       assert Map.has_key?(state.pending, 7)
     end
 
+    # The shape `codex app-server generate-json-schema` gives for
+    # McpServerElicitationRequestParams, marked as a tool-call approval the way
+    # the 0.162 CLI marks it in `_meta`.
+    defp tool_approval(id) do
+      %{
+        "id" => id,
+        "method" => "mcpServer/elicitation/request",
+        "params" => %{
+          "serverName" => "roundtable",
+          "threadId" => "t-1",
+          "turnId" => "turn-1",
+          "mode" => "form",
+          "message" => "Allow the roundtable MCP server to run tool \"update_room\"?",
+          "requestedSchema" => %{"type" => "object", "properties" => %{}},
+          "_meta" => %{"codex_approval_kind" => "mcp_tool_call"}
+        }
+      }
+    end
+
+    test "a room tool call is held for the human like any other approval" do
+      state = Codex.handle_event(tool_approval(8), state())
+
+      assert %{"serverName" => "roundtable"} = state.pending[8]
+    end
+
+    test "a tool call is answered as an elicitation, either way" do
+      for {decision, answer} <- [
+            {"accept", %{"action" => "accept", "content" => %{}}},
+            {"decline", %{"action" => "decline"}}
+          ] do
+        state = Codex.handle_event(tool_approval(8), state())
+        Codex.approve(state, 8, decision, state.pending[8])
+
+        assert %{"id" => 8, "result" => ^answer} = written(state)
+      end
+    end
+
+    test "a command approval is still answered with a decision" do
+      state = state()
+      Codex.approve(state, 7, "accept", %{"command" => "ls"})
+
+      assert %{"id" => 7, "result" => %{"decision" => "accept"}} = written(state)
+    end
+
+    test "a form the room cannot show is declined, not refused as unknown" do
+      state = state()
+
+      %{"params" => params} = request = tool_approval(9)
+      Codex.handle_event(%{request | "params" => Map.delete(params, "_meta")}, state)
+
+      assert %{"id" => 9, "result" => %{"action" => "decline"}} = written(state)
+      assert state.pending == %{}
+    end
+
     test "a method it does not support is declined by number, not ignored" do
       state = state()
       Codex.handle_event(%{"id" => 4, "method" => "fs/readTextFile"}, state)
