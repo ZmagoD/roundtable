@@ -854,3 +854,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .agent-head-control .text-button { font-size: 11px; }
 
 .mention-menu small { display: block; color: var(--muted); font-size: 11px; font-weight: 400; margin-top: 2px; }
+
+/* Sub-rooms sit under the room that spun them off; the rule on the left keeps
+   a deep chain readable where the indent alone would not. */
+.room-tree { list-style: none; margin: 0; padding: 0; }
+.room-tree.sub-rooms { margin-left: 14px; padding-left: 6px; border-left: 1px solid var(--line); }
+.sub-room-of { font-size: 11px; color: var(--neutral-mid-4); margin: 2px 0; }
+.sub-room-of a { color: var(--green-ink-7); text-decoration: underline; }
+@media (max-width: 600px) {
+  .sidebar .room-tree, .sidebar .room-tree li { display: contents; }
+}

@@ -435,7 +435,8 @@ defmodule Roundtable.MCP do
                  "context" => args["brief"] || "",
                  "organization_id" => caller_room.organization_id
                },
-               supervisor_id: if(args["isolated"] == true, do: agent.id)
+               supervisor_id: if(args["isolated"] == true, do: agent.id),
+               parent_id: caller_room.id
              )
            ) do
       done(
@@ -850,6 +851,7 @@ defmodule Roundtable.MCP do
       brief: room.context,
       task_branch: room.checkout_branch,
       task_finished: room.checkout_finished,
+      parent_room_id: room.parent_id,
       participants: Enum.map(Chat.agents(room.id), & &1.name)
     }
   end

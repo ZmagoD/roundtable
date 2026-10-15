@@ -589,7 +589,10 @@ defmodule Roundtable.Chat do
 
   def create_room(attrs, opts \\ []) do
     new_room()
-    |> Ecto.Changeset.change(checkout_supervisor_id: opts[:supervisor_id])
+    |> Ecto.Changeset.change(
+      checkout_supervisor_id: opts[:supervisor_id],
+      parent_id: opts[:parent_id]
+    )
     |> Room.changeset(attrs)
     |> valid_room_directory()
     |> insert_task_room()
@@ -1009,34 +1012,54 @@ defmodule Roundtable.Chat do
 
   @doc """
   Removes a room and everything in it: participants, history, and any
-  cross-room requests either side of it.
+  cross-room requests either side of it. Its sub-rooms, and theirs, go with it.
 
   There is no undo, and nothing is exported first. The database file is the
   only copy.
   """
   def delete_room(room_id) do
-    room = room!(room_id)
-
-    result =
-      if room.checkout_id && not room.checkout_finished,
-        do:
-          {:error,
-           Ecto.Changeset.add_error(
-             Ecto.Changeset.change(room),
-             :directory,
-             "finish this task before deleting its room"
-           )},
-        else: Repo.delete(room)
-
-    case result do
-      {:ok, room} ->
-        Phoenix.PubSub.broadcast(Roundtable.PubSub, "rooms", :rooms_updated)
-        {:ok, room}
-
-      {:error, changeset} ->
-        {:error, changeset}
+    with {:ok, rooms} <- room_deletion(room_id) do
+      # Deepest first, so no room is removed out from under a child that the
+      # database would otherwise cascade away without the checks above.
+      Repo.transaction(fn -> Enum.each(rooms, &Repo.delete!/1) end)
+      Phoenix.PubSub.broadcast(Roundtable.PubSub, "rooms", :rooms_updated)
+      {:ok, List.last(rooms)}
     end
   end
+
+  @doc """
+  The rooms deleting this one would remove, deepest first and itself last, or
+  an error naming the ones whose task work is not finished yet.
+  """
+  def room_deletion(room_id) do
+    room = room!(room_id)
+    rooms = subtree([room])
+
+    case Enum.filter(rooms, &(&1.checkout_id && not &1.checkout_finished)) do
+      [] ->
+        {:ok, rooms}
+
+      [^room] ->
+        {:error, room_error(room, "finish this task before deleting its room")}
+
+      open ->
+        names = open |> Enum.reject(&(&1.id == room.id)) |> Enum.map_join(", ", & &1.name)
+        prefix = if room in open, do: "finish this task and ", else: "finish "
+
+        {:error, room_error(room, prefix <> "the tasks in #{names} before deleting this room")}
+    end
+  end
+
+  defp subtree([]), do: []
+
+  defp subtree(rooms) do
+    ids = Enum.map(rooms, & &1.id)
+    children = Repo.all(from r in Room, where: r.parent_id in ^ids, order_by: r.id)
+    subtree(children) ++ rooms
+  end
+
+  defp room_error(room, message),
+    do: Ecto.Changeset.add_error(Ecto.Changeset.change(room), :directory, message)
 
   def wait_for_quota(run, message, reset, now) do
     retry_at = Roundtable.Quota.retry_at(reset, run.retry_count, now)

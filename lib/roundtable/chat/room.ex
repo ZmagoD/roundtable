@@ -22,6 +22,12 @@ defmodule Roundtable.Chat.Room do
     field :sandbox, :boolean, default: false
     field :sandbox_packages, :string, default: ""
     belongs_to :organization, Roundtable.Chat.Organization
+    # Set when an agent spins a room off from another; rooms the human makes
+    # stay top-level. Deleting a room takes its sub-rooms with it. Not cast:
+    # only `Chat.create_room/2` sets it, so no form can reparent a room into
+    # a loop.
+    belongs_to :parent, __MODULE__
+    has_many :children, __MODULE__, foreign_key: :parent_id
     timestamps(type: :utc_datetime)
   end
 
