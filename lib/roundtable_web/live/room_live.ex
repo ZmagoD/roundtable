@@ -825,7 +825,7 @@ defmodule RoundtableWeb.RoomLive do
   def handle_event("agent-draft", %{"agent" => attrs}, socket) do
     attrs =
       if attrs["provider"] != socket.assigns.agent_form[:provider].value,
-        do: Map.put(attrs, "preset_id", ""),
+        do: Map.merge(attrs, %{"preset_id" => "", "model" => "", "auto_approve" => "false"}),
         else: attrs
 
     {:noreply,

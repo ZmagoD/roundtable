@@ -4,6 +4,7 @@ defmodule Roundtable.Chat.Run do
   schema "runs" do
     belongs_to :agent, Roundtable.Chat.Agent
     belongs_to :message, Roundtable.Chat.Message
+    field :provider, :string
     field :model, :string
     # True when the human chose this turn's model, rather than it being the
     # participant's default at the time — see `Roundtable.Chat.assignment/3`.

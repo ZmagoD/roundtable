@@ -23,6 +23,9 @@ defmodule Roundtable.Coordinator do
 
   def build_team(attrs), do: GenServer.call(__MODULE__, {:build_team, attrs})
 
+  def update_agent(agent_id, attrs),
+    do: GenServer.call(__MODULE__, {:update_agent, agent_id, attrs}, :infinity)
+
   def stop(agent_id), do: GenServer.call(__MODULE__, {:stop, agent_id})
   def reset(agent_id), do: GenServer.call(__MODULE__, {:reset, agent_id})
   def clear_history(room_id), do: GenServer.call(__MODULE__, {:clear_history, room_id})
@@ -73,6 +76,10 @@ defmodule Roundtable.Coordinator do
   def handle_call({:build_team, attrs}, _, state) do
     result = Chat.build_team(attrs)
     {:reply, result, schedule(state)}
+  end
+
+  def handle_call({:update_agent, agent_id, attrs}, _, state) do
+    {:reply, Chat.persist_agent_update(agent_id, attrs), state}
   end
 
   def handle_call(:approvals, _, state), do: {:reply, state.approvals, state}
@@ -606,9 +613,24 @@ defmodule Roundtable.Coordinator do
 
     if map_size(state.workers) < @max_workers and not busy and
          not Chat.waiting_for_quota?(run.agent_id) do
-      start_within_budget(run, state)
+      start_compatible(run, state)
     else
       state
+    end
+  end
+
+  defp start_compatible(run, state) do
+    if run.model_pinned and run.provider != Chat.agent!(run.agent_id).provider do
+      Chat.change(run,
+        status: "failed",
+        error:
+          "This turn pins a model from another provider. Send a new assignment with a compatible model."
+      )
+
+      Chat.broadcast(room_id_of(run))
+      state
+    else
+      start_within_budget(run, state)
     end
   end
 
