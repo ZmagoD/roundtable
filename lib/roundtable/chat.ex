@@ -505,16 +505,7 @@ defmodule Roundtable.Chat do
 
     # One row per room and status, rather than a query per room: a bar widget
     # asks this every few seconds.
-    work =
-      Map.new(
-        Repo.all(
-          from r in Run,
-            join: a in assoc(r, :agent),
-            where: r.status in ["queued", "running", "approval", "waiting_quota"],
-            group_by: [a.room_id, r.status],
-            select: {{a.room_id, r.status}, count(r.id)}
-        )
-      )
+    work = room_work_counts()
 
     rooms =
       Enum.map(rooms(), fn room ->
@@ -530,6 +521,24 @@ defmodule Roundtable.Chat do
       end)
 
     %{rooms: rooms, totals: totals(rooms)}
+  end
+
+  @doc "Counts current work in one grouped query, without loading conversations."
+  def room_work_counts do
+    Map.new(
+      Repo.all(
+        from r in Run,
+          join: a in assoc(r, :agent),
+          where: r.status in ["queued", "running", "approval", "waiting_quota"],
+          group_by: [a.room_id, r.status],
+          select: {{a.room_id, r.status}, count(r.id)}
+      )
+    )
+  end
+
+  # Separate from room broadcasts: streamed output must not re-query every sidebar.
+  defp activity_changed do
+    Phoenix.PubSub.broadcast(Roundtable.PubSub, "rooms", :room_activity_updated)
   end
 
   defp totals(rooms) do
@@ -652,8 +661,10 @@ defmodule Roundtable.Chat do
 
   def subscribe(room_id), do: Phoenix.PubSub.subscribe(Roundtable.PubSub, topic(room_id))
 
-  def broadcast(room_id),
-    do: Phoenix.PubSub.broadcast(Roundtable.PubSub, topic(room_id), :room_updated)
+  def broadcast(room_id, opts \\ []) do
+    Phoenix.PubSub.broadcast(Roundtable.PubSub, topic(room_id), :room_updated)
+    if Keyword.get(opts, :activity, true), do: activity_changed()
+  end
 
   defp topic(id), do: "room:#{id}"
 
@@ -1496,7 +1507,10 @@ defmodule Roundtable.Chat do
         ]
       )
 
-    if count == 1, do: Repo.get!(Run, run.id)
+    if count == 1 do
+      activity_changed()
+      Repo.get!(Run, run.id)
+    end
   end
 
   def waiting_for_quota?(agent_id),
@@ -1520,6 +1534,7 @@ defmodule Roundtable.Chat do
         where: r.id == ^run.id and r.status == "waiting_quota" and r.agent_id in subquery(enabled)
 
     {count, _} = Repo.update_all(query, set: [status: "queued", retry_at: nil] ++ attrs)
+    if count == 1, do: activity_changed()
     count == 1
   end
 
@@ -1577,6 +1592,7 @@ defmodule Roundtable.Chat do
       ),
       set: [status: "queued", error: nil]
     )
+    |> tap(fn _ -> activity_changed() end)
   end
 
   @doc "Marks a turn as one the watchdog has stopped trying to restart."
@@ -1673,6 +1689,8 @@ defmodule Roundtable.Chat do
           error: "Automatic quota retry disabled. Retry manually to continue."
         ]
       )
+
+      activity_changed()
     end
   end
 
@@ -1779,6 +1797,7 @@ defmodule Roundtable.Chat do
       if Keyword.get(opts, :broadcast, true), do: broadcast(room_id)
       # Every post can ask a question or answer one, whoever broadcasts the room.
       if match?({:ok, _}, result), do: waiting_changed(room_id)
+      if match?({:ok, _}, result), do: activity_changed()
       result
     end
   end
@@ -2680,7 +2699,14 @@ defmodule Roundtable.Chat do
 
   defp role_change(_agent), do: ""
 
-  def change(record, attrs), do: record |> Ecto.Changeset.change(attrs) |> Repo.update!()
+  def change(record, attrs) do
+    updated = record |> Ecto.Changeset.change(attrs) |> Repo.update!()
+
+    if match?(%Run{}, record) and Keyword.has_key?(attrs, :status) and not Repo.in_transaction?(),
+      do: activity_changed()
+
+    updated
+  end
 
   def recover do
     Repo.update_all(from(r in Run, where: r.status in ["running", "approval"]),

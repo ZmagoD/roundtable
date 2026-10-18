@@ -263,7 +263,12 @@ defmodule Roundtable.Coordinator do
       run = Repo.get!(Run, id)
       agent = Chat.agent!(run.agent_id)
       state = apply_event(state, run, agent, event)
-      Chat.broadcast(agent.room_id)
+
+      activity? =
+        match?({:done, _, _}, event) or match?({:approval, _, _}, event) or
+          match?({:quota, _}, event)
+
+      Chat.broadcast(agent.room_id, activity: activity?)
       {:noreply, state}
     else
       {:noreply, state}

@@ -23,6 +23,7 @@ defmodule RoundtableWeb.RoomLive do
        organizations: Chat.organizations(),
        organization_id: nil,
        rooms: teams_in(nil),
+       room_work: Chat.room_work_counts(),
        agents: [],
        provider_usage: Chat.provider_usage(),
        participant_tokens: %{},
@@ -1026,14 +1027,16 @@ defmodule RoundtableWeb.RoomLive do
     {:noreply, socket}
   end
 
-  # A sub-room made just now has to be watched before its first turn starts,
-  # or the card here would not hear about it.
+  def handle_info(:room_activity_updated, socket),
+    do: {:noreply, assign(socket, room_work: Chat.room_work_counts())}
+
   def handle_info(:rooms_updated, socket),
     do:
       {:noreply,
        socket
        |> assign(
          rooms: teams_in(socket.assigns.organization_id),
+         room_work: Chat.room_work_counts(),
          organizations: Chat.organizations(),
          model_presets: Chat.model_presets()
        )
@@ -1532,6 +1535,7 @@ defmodule RoundtableWeb.RoomLive do
   attr :parent_id, :integer, default: nil
   attr :current, :map, default: nil
   attr :waiting, :map, default: %{}
+  attr :activity, :map, default: %{}
 
   def room_tree(assigns) do
     assigns = assign(assigns, :level, level(assigns.rooms, assigns.parent_id))
@@ -1556,8 +1560,24 @@ defmodule RoundtableWeb.RoomLive do
             aria-label={waiting_label(@waiting[room.id])}
             title={waiting_label(@waiting[room.id])}
           >{length(@waiting[room.id])}</span>
+          <span
+            :if={@activity[room.id]}
+            id={"room-activity-#{room.id}"}
+            class="room-activity"
+            data-state={@activity[room.id].state}
+            title={@activity[room.id].label}
+            aria-label={@activity[room.id].label}
+            role="status"
+            aria-atomic="true"
+          ><span aria-hidden="true">{@activity[room.id].text}</span></span>
         </.link>
-        <.room_tree rooms={@rooms} parent_id={room.id} current={@current} waiting={@waiting} />
+        <.room_tree
+          rooms={@rooms}
+          parent_id={room.id}
+          current={@current}
+          waiting={@waiting}
+          activity={@activity}
+        />
       </li>
     </ul>
     """
