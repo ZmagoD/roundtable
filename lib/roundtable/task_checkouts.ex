@@ -87,6 +87,91 @@ defmodule Roundtable.TaskCheckouts do
     end
   end
 
+  def finish_verified(id, path, head) do
+    :global.trans({{__MODULE__, id}, self()}, fn ->
+      quarantine = path <> ".closing"
+
+      with :ok <- safe_root(),
+           true <- is_binary(id) and Regex.match?(~r/^\d+-[a-f0-9-]{36}$/, id),
+           true <- path == Path.join(root(), id),
+           {:ok, data} <- File.read(manifest(id)),
+           {:ok, record} <- Jason.decode(data),
+           true <- record["path"] == path and record["id"] == id and record["source"] != path do
+        finish_owned(record, quarantine, head)
+      else
+        _ -> {:error, "Cleanup ownership evidence is missing. The folder was left in place."}
+      end
+    end)
+  end
+
+  defp finish_owned(%{"cleanup_head" => head} = record, quarantine, head) do
+    cond do
+      File.exists?(record["path"]) ->
+        {:error, "A checkout exists after cleanup started. Inspect it before retrying."}
+
+      record["cleanup_verified"] == true ->
+        remove_quarantine(quarantine)
+
+      true ->
+        verify_quarantine(record, quarantine, head)
+    end
+  end
+
+  defp finish_owned(record, quarantine, head) do
+    with {:ok, _} <- owned(record["id"], record["path"]),
+         {:ok, ^head} <- git(record["path"], ["rev-parse", "HEAD"]),
+         {:ok, ""} <- git(record["path"], ["status", "--porcelain"]),
+         false <- File.exists?(quarantine),
+         :ok <- File.rename(record["path"], quarantine),
+         :ok <-
+           File.write(
+             manifest(record["id"]),
+             Jason.encode!(Map.put(record, "cleanup_head", head))
+           ) do
+      verify_quarantine(record, quarantine, head)
+    else
+      _ -> {:error, "The checkout changed or cleanup could not start. Work was preserved."}
+    end
+  end
+
+  defp verify_quarantine(record, quarantine, head) do
+    with {:ok, %{type: :directory}} <- File.lstat(quarantine),
+         {:ok, ^head} <- git(quarantine, ["rev-parse", "HEAD"]),
+         {:ok, ""} <- git(quarantine, ["status", "--porcelain"]),
+         :ok <-
+           File.write(
+             manifest(record["id"]),
+             Jason.encode!(
+               Map.merge(
+                 record,
+                 %{"cleanup_head" => head, "cleanup_verified" => true}
+               )
+             )
+           ) do
+      remove_quarantine(quarantine)
+    else
+      _ -> {:error, "Cleanup paused: inspect the preserved .closing checkout for new work."}
+    end
+  end
+
+  defp remove_quarantine(path) do
+    case File.lstat(path) do
+      {:error, :enoent} ->
+        :ok
+
+      {:ok, %{type: :directory}} ->
+        case File.rm_rf(path) do
+          {:ok, _} -> :ok
+          _ -> {:error, "Checkout cleanup failed; its audit is retained. Retry to continue."}
+        end
+
+      _ ->
+        {:error, "The cleanup folder was replaced. It was left in place."}
+    end
+  end
+
+  def inspect_owned(id, path), do: owned(id, path)
+
   defp owned(id, path) when is_binary(id) do
     with true <- Regex.match?(~r/^\d+-[a-f0-9-]{36}$/, id),
          :ok <- safe_root(),
@@ -132,11 +217,21 @@ defmodule Roundtable.TaskCheckouts do
   defp capacity do
     limit = Application.get_env(:roundtable, :task_checkout_limit, 8)
 
-    if length(Path.wildcard(Path.join(root(), "*.json"))) < limit,
-      do: :ok,
-      else:
-        {:error,
-         "The #{limit} task checkout slots are in use. Finish a task before starting another."}
+    if length(Enum.reject(Path.wildcard(Path.join(root(), "*.json")), &completed_manifest?/1)) <
+         limit,
+       do: :ok,
+       else:
+         {:error,
+          "The #{limit} task checkout slots are in use. Finish a task before starting another."}
+  end
+
+  defp completed_manifest?(path) do
+    with {:ok, data} <- File.read(path),
+         {:ok, %{"cleanup_verified" => true, "path" => checkout}} <- Jason.decode(data) do
+      not File.exists?(checkout) and not File.exists?(checkout <> ".closing")
+    else
+      _ -> false
+    end
   end
 
   defp git(directory, args) do

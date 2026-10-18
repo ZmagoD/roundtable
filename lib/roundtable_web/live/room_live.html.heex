@@ -108,10 +108,18 @@
             <span :if={@room.checkout_finished} class="live-badge">Task finished</span>
             <button
               :if={@room.checkout_id && not @room.checkout_finished}
+              id="check-task"
+              class="button secondary"
+              phx-click="check-task"
+              phx-disable-with="Checking GitHub…"
+              title="Check the merge, required checks and checkout without changing anything"
+            >Check completion</button>
+            <button
+              :if={@room.checkout_id && not @room.checkout_finished}
               id="finish-task"
               class="button"
               phx-click="finish-task"
-              phx-disable-with="Checking remote…"
+              phx-disable-with="Verifying…"
             >Finish task and remove copy</button>
             <span class="live-badge"><span class="online-dot"></span> Live</span><span
               :if={@token_budget}

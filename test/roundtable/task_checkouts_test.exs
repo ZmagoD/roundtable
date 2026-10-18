@@ -1,21 +1,23 @@
 defmodule Roundtable.TaskCheckoutsTest do
   use RoundtableWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
-  alias Roundtable.{Chat, MCP, TaskCheckouts}
+  alias Roundtable.{Chat, CompletionFixture, MCP, TaskCheckouts}
 
   setup do
     base = Path.join(System.tmp_dir!(), "roundtable-task-#{Ecto.UUID.generate()}")
     source = Path.join(base, "source")
     remote = Path.join(base, "remote.git")
     File.mkdir_p!(source)
-    git(base, ["init", "--bare", remote])
-    git(source, ["init"])
+    git(base, ["init", "--bare", "-b", "main", remote])
+    git(source, ["init", "-b", "main"])
     git(source, ["config", "user.email", "test@example.com"])
     git(source, ["config", "user.name", "Test"])
     File.write!(Path.join(source, "hello.txt"), "original\n")
     git(source, ["add", "."])
     git(source, ["commit", "-m", "Initial"])
-    git(source, ["remote", "add", "origin", remote])
+    git(source, ["remote", "add", "origin", CompletionFixture.url()])
+    git(source, ["push", remote, "main"])
+    restore = CompletionFixture.install(remote)
     root = Path.join(base, "copies")
     previous = Application.get_env(:roundtable, :task_checkout_root)
     Application.put_env(:roundtable, :task_checkout_root, root)
@@ -25,6 +27,7 @@ defmodule Roundtable.TaskCheckoutsTest do
         do: Application.put_env(:roundtable, :task_checkout_root, previous),
         else: Application.delete_env(:roundtable, :task_checkout_root)
 
+      restore.()
       File.rm_rf!(base)
     end)
 
@@ -48,19 +51,17 @@ defmodule Roundtable.TaskCheckoutsTest do
     {:ok, agent} = Chat.create_agent(one.id, %{name: "builder", provider: "codex"})
     assert agent.directory == one.directory
     assert {:error, _} = Chat.finish_task(one.id)
-    git(one.directory, ["push", "-u", "origin", one.checkout_branch])
-    assert {:ok, finished} = Chat.finish_task(one.id)
-    assert finished.checkout_finished
-    refute File.exists?(one.directory)
+    assert File.dir?(one.directory)
     assert File.dir?(source)
     assert File.dir?(two.directory)
-    assert Chat.effective_directory(one.id) == nil
-    assert {:error, _} = Chat.post(one.id, "Follow up")
-    assert {:ok, _} = Chat.finish_task(one.id)
   end
 
-  test "cleanup refuses dirty, unpushed, switched or replaced checkouts", %{source: source} do
+  test "cleanup refuses dirty, unpushed, switched or replaced checkouts", %{
+    source: source,
+    remote: remote
+  } do
     {:ok, copy} = TaskCheckouts.create(source)
+    git(copy.path, ["config", "url.#{remote}.insteadOf", CompletionFixture.url()])
     assert {:error, _} = TaskCheckouts.finish(copy.id, source)
     git(copy.path, ["push", "origin", copy.branch])
     File.write!(Path.join(copy.path, "new.txt"), "unfinished")
@@ -74,7 +75,10 @@ defmodule Roundtable.TaskCheckoutsTest do
     assert File.read!(Path.join(source, "hello.txt")) == "original\n"
   end
 
-  test "retained checkouts consume slots and finished tasks free them", %{source: source} do
+  test "retained checkouts consume slots and finished tasks free them", %{
+    source: source,
+    remote: remote
+  } do
     previous = Application.get_env(:roundtable, :task_checkout_limit)
     Application.put_env(:roundtable, :task_checkout_limit, 1)
 
@@ -85,6 +89,7 @@ defmodule Roundtable.TaskCheckoutsTest do
     end)
 
     {:ok, copy} = TaskCheckouts.create(source)
+    git(copy.path, ["config", "url.#{remote}.insteadOf", CompletionFixture.url()])
     assert {:error, message} = TaskCheckouts.create(source)
     assert message =~ "slots"
     git(copy.path, ["push", "origin", copy.branch])
@@ -92,17 +97,31 @@ defmodule Roundtable.TaskCheckoutsTest do
     assert {:ok, _} = TaskCheckouts.create(source)
   end
 
-  test "agents create task rooms and finish them from the parent room", %{source: source} do
+  test "agents create task rooms and finish them from the parent room", %{
+    source: source,
+    remote: remote
+  } do
     {:ok, parent} = Chat.create_room(%{name: "Parent", directory: source})
     {:ok, agent} = Chat.create_agent(parent.id, %{name: "manager", provider: "codex"})
     assert {:ok, _} = MCP.call(agent, "create_room", %{"name" => "Isolated", "isolated" => true})
     task = Enum.find(Chat.rooms(), &(&1.name == "Isolated"))
     assert task.checkout_id
     {:ok, builder} = Chat.create_agent(task.id, %{name: "builder", provider: "codex"})
+    File.write!(Path.join(task.directory, "work.txt"), "done\n")
+    git(task.directory, ["add", "."])
+    git(task.directory, ["commit", "-m", "Work"])
+    head = CompletionFixture.merge(task, remote)
+    assert {:error, _} = MCP.call(agent, "finish_task", %{"room" => to_string(task.id)})
+
+    evidence = CompletionFixture.evidence(head)
+
+    assert {:ok, _} =
+             MCP.call(agent, "accept_task", Map.put(evidence, "room", to_string(task.id)))
+
     {:ok, _} = Chat.post(task.id, "@builder work")
-    git(task.directory, ["push", "origin", task.checkout_branch])
-    assert {:error, _} = Chat.finish_task(task.id)
+    assert {:error, _} = MCP.call(agent, "check_task", %{"room" => to_string(task.id)})
     Chat.delete_agent(builder.id)
+    assert {:ok, _} = MCP.call(agent, "check_task", %{"room" => to_string(task.id)})
     assert {:ok, _} = MCP.call(agent, "finish_task", %{"room" => to_string(task.id)})
     refute File.dir?(task.directory)
     assert File.dir?(source)
@@ -136,7 +155,7 @@ defmodule Roundtable.TaskCheckoutsTest do
     assert Enum.any?(Chat.runs(parent.id), &(&1.agent_id == captain.id))
   end
 
-  test "the browser offers isolated creation and finishes a pushed task", %{
+  test "the browser offers isolated creation and explains an unfinished task", %{
     conn: conn,
     source: source
   } do
@@ -152,10 +171,9 @@ defmodule Roundtable.TaskCheckoutsTest do
     task = Chat.find_room("Browser task")
     {:ok, view, _} = live(conn, "/rooms/#{task.id}")
     assert has_element?(view, "#finish-task")
-    git(task.directory, ["push", "origin", task.checkout_branch])
-    view |> element("#finish-task") |> render_click()
-    refute has_element?(view, "#finish-task")
-    refute File.dir?(task.directory)
+    assert view |> element("#check-task") |> render_click() =~ "Not done yet"
+    assert view |> element("#finish-task") |> render_click() =~ "Not closed"
+    assert File.dir?(task.directory)
     assert File.dir?(source)
   end
 

@@ -549,10 +549,26 @@ defmodule RoundtableWeb.RoomLive do
     end
   end
 
+  def handle_event("check-task", _, %{assigns: %{room: room}} = socket) do
+    case Chat.check_task(room.id) do
+      {:ok, summary} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :info,
+           "This task is done: #{summary["url"]} is merged and its required checks passed. " <>
+             "Close it to keep the result in the parent room and remove the copy."
+         )}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Not done yet: #{reason}")}
+    end
+  end
+
   def handle_event("finish-task", _, %{assigns: %{room: room}} = socket) do
     case Coordinator.finish_task(room.id) do
       {:ok, _} -> {:noreply, socket |> close_terminal() |> reload_room()}
-      {:error, reason} -> {:noreply, put_flash(socket, :error, reason)}
+      {:error, reason} -> {:noreply, put_flash(socket, :error, "Not closed: #{reason}")}
     end
   end
 

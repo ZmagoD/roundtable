@@ -24,6 +24,7 @@ defmodule Roundtable.Watchdog do
   @impl true
   def handle_info(:tick, state) do
     Coordinator.supervise(DateTime.utc_now(:second))
+    Coordinator.close_tasks()
     {:noreply, state}
   end
 end
