@@ -49,7 +49,9 @@ defmodule Roundtable.CompletionFixture do
       )
 
   def git(path, args) do
-    {output, 0} = System.cmd("git", ["-C", path] ++ args, stderr_to_stdout: true)
+    # CI runners have no git identity, so commits made here would be refused.
+    identity = ["-c", "user.name=Roundtable Test", "-c", "user.email=test@roundtable.local"]
+    {output, 0} = System.cmd("git", identity ++ ["-C", path] ++ args, stderr_to_stdout: true)
     String.trim(output)
   end
 
