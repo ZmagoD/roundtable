@@ -519,7 +519,7 @@
                   title={waiting_reasons(waiting_for(@waiting, @room, agent))}
                 >Waiting for you</span><span class={[
                   "status-dot",
-                  status(agent, @runs)
+                  card_status(agent, @runs, @sub_room_runs)
                 ]}></span>
                 <button
                   class="icon-button agent-edit"
@@ -564,7 +564,9 @@
                 ]}>{agent.cost_tier}</span>
               </div>
               <div class="agent-state">
-                <span class={["status", status(agent, @runs)]}>{status_label(status(agent, @runs))}</span><span>{if agent.session_id,
+                <span class={["status", card_status(agent, @runs, @sub_room_runs)]}>{status_label(
+                  card_status(agent, @runs, @sub_room_runs)
+                )}</span><span>{if agent.session_id,
                   do: "Session saved",
                   else: "Fresh session"}</span><span
                   :if={agent.auto_approve}
@@ -577,6 +579,14 @@
                   title="The supervisor gave up on this turn. Retry the assignment to continue."
                 >Needs attention</span>
               </div>
+              <p
+                :for={copy <- busy_elsewhere(agent, @sub_room_runs)}
+                id={"busy-elsewhere-#{agent.id}-#{copy.room.id}"}
+                class="busy-elsewhere"
+              >
+                {String.capitalize(status_label(copy.status))} in
+                <.link patch={~p"/rooms/#{copy.room.id}"}>{copy.room.name}</.link>
+              </p>
               <div class="agent-usage" id={"agent-usage-#{agent.id}"}>
                 <span id={"provider-usage-#{agent.id}"}>
                   Quota: {quota_left(@provider_usage[agent.provider])}
@@ -844,7 +854,7 @@
           <p :for={agent <- @agents} id={"roster-agent-#{agent.id}"}>
             <strong>{agent.name}</strong>
             · {agent.provider} · {agent.model || "provider default"} · {agent.cost_tier} · {status_label(
-              status(agent, @runs)
+              card_status(agent, @runs, @sub_room_runs)
             )}<br />
             {agent.role}
           </p>

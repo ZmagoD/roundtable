@@ -469,6 +469,29 @@ defmodule Roundtable.Chat do
     )
   end
 
+  @doc "The ids of every room under this one, at any depth, not including itself."
+  def sub_room_ids(room_id) do
+    # Not room!/1: a broadcast can arrive after the room itself was deleted.
+    [%Room{id: room_id}] |> subtree() |> Enum.map(& &1.id) |> List.delete(room_id)
+  end
+
+  @doc """
+  The unfinished turns in these rooms, newest first, each with its participant
+  and that participant's room, so a card elsewhere can say where it is busy.
+  """
+  def active_runs_in([]), do: []
+
+  def active_runs_in(room_ids) do
+    Repo.all(
+      from r in Run,
+        join: a in assoc(r, :agent),
+        where: a.room_id in ^room_ids,
+        where: r.status in ["running", "approval", "queued", "waiting_quota"],
+        order_by: [desc: r.id],
+        preload: [agent: :room]
+    )
+  end
+
   @doc """
   What the rooms are doing right now, in counts.
 
