@@ -604,6 +604,8 @@ defmodule RoundtableWeb.RoomLiveTest do
 
   describe "the handlers a browser reaches that the terminal does not" do
     setup %{conn: conn} do
+      on_exit(Roundtable.FakeCLIs.install(["claude", "codex", "opencode"]))
+
       {:ok, room} = Chat.create_room(%{"name" => "Handlers", "directory" => File.cwd!()})
 
       {:ok, agent} =
@@ -1149,14 +1151,49 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert html =~ "fixed-field"
       assert html =~ agent.provider
 
+      assert html =~ "switch-context-note"
+      assert html =~ "Hidden reasoning"
+      refute html =~ "not installed"
+
+      # opencode cannot ask for approval here, so the switch has to say so.
+      html =
+        view
+        |> form("#agent-form",
+          agent: %{provider: "opencode", model: "ollama/qwen3-coder:30b", auto_approve: "false"}
+        )
+        |> render_submit()
+
+      assert html =~ "automatic approval"
+      assert Chat.agent!(agent.id).provider == "codex"
+
       view
-      |> form("#agent-form", agent: %{provider: "opencode", model: "qwen3-coder:30b"})
+      |> form("#agent-form",
+        agent: %{provider: "opencode", model: "ollama/qwen3-coder:30b", auto_approve: "true"}
+      )
       |> render_submit()
 
       updated = Chat.agent!(agent.id)
       assert updated.provider == "opencode"
-      assert updated.model == "qwen3-coder:30b"
+      assert updated.model == "ollama/qwen3-coder:30b"
       assert updated.directory == agent.directory
+      assert updated.name == agent.name
+    end
+
+    test "a provider switch with a turn waiting is refused with a reason", %{
+      view: view,
+      agent: agent,
+      room: room
+    } do
+      {:ok, _} = Chat.post(room.id, "@ada queued work")
+      view |> element(".agent-edit[phx-value-id='#{agent.id}']") |> render_click()
+
+      html =
+        view
+        |> form("#agent-form", agent: %{provider: "claude", model: "opus"})
+        |> render_submit()
+
+      assert html =~ "finish or stop unfinished turns"
+      assert Chat.agent!(agent.id).provider == "codex"
     end
 
     test "a rename to a name already in use is refused with a reason", %{

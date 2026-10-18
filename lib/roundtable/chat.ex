@@ -1029,9 +1029,7 @@ defmodule Roundtable.Chat do
 
   defp validate_switch(changeset, agent) do
     provider = Ecto.Changeset.get_field(changeset, :provider)
-    model = Ecto.Changeset.get_field(changeset, :model)
     changed_provider = provider != agent.provider
-    changed_model = model != agent.model
 
     changeset =
       if changed_provider do
@@ -1039,26 +1037,38 @@ defmodule Roundtable.Chat do
 
         changeset
         |> Ecto.Changeset.validate_inclusion(:provider, available)
-        |> Ecto.Changeset.validate_inclusion(:model, Roundtable.Agents.models(provider))
+        |> validate_listed_model(provider)
         |> validate_switch_permissions(provider)
       else
         changeset
       end
 
-    statuses =
-      if changed_provider,
-        do: ["running", "approval", "queued", "waiting_quota"],
-        else: ["running", "approval"]
-
-    if (changed_provider or changed_model) and
-         Repo.exists?(from r in Run, where: r.agent_id == ^agent.id and r.status in ^statuses) do
+    # A model-only change leaves a running turn on the model it began with and
+    # moves what is queued; a new provider cannot share any of that, so every
+    # unfinished turn has to be done or stopped first.
+    if changed_provider and
+         Repo.exists?(
+           from r in Run,
+             where:
+               r.agent_id == ^agent.id and
+                 r.status in ["running", "approval", "queued", "waiting_quota"]
+         ) do
       Ecto.Changeset.add_error(
         changeset,
         :provider,
-        "finish or stop unfinished turns before changing provider or model"
+        "finish or stop unfinished turns before changing provider"
       )
     else
       changeset
+    end
+  end
+
+  # Only checked against a list the CLI actually gave us: a provider that
+  # cannot list its models takes a typed name, as it does when adding one.
+  defp validate_listed_model(changeset, provider) do
+    case Roundtable.Agents.models(provider) do
+      [] -> changeset
+      listed -> Ecto.Changeset.validate_inclusion(changeset, :model, listed)
     end
   end
 
@@ -1085,7 +1095,7 @@ defmodule Roundtable.Chat do
   turn — and the session is dropped, which starts a fresh one with the room's
   history behind it.
 
-  Running turns must finish or be stopped before changing provider or model.
+  A provider change needs every unfinished turn finished or stopped first (see `update_agent/2`); a model-only change leaves a running turn on the model it began with.
   """
   def adopt_model(%{provider: provider, model: model}, %{provider: provider, model: model}),
     do: :ok
