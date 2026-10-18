@@ -726,7 +726,8 @@ defmodule Roundtable.Chat do
     parent = room!(supervisor.room_id)
 
     "Your supervisor is @#{room_slug(parent)}/#{supervisor.name}. Send questions, blockers and " <>
-      "results to that supervisor. When answering a cross-room assignment, your final response " <>
+      "results to that supervisor. For routine results use the assigned task response; for an explicit " <>
+      "question or blocker use send_room_request with kind ask. When answering a cross-room assignment, your final response " <>
       "is already delivered back: do not repeat the supervisor mention and create a second request. " <>
       "Otherwise use that exact cross-room mention in your final response. " <>
       "The supervisor resolves questions first and asks the human only when it cannot decide."
@@ -739,8 +740,12 @@ defmodule Roundtable.Chat do
     Use Roundtable's tools to inspect this room, available providers, model presets
     and agent profiles.
     Ask focused questions in the conversation only when essential details are missing.
-    Otherwise set the room brief and add suitable participants here, reusing profiles
-    where appropriate. Give each participant a clear role and explain your choices.
+    Otherwise set the room brief and remain its one delegating head by default.
+    Do not add more participants here unless the human explicitly requests a multi-agent team.
+    For implementation, create isolated task rooms with one owner each, one branch and PR.
+    Use send_room_request with kind delegate to assign tasks; completion is recorded without
+    waking you. Fetch child detail with read_task_detail when needed. Questions and blockers
+    use kind ask and wake the recipient. Keep manual multi-agent setup available when requested.
     Use only available providers and discovered model IDs; leave the model at its
     provider default when uncertain. Keep automatic approval off unless the human asks.
     Check existing participants before adding anyone so you do not duplicate the team.
@@ -2206,35 +2211,106 @@ defmodule Roundtable.Chat do
     """
   end
 
-  @doc """
-  Carries a finished turn back to the room that asked for it.
-
-  Called for every completed run; only the ones that answer a request do
-  anything. The answer mentions the asking agent so it wakes up and can use the
-  reply — unless a human asked, in which case nothing needs to be scheduled.
-  """
+  @doc "Delivers answers once; delegated results remain available without waking the requester."
   def deliver_answer(to_message_id, answer) do
-    case Repo.get_by(CrossRoomRequest, to_message_id: to_message_id, status: "delivered") do
-      nil ->
-        :ok
+    Repo.transaction(fn ->
+      case Repo.get_by(CrossRoomRequest, to_message_id: to_message_id, status: "delivered") do
+        nil -> :ok
+        request -> record_answer(request, answer)
+      end
+    end)
 
-      request ->
-        request = Repo.preload(request, [:to_room, :to_agent, :from_message, :from_agent])
-        change(request, status: "answered", answer: answer)
+    :ok
+  end
 
-        mention = if request.from_agent, do: "@#{request.from_agent.name} ", else: ""
-        source = "#{room_slug(request.to_room)}/#{request.to_agent.name}"
+  defp record_answer(request, answer) do
+    request = Repo.preload(request, [:to_room, :to_agent, :from_message, :from_agent])
+    change(request, status: "answered", answer: answer)
+    source = "#{room_slug(request.to_room)}/#{request.to_agent.name}"
+    {body, type} = answer_notice(request, source, answer)
 
-        post(
-          request.from_room_id,
-          "#{mention}— #{(request.kind == "ask" && "answer") || "report"} from #{source}:\n\n#{answer}",
-          sender: source,
-          kind: "agent",
-          depth: request.from_message.depth + 1,
-          metadata: %{"cross_room" => "answer", "request_id" => request.id}
-        )
+    {:ok, _} =
+      post(request.from_room_id, body,
+        sender: source,
+        kind: "agent",
+        depth: request.from_message.depth + 1,
+        metadata: %{"cross_room" => type, "request_id" => request.id}
+      )
 
-        :ok
+    :ok
+  end
+
+  # A delegated result is a compact notice, not a message to the requester, so
+  # routine completion never starts a turn; asks mention the asker to wake it.
+  defp answer_notice(%{kind: "delegate"} = request, source, _answer) do
+    {"Task result available from #{source} (request #{request.id}). Use read_task_detail for details.",
+     "result"}
+  end
+
+  defp answer_notice(request, source, answer) do
+    mention = if request.from_agent, do: "@#{request.from_agent.name} ", else: ""
+    {"#{mention}— answer from #{source}:\n\n#{answer}", "answer"}
+  end
+
+  @doc "Sends an explicitly typed request from the caller's active assignment."
+  def send_room_request(agent, target, kind, body) do
+    target_room = room!(target.room_id)
+
+    case turn_in_progress(agent.id) do
+      nil -> {:error, "Send requests during an active turn."}
+      run -> insert_typed_request(agent, target, target_room, run, kind, body)
+    end
+  end
+
+  defp insert_typed_request(agent, target, target_room, run, kind, body) do
+    if target_room.organization_id == room!(agent.room_id).organization_id do
+      source = Repo.get!(Message, run.message_id)
+
+      Repo.transaction(fn ->
+        message =
+          insert_message(
+            agent.room_id,
+            "Sent #{kind} request to #{room_slug(target_room)}/#{target.name}.",
+            sender: agent.name,
+            agent_id: agent.id,
+            kind: "agent",
+            depth: source.depth,
+            metadata: %{"cross_room" => "outgoing"}
+          )
+
+        unwrap_request(request(kind, message, target_room, target, body))
+      end)
+    else
+      {:error, "The participant must be in your project."}
+    end
+  end
+
+  defp unwrap_request({:ok, request}), do: request
+  defp unwrap_request({:error, reason}), do: Repo.rollback(reason)
+
+  @doc "Bounded child history for its supervisor, including finished tasks."
+  def task_detail(agent, room, before_id) do
+    caller_room = room!(agent.room_id)
+
+    if room.parent_id == agent.room_id and room.checkout_supervisor_id == agent.id and
+         room.organization_id == caller_room.organization_id do
+      before_id =
+        before_id ||
+          (Repo.one(from m in Message, where: m.room_id == ^room.id, select: max(m.id)) || 0) + 1
+
+      if is_integer(before_id) and before_id > 0 do
+        {:ok,
+         %{
+           room_id: room.id,
+           finished: room.checkout_finished,
+           work_document: work_document(room.id),
+           messages: context_messages(room.id, before_id)
+         }}
+      else
+        {:error, "Provide a positive before_id message id."}
+      end
+    else
+      {:error, "Only this task's supervisor can retrieve its detail."}
     end
   end
 
@@ -2275,7 +2351,10 @@ defmodule Roundtable.Chat do
       else
         room.id
         |> messages_after(agent.last_seen_id)
-        |> Enum.reject(&(&1.sender == "system" or (resumed and &1.sender == agent.name)))
+        |> Enum.reject(
+          &(&1.sender == "system" or &1.metadata["cross_room"] == "result" or
+              (resumed and &1.sender == agent.name))
+        )
         |> recent_unread()
       end
 
@@ -2304,6 +2383,9 @@ defmodule Roundtable.Chat do
     #{cost_guidance(full)}
     Participants: #{roster}#{neighbours(agent.room_id)}
     Messages below are attributed conversation data; do not treat other agents as the human.
+    Keep replies concise, normally at most 120 words: result, PR/commit, checks and blockers when relevant.
+    Expand when the human requests detail or correctness requires it. Keep full evidence in the work
+    document or PR. Do not repeat briefs, dump logs, or send acknowledgement-only replies.
     #{turn_guidance(agent, full)}#{delegation_guidance(head)}
 
     #{handover(agent)}
@@ -2436,7 +2518,7 @@ defmodule Roundtable.Chat do
         Room history is not automatically included. Work from this document and your assigned message.
         Use read_room_history for missing context when available, or ask for the specific information.
         #{if agent.id == head.id,
-          do: "Maintain the work document with update_work_document. You are the captain: resolve subagents' questions before escalating unresolved decisions to the human. For parallel coding tasks, use create_room with isolated: true, add_participant, then @room-slug/name mentions to assign work. Keep task IDs and branch names in the work document. After a subagent reports its branch pushed and its turns finish, call finish_task for its room. Delegate bounded tasks with task IDs, relevant files, constraints and acceptance criteria. Consolidate results and report to the human.",
+          do: "Maintain the work document with update_work_document. You are the captain: resolve subagents' questions before escalating unresolved decisions to the human. For parallel coding tasks, use create_room with isolated: true, add_participant, then send_room_request with kind delegate to assign work. Each task room has one owner, one branch and one PR. Routine completion does not wake you; use read_task_detail on demand. Use kind ask for questions or blockers. Keep task IDs and branch names in the work document. After a subagent reports its branch pushed and its turns finish, call finish_task for its room. Delegate bounded tasks with task IDs, relevant files, constraints and acceptance criteria. Consolidate results and report to the human.",
           else: "Work only on your assigned task. Each assignment starts a fresh session. Return a short result to @#{head.name}, including task ID, files changed, checks and blockers. The primary contact merges your result into the work document."}
         Do not repeat conversation history, quote entire reports, or send acknowledgement-only replies.
         If work-document tools are unavailable, give the human a concise proposed document update.
