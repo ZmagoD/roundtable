@@ -38,6 +38,7 @@ defmodule RoundtableWeb.RoomLive do
        editing_agent: nil,
        editing_renamable: true,
        editing_room: nil,
+       accept_form: nil,
        schedules: [],
        schedule_form: to_form(%{"days" => "", "at" => "09:00"}, as: :schedule),
        editing_schedule: nil,
@@ -551,6 +552,40 @@ defmodule RoundtableWeb.RoomLive do
           {:error, _} ->
             {:noreply, put_flash(socket, :error, "Could not remove #{room.name}.")}
         end
+    end
+  end
+
+  def handle_event("open-accept", _, %{assigns: %{room: room}} = socket) do
+    form = to_form(Roundtable.TaskCompletion.suggest(room), as: :accept)
+    {:noreply, assign(socket, accept_form: form)}
+  end
+
+  def handle_event("cancel-accept", _, socket), do: {:noreply, assign(socket, accept_form: nil)}
+
+  def handle_event("accept-task", %{"accept" => params}, %{assigns: %{room: room}} = socket) do
+    evidence = %{
+      "sha" => String.trim(params["sha"] || ""),
+      "pr" => parse_pr(params["pr"]),
+      "precommit" => params["precommit"] || "",
+      "policy" => params["policy"] || "",
+      "sync_main" => params["sync_main"] == "true",
+      "automatic" => params["automatic"] == "true",
+      "remove_room" => params["remove_room"] == "true"
+    }
+
+    case Chat.accept_task(room.id, evidence) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> assign(accept_form: nil)
+         |> put_flash(
+           :info,
+           "Acceptance recorded. Check completion to see whether the task can close."
+         )
+         |> reload_room()}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Not accepted: #{reason}")}
     end
   end
 
@@ -1710,4 +1745,11 @@ defmodule RoundtableWeb.RoomLive do
 
   defp failed_runs(runs),
     do: Enum.filter(runs, &(&1.status in ["failed", "interrupted", "stopped"]))
+
+  defp parse_pr(value) do
+    case Integer.parse(to_string(value)) do
+      {number, ""} -> number
+      _ -> nil
+    end
+  end
 end

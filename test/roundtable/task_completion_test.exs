@@ -109,6 +109,27 @@ defmodule Roundtable.TaskCompletionTest do
     assert {:ok, _} = Chat.accept_task(ctx.task.id, Fixture.evidence(sha), ctx.head)
   end
 
+  test "the parent's current team head may accept, not an unrelated participant", ctx do
+    sha = Fixture.merge(ctx.task, ctx.remote)
+    {:ok, new_head} = Chat.create_agent(ctx.parent.id, %{name: "newhead", provider: "codex"})
+    {:ok, bystander} = Chat.create_agent(ctx.parent.id, %{name: "bystander", provider: "codex"})
+    {:ok, _} = Chat.set_team_head(new_head.id)
+
+    assert {:error, _} = Chat.accept_task(ctx.task.id, Fixture.evidence(sha), bystander)
+    assert {:ok, _} = Chat.accept_task(ctx.task.id, Fixture.evidence(sha), new_head)
+    # The former supervisor keeps its own standing.
+    assert {:ok, _} = Chat.accept_task(ctx.task.id, Fixture.evidence(sha), ctx.head)
+    assert {:ok, _} = Chat.check_task(ctx.task.id)
+  end
+
+  test "an agent from another room cannot accept even as its own team head", ctx do
+    sha = Fixture.merge(ctx.task, ctx.remote)
+    {:ok, other} = Chat.create_room(%{name: "Elsewhere", directory: ctx.source})
+    {:ok, stranger} = Chat.create_agent(other.id, %{name: "stranger", provider: "codex"})
+    {:ok, _} = Chat.set_team_head(stranger.id)
+    assert {:error, _} = Chat.accept_task(ctx.task.id, Fixture.evidence(sha), stranger)
+  end
+
   test "an unmerged pull request or one for another commit blocks", ctx do
     sha = ready(ctx)
     Fixture.announce(ctx.task, sha, sha, %{"merged" => false})

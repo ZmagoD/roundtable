@@ -107,6 +107,13 @@
           <div class="header-actions">
             <span :if={@room.checkout_finished} class="live-badge">Task finished</span>
             <button
+              :if={@room.checkout_id && @room.parent_id && not @room.checkout_finished}
+              id="accept-task"
+              class="button secondary"
+              phx-click="open-accept"
+              title="Record that the final commit was reviewed, as the evidence the checker needs"
+            >Accept</button>
+            <button
               :if={@room.checkout_id && not @room.checkout_finished}
               id="check-task"
               class="button secondary"
@@ -212,6 +219,31 @@
             </details>
           </div>
         </header>
+        <.form
+          :if={@accept_form}
+          for={@accept_form}
+          id="accept-form"
+          class="accept-form"
+          phx-submit="accept-task"
+        >
+          <p>
+            Record that this commit was reviewed and passed precommit. Roundtable still checks the merge, the PR checks and the checkout itself before it closes anything.
+          </p>
+          <.input field={@accept_form[:sha]} label="Reviewed commit" required />
+          <.input field={@accept_form[:pr]} label="Pull request number" required />
+          <.input field={@accept_form[:precommit]} label="Precommit result" required />
+          <.input field={@accept_form[:policy]} label="Parent completion policy" required />
+          <label><input type="checkbox" name="accept[sync_main]" value="true" />
+          The parent checkout must be synchronised to main</label>
+          <label><input type="checkbox" name="accept[remove_room]" value="true" />
+          Remove this room after the result is kept in the parent</label>
+          <label><input type="checkbox" name="accept[automatic]" value="true" />
+          Close it automatically once the evidence holds</label>
+          <div class="actions">
+            <button class="button" type="submit" phx-disable-with="Recording…">Record acceptance</button>
+            <button class="button secondary" type="button" phx-click="cancel-accept">Cancel</button>
+          </div>
+        </.form>
         <div class="room-body">
           <section class="conversation" aria-label="Conversation">
             <div
