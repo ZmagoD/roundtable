@@ -1106,7 +1106,13 @@
               type="select"
               options={
                 Enum.map(
-                  @providers,
+                  # A switch can only go somewhere that runs; adding a
+                  # participant may still name a CLI to install later.
+                  Enum.filter(
+                    @providers,
+                    &(is_nil(@editing_agent) or &1.installed or
+                        &1.id == @agent_form[:provider].value)
+                  ),
                   &{&1.label <> if(&1.installed, do: "", else: " · not installed"), &1.id}
                 )
               }
