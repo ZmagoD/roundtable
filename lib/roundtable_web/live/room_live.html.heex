@@ -1106,7 +1106,7 @@
               type="select"
               options={
                 Enum.map(
-                  Enum.filter(@providers, & &1.installed),
+                  @providers,
                   &{&1.label <> if(&1.installed, do: "", else: " · not installed"), &1.id}
                 )
               }
