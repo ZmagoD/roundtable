@@ -632,6 +632,15 @@ defmodule Roundtable.Chat do
   defp insert_task_room(%{valid?: false} = changeset), do: {:error, changeset}
 
   defp insert_task_room(changeset) do
+    parent_id = Ecto.Changeset.get_field(changeset, :parent_id)
+    if parent_id && (room!(parent_id).completion_sealed || room!(parent_id).checkout_finished) do
+      {:error, Ecto.Changeset.add_error(changeset, :directory, "The parent task is closing.")}
+    else
+      insert_open_task_room(changeset)
+    end
+  end
+
+  defp insert_open_task_room(changeset) do
     if Ecto.Changeset.get_field(changeset, :isolated),
       do: clone_task_room(changeset),
       else: Repo.insert(changeset)
@@ -669,36 +678,112 @@ defmodule Roundtable.Chat do
       reraise error, __STACKTRACE__
   end
 
-  def finish_task(room_id) do
+  def accept_task(room_id, evidence, actor \\ :human) do
     room = room!(room_id)
-
-    busy =
-      Repo.exists?(
-        from r in Run,
-          join: a in Agent,
-          on: a.id == r.agent_id,
-          where:
-            a.room_id == ^room_id and
-              r.status in ["queued", "running", "approval", "waiting_quota"]
-      )
+    allowed = actor == :human or
+      (match?(%Agent{}, actor) and actor.id == room.checkout_supervisor_id and actor.room_id == room.parent_id)
+    review = Map.take(evidence, ~w(sha pr precommit policy sync_main))
+      |> Map.put("accepted_by", if(actor == :human, do: "human", else: "agent:#{actor.id}"))
 
     cond do
-      is_nil(room.checkout_id) ->
-        {:error, "This room does not own a task checkout."}
-
-      room.checkout_finished ->
-        {:ok, room}
-
-      busy ->
-        {:error, "Wait for this room's queued and running turns to finish first."}
-
+      not allowed -> {:error, "Only the human or this task's parent supervisor can accept it."}
+      is_nil(room.checkout_id) or is_nil(room.parent_id) -> {:error, "Choose a managed task with a parent room."}
+      room.completion_sealed -> {:error, "Cleanup already started; its acceptance is sealed."}
       true ->
-        with :ok <- Roundtable.TaskCheckouts.finish(room.checkout_id, room.directory) do
-          room
-          |> Ecto.Changeset.change(checkout_finished: true)
-          |> Repo.update()
-          |> notify_rooms()
+        with :ok <- Roundtable.TaskCompletion.review_present(review) do
+          room |> Ecto.Changeset.change(completion_review: review,
+            completion_auto: evidence["automatic"] == true,
+            completion_remove: evidence["remove_room"] == true) |> Repo.update() |> notify_rooms()
         end
+    end
+  end
+
+  def check_task(room_id) do
+    room = room!(room_id)
+    with :ok <- task_quiet(room), do: Roundtable.TaskCompletion.verify(room)
+  end
+
+  def automatic_task_ids do
+    Repo.all(from r in Room, where: r.completion_auto and not r.checkout_finished, select: r.id)
+  end
+
+  def finish_task(room_id) do
+    case Repo.get_by(Roundtable.Chat.TaskClosure, task_room_id: room_id) do
+      %{status: "complete", summary: summary} -> {:ok, summary}
+      nil ->
+        with {:ok, summary} <- check_task(room_id),
+             {:ok, audit} <- seal_task(room_id, summary), do: cleanup_task(audit)
+      audit -> cleanup_task(audit)
+    end
+  end
+
+  defp seal_task(room_id, summary) do
+    Repo.transaction(fn ->
+      room = room!(room_id)
+      case task_quiet(room) do
+        :ok -> :ok
+        {:error, reason} -> Repo.rollback(reason)
+      end
+      if room.completion_review != summary["review"], do: Repo.rollback("Acceptance changed; check again.")
+      # This durable barrier commits before filesystem removal. Posts, children and
+      # retries cannot resurrect work while a restart resumes cleanup.
+      room |> Ecto.Changeset.change(completion_sealed: true) |> Repo.update!()
+      summary = Map.merge(summary, %{"name" => room.name, "directory" => room.directory,
+        "checkout_id" => room.checkout_id, "remove_room" => room.completion_remove})
+      audit = Repo.insert!(%Roundtable.Chat.TaskClosure{task_room_id: room.id,
+        parent_room_id: room.parent_id, summary: summary})
+      insert_message(room.parent_id, "Task #{room.name} verified: #{summary["url"]}. " <>
+        "Reviewed #{summary["sha"]}; merged #{summary["merge_sha"]}. Required checks passed. Cleanup pending.",
+        kind: "system", sender: "task checker", metadata: %{"task_completion" => summary, "closure_id" => audit.id})
+      audit
+    end)
+  end
+
+  defp cleanup_task(audit) do
+    summary = audit.summary
+    result = Roundtable.TaskCheckouts.finish_verified(summary["checkout_id"], summary["directory"], summary["sha"])
+    case result do
+      :ok ->
+        result = Repo.transaction(fn ->
+          room = room!(audit.task_room_id)
+          room = room |> Ecto.Changeset.change(checkout_finished: true) |> Repo.update!()
+          if summary["remove_room"], do: Repo.delete!(room)
+          audit |> Ecto.Changeset.change(status: "complete", error: nil) |> Repo.update!()
+          update_completion_message(audit, "Cleanup complete.")
+          summary
+        end)
+        broadcast(audit.parent_room_id)
+        notify_rooms(result)
+      {:error, reason} ->
+        audit |> Ecto.Changeset.change(error: reason) |> Repo.update!()
+        update_completion_message(audit, "Cleanup paused: #{reason}")
+        {:error, reason}
+    end
+  end
+
+  defp update_completion_message(audit, status) do
+    messages = Repo.all(from m in Message, where: m.room_id == ^audit.parent_room_id and m.kind == "system")
+    if message = Enum.find(messages, &(&1.metadata["closure_id"] == audit.id)) do
+      summary = audit.summary
+      change(message, body: "Task #{summary["name"]}: #{summary["url"]}. " <>
+        "Reviewed #{summary["sha"]}; merged #{summary["merge_sha"]}. Required checks passed. #{status}")
+    end
+  end
+
+  defp task_quiet(room) do
+    busy = Repo.exists?(from r in Run, join: a in Agent, on: a.id == r.agent_id,
+      where: a.room_id == ^room.id and r.status in ["queued", "running", "approval", "waiting_quota"])
+    requests = Repo.exists?(from r in CrossRoomRequest,
+      where: (r.from_room_id == ^room.id or r.to_room_id == ^room.id) and r.status not in ["answered", "declined"])
+    children = Repo.exists?(from r in Room, where: r.parent_id == ^room.id)
+    cond do
+      is_nil(room.checkout_id) or is_nil(room.parent_id) -> {:error, "Choose a managed task with a durable parent room."}
+      room.completion_sealed -> {:error, "Cleanup is already sealed; use finish to retry it."}
+      room.checkout_finished -> {:error, "This task checkout is already finished."}
+      busy -> {:error, "Wait for queued, running, approval and quota-waiting turns to finish."}
+      requests -> {:error, "Resolve this task's unanswered or failed requests first."}
+      children -> {:error, "Close or remove descendant rooms before finishing this task."}
+      true -> :ok
     end
   end
 
@@ -803,6 +888,7 @@ defmodule Roundtable.Chat do
     room = room!(room_id)
 
     Repo.transaction(fn ->
+      ensure_open_task(room!(room_id))
       result =
         %Agent{room_id: room_id}
         |> Agent.changeset(Map.put(normalise(attrs), "directory", effective_directory(room)))
@@ -1392,6 +1478,9 @@ defmodule Roundtable.Chat do
       result
     end
   end
+
+  defp ensure_open_task(%{completion_sealed: true}),
+    do: Repo.rollback("This task is closing. Create another task room to continue.")
 
   defp ensure_open_task(%{checkout_finished: true}),
     do: Repo.rollback("This task is finished. Create another task room to continue.")

@@ -3,6 +3,10 @@ defmodule Roundtable.Chat.Room do
   import Ecto.Changeset
 
   schema "rooms" do
+    field :completion_review, :map, default: %{}
+    field :completion_sealed, :boolean, default: false
+    field :completion_auto, :boolean, default: false
+    field :completion_remove, :boolean, default: false
     field :checkout_supervisor_id, :integer
     field :checkout_id, :string
     field :checkout_branch, :string
