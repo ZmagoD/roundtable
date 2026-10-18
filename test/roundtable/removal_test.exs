@@ -114,8 +114,11 @@ defmodule Roundtable.RemovalTest do
     assert length(Chat.messages(other.id)) == 1
   end
 
-  test "removing something that is already gone raises rather than lying", %{ada: ada} do
+  test "removing something that is already gone is refused and the queue survives", %{ada: ada} do
     {:ok, _} = Coordinator.remove_agent(ada.id)
-    assert catch_exit(Coordinator.remove_agent(ada.id))
+    pid = Process.whereis(Coordinator)
+
+    assert {:error, :not_found} = Coordinator.remove_agent(ada.id)
+    assert Process.whereis(Coordinator) == pid
   end
 end
