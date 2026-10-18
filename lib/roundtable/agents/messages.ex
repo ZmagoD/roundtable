@@ -12,9 +12,9 @@ defmodule Roundtable.Agents.Messages do
   add the parts that are its own — Claude Code's approval channel, for one,
   which Grok has no equivalent of.
   """
-  import Roundtable.Agents.Worker, only: [put_output: 2]
+  import Roundtable.Agents.Worker, only: [put_output: 2, activity: 2]
 
-  alias Roundtable.Agents.Protocol
+  alias Roundtable.Agents.{Activity, Protocol}
   alias Roundtable.Coordinator
 
   @doc "Returns `{:ok, state}` or `:unhandled`."
@@ -62,6 +62,7 @@ defmodule Roundtable.Agents.Messages do
   # available; they must not clobber text the deltas already produced.
   def handle(%{"type" => "assistant", "message" => message}, state) do
     state = Roundtable.Agents.Usage.claude_message(state, message)
+    state = activity(state, tool_step(message["content"]))
 
     if state.output == "",
       do: {:ok, put_output(state, Protocol.text_blocks(message["content"]))},
@@ -80,5 +81,26 @@ defmodule Roundtable.Agents.Messages do
      %{state | finished: if(error, do: Roundtable.Quota.failure(error), else: {"completed", nil})}}
   end
 
+  # A tool's result comes back as the next user message; until another tool
+  # starts, the model is deciding what to do with it.
+  def handle(%{"type" => "user", "message" => %{"content" => content}}, state)
+      when is_list(content) do
+    if Enum.any?(content, &(is_map(&1) and &1["type"] == "tool_result")),
+      do: {:ok, activity(state, Activity.thinking())},
+      else: :unhandled
+  end
+
   def handle(_event, _state), do: :unhandled
+
+  defp tool_step(content) when is_list(content) do
+    content
+    |> Enum.filter(&(is_map(&1) and &1["type"] == "tool_use"))
+    |> List.last()
+    |> case do
+      nil -> nil
+      block -> Activity.tool(block["name"], block["input"])
+    end
+  end
+
+  defp tool_step(_content), do: nil
 end

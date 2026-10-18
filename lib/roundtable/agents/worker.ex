@@ -34,6 +34,7 @@ defmodule Roundtable.Agents.Worker do
       task_checkout: not is_nil(Roundtable.Chat.room!(agent.room_id).checkout_id),
       session: agent.session_id,
       flush: nil,
+      activity: nil,
       sandbox: false,
       exited: false
     }
@@ -153,6 +154,23 @@ defmodule Roundtable.Agents.Worker do
   def approval(state, id, params) do
     Coordinator.event(state.run.id, {:approval, id, params})
     %{state | pending: Map.put(state.pending, id, params)}
+  end
+
+  @doc """
+  Reports the step the turn is on — see `Roundtable.Agents.Activity`.
+
+  Only a change is sent, so a provider repeating itself costs nothing. Adapter
+  tests hand in bare maps, which is why the key is read rather than matched.
+  """
+  def activity(state, nil), do: state
+
+  def activity(state, label) do
+    if Map.get(state, :activity) == label do
+      state
+    else
+      Coordinator.event(state.run.id, {:activity, label})
+      Map.put(state, :activity, label)
+    end
   end
 
   def joined(state), do: Enum.map_join(state.item_order, "\n\n", &Map.fetch!(state.items, &1))

@@ -329,6 +329,13 @@
                       run.cost_tier
                     ]}>{run.cost_tier}</span><span>{run.purpose}</span>
                   </div>
+                  <p
+                    :if={line = activity_line(run, @runs, @activity, @now)}
+                    id={"run-activity-#{run.id}"}
+                    class="muted run-activity"
+                  >
+                    {line}
+                  </p>
                   <p :if={run.status == "waiting_quota"} id={"quota-wait-#{run.id}"} class="muted">
                     Quota limit reached. Next attempt: {Calendar.strftime(
                       run.retry_at,

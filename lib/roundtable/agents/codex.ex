@@ -7,8 +7,10 @@ defmodule Roundtable.Agents.Codex do
   its own once the turn completes.
   """
   @behaviour Roundtable.Agents.Adapter
-  import Roundtable.Agents.Worker, only: [write: 2, put_output: 2, joined: 1, approval: 3]
-  alias Roundtable.Agents.Protocol
+  import Roundtable.Agents.Worker,
+    only: [write: 2, put_output: 2, joined: 1, approval: 3, activity: 2]
+
+  alias Roundtable.Agents.{Activity, Protocol}
   alias Roundtable.Coordinator
   def id, do: "codex"
   def label, do: "Codex"
@@ -97,6 +99,9 @@ defmodule Roundtable.Agents.Codex do
   def handle_event(%{"method" => "thread/tokenUsage/updated", "params" => params}, state),
     do: Roundtable.Agents.Usage.codex(state, params)
 
+  def handle_event(%{"method" => "item/started", "params" => %{"item" => item}}, state),
+    do: activity(state, Activity.codex(item))
+
   def handle_event(%{"method" => "item/agentMessage/delta", "params" => p}, state) do
     items = Map.update(state.items, p["itemId"], p["delta"], &(&1 <> p["delta"]))
 
@@ -126,6 +131,11 @@ defmodule Roundtable.Agents.Codex do
     final = if item["phase"] == "final_answer", do: item["text"], else: state.final_output
     state = %{state | items: items, item_order: order, final_output: final}
     put_output(state, joined(state))
+  end
+
+  # A finished step leaves the model deciding what comes next.
+  def handle_event(%{"method" => "item/completed", "params" => %{"item" => item}}, state) do
+    if Activity.codex(item), do: activity(state, Activity.thinking()), else: state
   end
 
   def handle_event(

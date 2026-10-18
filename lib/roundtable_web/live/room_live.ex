@@ -12,6 +12,9 @@ defmodule RoundtableWeb.RoomLive do
       Phoenix.PubSub.subscribe(Roundtable.PubSub, "provider_usage")
       # Files move while a turn runs, and nothing broadcasts when they do.
       :timer.send_interval(2_000, self(), :poll_git)
+      # A turn inside one long command broadcasts nothing; its elapsed time
+      # still has to move.
+      :timer.send_interval(15_000, self(), :tick)
     end
 
     {:ok,
@@ -23,6 +26,8 @@ defmodule RoundtableWeb.RoomLive do
        agents: [],
        provider_usage: Chat.provider_usage(),
        participant_tokens: %{},
+       activity: %{},
+       now: DateTime.utc_now(),
        last_message_id: 0,
        model_presets: Chat.model_presets(),
        agent_profiles: Chat.agent_profiles(),
@@ -981,6 +986,11 @@ defmodule RoundtableWeb.RoomLive do
 
   def handle_info(:poll_git, socket), do: {:noreply, poll_git(socket)}
 
+  def handle_info(:tick, %{assigns: %{activity: activity}} = socket) when activity == %{},
+    do: {:noreply, socket}
+
+  def handle_info(:tick, socket), do: {:noreply, assign(socket, now: DateTime.utc_now())}
+
   def handle_info({:history_cleared, room_id}, socket) do
     if socket.assigns.room && socket.assigns.room.id == room_id do
       {:noreply,
@@ -1170,6 +1180,8 @@ defmodule RoundtableWeb.RoomLive do
       schedules: Chat.schedules(id),
       notes: Chat.room_notes(id),
       runs: Chat.runs(id),
+      activity: Coordinator.activity(),
+      now: DateTime.utc_now(),
       effective_directory: Chat.effective_directory(socket.assigns.room),
       organization:
         Enum.find(Chat.organizations(), &(&1.id == socket.assigns.room.organization_id)),
@@ -1660,6 +1672,38 @@ defmodule RoundtableWeb.RoomLive do
     do:
       Enum.filter(runs, &(&1.status in ["running", "approval", "queued", "waiting_quota"]))
       |> Enum.reverse()
+
+  # What the room shows of a running turn between pieces of text: its step,
+  # how long the step and the turn have taken, and what is queued behind it.
+  defp activity_line(run, runs, activity, now) do
+    case activity[run.id] do
+      nil ->
+        nil
+
+      %{started_at: started, step: step} ->
+        waiting = Enum.count(runs, &(&1.agent_id == run.agent_id and &1.status == "queued"))
+
+        parts = [
+          step && "#{step.label} · #{elapsed(step.since, now)}",
+          "Turn running for #{elapsed(started, now)}",
+          waiting > 0 &&
+            "#{waiting} #{if waiting == 1, do: "message", else: "messages"} waiting; " <>
+              "#{run.agent.name} reads them when this turn ends"
+        ]
+
+        parts |> Enum.filter(& &1) |> Enum.join(" · ")
+    end
+  end
+
+  defp elapsed(since, now) do
+    minutes = div(max(DateTime.diff(now, since), 0), 60)
+
+    cond do
+      minutes < 1 -> "under a minute"
+      minutes < 60 -> "#{minutes} min"
+      true -> "#{div(minutes, 60)} h #{rem(minutes, 60)} min"
+    end
+  end
 
   defp status_label("waiting_quota"), do: "Waiting for quota"
   defp status_label(status), do: status

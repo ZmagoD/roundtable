@@ -54,6 +54,14 @@ defmodule Roundtable.Coordinator do
 
   def approvals, do: GenServer.call(__MODULE__, :approvals)
 
+  @doc """
+  Every running turn's start and current step, by run id.
+
+  A long tool call emits no text, and without this a busy participant looks
+  exactly like a stuck one.
+  """
+  def activity, do: GenServer.call(__MODULE__, :activity)
+
   @doc "Answers a teammate's approval as the team head the human allowed to."
   def answer_for(head_id, run_id, request_id, decision, reason),
     do: GenServer.call(__MODULE__, {:answer_for, head_id, run_id, request_id, decision, reason})
@@ -94,6 +102,15 @@ defmodule Roundtable.Coordinator do
   end
 
   def handle_call(:approvals, _, state), do: {:reply, state.approvals, state}
+
+  def handle_call(:activity, _, state) do
+    activity =
+      Map.new(state.workers, fn {run_id, worker} ->
+        {run_id, %{started_at: worker.started_at, step: worker[:activity]}}
+      end)
+
+    {:reply, activity, state}
+  end
 
   def handle_call({:stop, agent_id}, _, state) do
     state = cancel_agent(state, agent_id)
@@ -274,6 +291,13 @@ defmodule Roundtable.Coordinator do
   defp apply_event(state, run, _agent, {:output, text}) do
     Chat.change(run, output: String.slice(text, 0, 256_000))
     state
+  end
+
+  # Held here, not written down: the step is only true while this worker
+  # lives, and a restarted service has no turn running to describe.
+  defp apply_event(state, run, _agent, {:activity, label}) do
+    step = %{label: label, since: DateTime.utc_now()}
+    put_in(state.workers[run.id][:activity], step)
   end
 
   defp apply_event(state, run, _agent, {:tokens, attempt, tokens}) do
@@ -725,7 +749,8 @@ defmodule Roundtable.Coordinator do
             agent_id: agent.id,
             provider: agent.provider,
             role: agent.role,
-            directory: agent.directory
+            directory: agent.directory,
+            started_at: DateTime.utc_now()
           }
 
           %{state | workers: Map.put(state.workers, run.id, worker)}
