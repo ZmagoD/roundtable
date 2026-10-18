@@ -1676,22 +1676,25 @@ defmodule RoundtableWeb.RoomLive do
   # What the room shows of a running turn between pieces of text: its step,
   # how long the step and the turn have taken, and what is queued behind it.
   defp activity_line(run, runs, activity, now) do
-    case activity[run.id] do
-      nil ->
-        nil
+    with %{started_at: started, step: step} <- activity[run.id] do
+      parts = [
+        step && "#{step.label} · #{elapsed(step.since, now)}",
+        started && "Turn running for #{elapsed(started, now)}",
+        waiting_behind(run, runs)
+      ]
 
-      %{started_at: started, step: step} ->
-        waiting = Enum.count(runs, &(&1.agent_id == run.agent_id and &1.status == "queued"))
+      case Enum.filter(parts, & &1) do
+        [] -> nil
+        parts -> Enum.join(parts, " · ")
+      end
+    end
+  end
 
-        parts = [
-          step && "#{step.label} · #{elapsed(step.since, now)}",
-          "Turn running for #{elapsed(started, now)}",
-          waiting > 0 &&
-            "#{waiting} #{if waiting == 1, do: "message", else: "messages"} waiting; " <>
-              "#{run.agent.name} reads them when this turn ends"
-        ]
-
-        parts |> Enum.filter(& &1) |> Enum.join(" · ")
+  defp waiting_behind(run, runs) do
+    case Enum.count(runs, &(&1.agent_id == run.agent_id and &1.status == "queued")) do
+      0 -> nil
+      1 -> "1 message waiting; #{run.agent.name} reads it when this turn ends"
+      n -> "#{n} messages waiting; #{run.agent.name} reads them when this turn ends"
     end
   end
 

@@ -40,7 +40,7 @@ defmodule RoundtableWeb.RunActivityTest do
 
     line = render(view |> element("#run-activity-#{run.id}"))
     assert line =~ "Running a shell command: Run the test suite · under a minute"
-    assert line =~ "1 message waiting; ada reads them when this turn ends"
+    assert line =~ "1 message waiting; ada reads it when this turn ends"
   end
 
   test "a queued turn shows no activity line", %{conn: conn, room: room} do

@@ -106,7 +106,8 @@ defmodule Roundtable.Coordinator do
   def handle_call(:activity, _, state) do
     activity =
       Map.new(state.workers, fn {run_id, worker} ->
-        {run_id, %{started_at: worker.started_at, step: worker[:activity]}}
+        # Read loosely: a worker started before this code was loaded has neither.
+        {run_id, %{started_at: worker[:started_at], step: worker[:activity]}}
       end)
 
     {:reply, activity, state}

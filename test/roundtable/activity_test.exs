@@ -105,6 +105,16 @@ defmodule Roundtable.ActivityTest do
     assert step(run) == "Thinking"
   end
 
+  # The service reloads code under running turns; one started before has no
+  # start time, and asking about it must not take the Coordinator down.
+  test "a worker recorded without a start time is reported without one", %{run: run} do
+    :sys.replace_state(Coordinator, fn state ->
+      update_in(state.workers[run.id], &Map.delete(&1, :started_at))
+    end)
+
+    assert %{started_at: nil, step: nil} = Coordinator.activity()[run.id]
+  end
+
   test "a finished turn no longer reports activity", %{run: run} do
     Coordinator.event(run.id, {:activity, "Thinking"})
     Coordinator.event(run.id, {:done, "completed", nil})
