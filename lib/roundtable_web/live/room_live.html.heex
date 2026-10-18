@@ -1080,6 +1080,13 @@
           phx-submit="create-agent"
           phx-change="agent-draft"
         >
+          <p :if={@editing_agent} id="switch-context-note" class="form-note">
+            Changing provider or model starts a fresh native session on the next assignment.
+            Your identity, role, work document, notes and recent conversation carry over.
+            Hidden reasoning and provider-private context cannot transfer; older history may be omitted.
+            A provider change needs running and queued turns finished or stopped first,
+            including quota waits. Saving does not start a turn.
+          </p>
           <div class="form-row">
             <.input
               :if={@editing_renamable}
@@ -1099,7 +1106,13 @@
               type="select"
               options={
                 Enum.map(
-                  @providers,
+                  # A switch can only go somewhere that runs; adding a
+                  # participant may still name a CLI to install later.
+                  Enum.filter(
+                    @providers,
+                    &(is_nil(@editing_agent) or &1.installed or
+                        &1.id == @agent_form[:provider].value)
+                  ),
                   &{&1.label <> if(&1.installed, do: "", else: " · not installed"), &1.id}
                 )
               }

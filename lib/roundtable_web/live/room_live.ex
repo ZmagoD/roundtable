@@ -823,10 +823,18 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   def handle_event("agent-draft", %{"agent" => attrs}, socket) do
+    form = socket.assigns.agent_form
+
+    # Another provider's model name means nothing here, and neither does its
+    # approval setting — but a model typed in the same change is the user's.
     attrs =
-      if attrs["provider"] != socket.assigns.agent_form[:provider].value,
-        do: Map.put(attrs, "preset_id", ""),
-        else: attrs
+      if attrs["provider"] != form[:provider].value do
+        stale_model = attrs["model"] in [nil, form[:model].value]
+        attrs = Map.merge(attrs, %{"preset_id" => "", "auto_approve" => "false"})
+        if stale_model, do: Map.put(attrs, "model", ""), else: attrs
+      else
+        attrs
+      end
 
     {:noreply,
      assign(socket,

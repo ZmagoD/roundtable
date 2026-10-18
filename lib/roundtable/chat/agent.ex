@@ -15,6 +15,7 @@ defmodule Roundtable.Chat.Agent do
     # the rest. Set through Chat.set_team_head/1, never cast from a form.
     field :head, :boolean, default: false
     field :directory, :string
+    field :context_handover, :boolean, default: false
     field :session_id, :string
     field :session_model, :string
     # The folder the open session was started in. A turn resolving somewhere
@@ -44,7 +45,8 @@ defmodule Roundtable.Chat.Agent do
       )
     )
     |> update_change(:name, &String.downcase/1)
-    |> validate_required([:name])
+    |> validate_required([:name, :provider])
+    |> validate_inclusion(:provider, Roundtable.Agents.ids())
     |> refuse_rename(renamable?, attrs)
     |> validate_format(:name, ~r/^[a-z][a-z0-9_-]{0,29}$/)
     |> validate_exclusion(:name, ["you", "system", "all", "schedule"])
