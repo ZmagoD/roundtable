@@ -23,6 +23,77 @@ defmodule RoundtableWeb.RoomLiveTest do
     refute has_element?(view, "#xr-canvas")
   end
 
+  describe "who is waiting for you" do
+    setup do
+      {:ok, open} = Chat.create_room(%{name: "Open", directory: File.cwd!()})
+      {:ok, busy} = Chat.create_room(%{name: "Busy", directory: File.cwd!()})
+      {:ok, ada} = Chat.create_agent(busy.id, %{name: "ada", provider: "claude"})
+      {:ok, lead} = Chat.create_agent(busy.id, %{name: "lead", provider: "claude"})
+      %{open: open, busy: busy, ada: ada, lead: lead}
+    end
+
+    test "another room's link names who asked, and the asker's card says so", ctx do
+      {:ok, view, _} = live(ctx.conn, "/rooms/#{ctx.open.id}")
+      refute has_element?(view, "#room-waiting-#{ctx.busy.id}")
+
+      Chat.post(ctx.busy.id, "Which branch should I push to?",
+        sender: "ada",
+        agent_id: ctx.ada.id,
+        kind: "agent"
+      )
+
+      assert has_element?(
+               view,
+               "#room-waiting-#{ctx.busy.id}[aria-label='1 waiting: ada asked a question']"
+             )
+
+      {:ok, busy_view, _} = live(ctx.conn, "/rooms/#{ctx.busy.id}")
+
+      assert has_element?(
+               busy_view,
+               "#agent-#{ctx.ada.id} #waiting-#{ctx.ada.id}",
+               "Waiting for you"
+             )
+
+      refute has_element?(busy_view, "#waiting-#{ctx.lead.id}")
+      # The open room's own link carries no marker: its cards already say it.
+      refute has_element?(busy_view, "#room-waiting-#{ctx.busy.id}")
+
+      busy_view |> form("#message-form", message: %{body: "Push to main."}) |> render_submit()
+      refute has_element?(busy_view, "#waiting-#{ctx.ada.id}")
+      refute has_element?(view, "#room-waiting-#{ctx.busy.id}")
+    end
+
+    test "an approval marks the room and clears once it is answered", ctx do
+      Application.put_env(:roundtable, :agent_worker, Roundtable.TestWorker)
+      Application.put_env(:roundtable, :test_observer, self())
+      Application.put_env(:roundtable, :start_agents, true)
+
+      on_exit(fn ->
+        Application.put_env(:roundtable, :start_agents, false)
+        Application.delete_env(:roundtable, :agent_worker)
+        Application.delete_env(:roundtable, :test_observer)
+      end)
+
+      {:ok, view, _} = live(ctx.conn, "/rooms/#{ctx.open.id}")
+
+      Roundtable.Coordinator.post(ctx.busy.id, "@lead do work")
+      assert_receive {:agent_started, _pid, _, run, _}, 1000
+      Roundtable.Coordinator.event(run.id, {:approval, "req-1", %{"command" => "ls"}})
+      _ = :sys.get_state(Roundtable.Coordinator)
+
+      assert has_element?(
+               view,
+               "#room-waiting-#{ctx.busy.id}[title='1 waiting: lead needs approval']"
+             )
+
+      assert :ok = Roundtable.Coordinator.approve(run.id, "req-1", "accept")
+      assert_receive {:decision, "req-1", "accept"}, 1000
+      refute has_element?(view, "#room-waiting-#{ctx.busy.id}")
+      Roundtable.Coordinator.stop(ctx.lead.id)
+    end
+  end
+
   # Finishing a task deletes its checkout, and the room page still opens.
   test "a finished task room opens without a folder to read", %{conn: conn} do
     {:ok, room} = Chat.create_room(%{name: "Finished", directory: File.cwd!()})

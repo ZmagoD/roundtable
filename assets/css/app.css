@@ -857,6 +857,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
 /* Sub-rooms sit under the room that spun them off; the rule on the left keeps
    a deep chain readable where the indent alone would not. */
+/* Someone in a room is waiting on the human. Blue rather than the warm
+   warning pair: it is a turn to take, not something gone wrong. The marker
+   counts who; the card badge names it on the participant asking. */
+.waiting-marker { margin-left: auto; min-width: 16px; padding: 1px 5px; border-radius: 8px; font-size: 9px; font-weight: 600; text-align: center; flex-shrink: 0; color: var(--blue-mid-2); background: var(--blue-surface-3); }
+.waiting-badge { font-size: 8px; font-weight: 550; padding: 2px 5px; border-radius: 4px; white-space: nowrap; color: var(--blue-mid-2); background: var(--blue-surface-1); border: 1px solid var(--blue-surface-3); }
 .room-tree { list-style: none; margin: 0; padding: 0; }
 .room-tree.sub-rooms { margin-left: 14px; padding-left: 6px; border-left: 1px solid var(--line); }
 .sub-room-of { font-size: 11px; color: var(--neutral-mid-4); margin: 2px 0; }

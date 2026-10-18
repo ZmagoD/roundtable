@@ -48,6 +48,7 @@ defmodule RoundtableWeb.RoomLive do
        agent_form: to_form(%{}, as: :agent),
        runs: [],
        approvals: [],
+       waiting: %{},
        providers: Roundtable.Agents.providers(),
        model_options: [],
        directory_options: [],
@@ -990,11 +991,17 @@ defmodule RoundtableWeb.RoomLive do
   def handle_info(:rooms_updated, socket),
     do:
       {:noreply,
-       assign(socket,
+       socket
+       |> assign(
          rooms: teams_in(socket.assigns.organization_id),
          organizations: Chat.organizations(),
          model_presets: Chat.model_presets()
-       )}
+       )
+       |> assign_waiting()}
+
+  # Any room, not only the open one: the sidebar marks them all.
+  def handle_info({:waiting_changed, _room_id}, socket),
+    do: {:noreply, assign_waiting(socket)}
 
   defp run_command(socket, body) do
     case ComposerCommands.parse(body, socket.assigns.agents,
@@ -1105,10 +1112,11 @@ defmodule RoundtableWeb.RoomLive do
     do: socket |> assign(room: Chat.room!(socket.assigns.room.id)) |> refresh()
 
   defp refresh(%{assigns: %{room: nil}} = socket),
-    do: assign(socket, rooms: teams_in(socket.assigns.organization_id))
+    do: socket |> assign(rooms: teams_in(socket.assigns.organization_id)) |> assign_waiting()
 
   defp refresh(socket) do
     id = socket.assigns.room.id
+    approvals = Map.values(Coordinator.approvals())
 
     messages = Chat.messages_after(id, socket.assigns.last_message_id)
 
@@ -1135,11 +1143,19 @@ defmodule RoundtableWeb.RoomLive do
       organization:
         Enum.find(Chat.organizations(), &(&1.id == socket.assigns.room.organization_id)),
       approvals:
-        Coordinator.approvals()
-        |> Map.values()
+        approvals
         |> Enum.filter(&(&1.room_id == id))
         |> Enum.sort_by(&{&1.run_id, &1.request_id})
     )
+    |> assign_waiting(approvals)
+  end
+
+  # The open room is read too, though its link shows no marker: its cards do.
+  defp assign_waiting(socket, approvals \\ nil) do
+    room = socket.assigns.room
+    ids = Enum.uniq(Enum.map(socket.assigns.rooms, & &1.id) ++ List.wrap(room && room.id))
+    approvals = approvals || Map.values(Coordinator.approvals())
+    assign(socket, waiting: Chat.waiting(ids, approvals))
   end
 
   # The day's spend against the room's budget, as the header shows it: the
@@ -1430,6 +1446,7 @@ defmodule RoundtableWeb.RoomLive do
   attr :rooms, :list, required: true
   attr :parent_id, :integer, default: nil
   attr :current, :map, default: nil
+  attr :waiting, :map, default: %{}
 
   def room_tree(assigns) do
     assigns = assign(assigns, :level, level(assigns.rooms, assigns.parent_id))
@@ -1446,12 +1463,35 @@ defmodule RoundtableWeb.RoomLive do
           <span class="hash">#</span><span>{room.name}</span><span
             :if={@current && @current.id == room.id}
             class="selected-dot"
-          ></span>
+          ></span><span
+            :if={@waiting[room.id] && !(@current && @current.id == room.id)}
+            id={"room-waiting-#{room.id}"}
+            class="waiting-marker"
+            role="img"
+            aria-label={waiting_label(@waiting[room.id])}
+            title={waiting_label(@waiting[room.id])}
+          >{length(@waiting[room.id])}</span>
         </.link>
-        <.room_tree rooms={@rooms} parent_id={room.id} current={@current} />
+        <.room_tree rooms={@rooms} parent_id={room.id} current={@current} waiting={@waiting} />
       </li>
     </ul>
     """
+  end
+
+  # "2 waiting: lead needs approval, ada asked a question". A question is only
+  # ever "asked": it is read off a question mark, so it claims no more.
+  defp waiting_label(asking),
+    do: "#{length(asking)} waiting: " <> Enum.map_join(asking, ", ", &waiting_reasons/1)
+
+  defp waiting_reasons(%{name: name, reasons: reasons}),
+    do: "#{name} " <> Enum.map_join(reasons, " and ", &waiting_reason/1)
+
+  defp waiting_reason(:approval), do: "needs approval"
+  defp waiting_reason(:proposal), do: "has a request for you"
+  defp waiting_reason(:question), do: "asked a question"
+
+  defp waiting_for(waiting, room, agent) do
+    room && Enum.find(Map.get(waiting, room.id, []), &(&1.agent_id == agent.id))
   end
 
   defp level(rooms, nil) do
