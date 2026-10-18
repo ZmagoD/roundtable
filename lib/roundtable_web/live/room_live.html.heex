@@ -680,7 +680,7 @@
           <span class="welcome-label">ROUNDTABLE / LOCAL WORKSPACE</span><div class="welcome-symbol">
             ✳
           </div><h1>Your teams.<br />A shared place to work.</h1><p>
-            Say what you are working on. A team builder sets up the room with you in chat,<br />and asks before it changes anything.
+            Say what you are working on. Start with one head agent that delegates to one owner per task.<br />Task details are fetched on demand; routine results do not start another head turn.
           </p>
           <.form
             :if={builder = team_builder(@providers)}
@@ -785,7 +785,7 @@
               )
 
             "team" ->
-              "Describe the team’s goal and the roles you need, including a team lead if you want one. Submitting starts a team-builder agent that helps set up the room."
+              "Describe your goal. One head agent coordinates isolated tasks with one owner each. Results wait for on-demand review; questions still reach the head. You can request a multi-agent team explicitly."
 
             "models" ->
               "Save a model and its cost tier as a preset you can choose when assigning work. This is optional; provider defaults work without it."

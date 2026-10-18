@@ -21,6 +21,9 @@ defmodule Roundtable.Coordinator do
   def post(room_id, body, opts \\ []),
     do: GenServer.call(__MODULE__, {:post, room_id, body, opts})
 
+  def send_room_request(agent, target, kind, body),
+    do: GenServer.call(__MODULE__, {:send_room_request, agent, target, kind, body})
+
   def build_team(attrs), do: GenServer.call(__MODULE__, {:build_team, attrs})
 
   def stop(agent_id), do: GenServer.call(__MODULE__, {:stop, agent_id})
@@ -67,6 +70,11 @@ defmodule Roundtable.Coordinator do
   @impl true
   def handle_call({:post, room_id, body, opts}, _, state) do
     result = Chat.post(room_id, body, opts)
+    {:reply, result, schedule(state)}
+  end
+
+  def handle_call({:send_room_request, agent, target, kind, body}, _, state) do
+    result = Chat.send_room_request(agent, target, kind, body)
     {:reply, result, schedule(state)}
   end
 

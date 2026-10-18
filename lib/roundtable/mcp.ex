@@ -154,6 +154,21 @@ defmodule Roundtable.MCP do
           )
       },
       %{
+        name: "send_room_request",
+        description: "Send an explicit question/blocker (ask) or task (delegate). Questions wake the recipient and answers wake you. Delegated completion is recorded without waking you; retrieve detail on demand. Do not repeat this request as a mention in your final reply.",
+        inputSchema: object(%{
+          "room" => room_property(),
+          "participant" => string("Recipient name in that room."),
+          "kind" => %{type: "string", enum: ["ask", "delegate"]},
+          "body" => string("Bounded task with acceptance criteria, or explicit question/blocker.")
+        }, ["room", "participant", "kind", "body"])
+      },
+      %{
+        name: "read_task_detail",
+        description: "Retrieve a supervised child task's work document and up to 10 messages, capped at 2,000 characters each. Only its supervisor in the parent room may read it. Omit before_id for the latest page; use the first returned id for the previous page. Works after task cleanup.",
+        inputSchema: object(%{"room" => room_property(), "before_id" => %{type: "integer"}}, ["room"])
+      },
+      %{
         name: "list_rooms",
         description:
           "Every room in your project: its name, working directory, shared brief, and who is in it.",
@@ -436,6 +451,27 @@ defmodule Roundtable.MCP do
 
   def call(_agent, "read_room_history", _args),
     do: {:error, "Provide a positive before_id message id."}
+
+  def call(agent, "send_room_request", %{"kind" => kind, "body" => body, "participant" => name} = args)
+      when kind in ["ask", "delegate"] and is_binary(body) and is_binary(name) do
+    with {:ok, room} <- room(agent, args),
+         target when not is_nil(target) <- Enum.find(Chat.agents(room.id), &(&1.name == name)),
+         {:ok, request} <- Coordinator.send_room_request(agent, target, kind, body) do
+      {:ok, json(%{request_id: request.id, kind: request.kind, status: request.status})}
+    else
+      nil -> {:error, "No such participant in that room."}
+      error -> error
+    end
+  end
+
+  def call(_agent, "send_room_request", _args),
+    do: {:error, "Provide room, participant, kind (ask or delegate), and body."}
+
+  def call(agent, "read_task_detail", args) do
+    with {:ok, room} <- room(agent, args),
+         {:ok, detail} <- Chat.task_detail(agent, room, args["before_id"]),
+         do: {:ok, json(detail)}
+  end
 
   def call(agent, "list_rooms", _args),
     do: {:ok, json(Enum.map(Chat.rooms(Chat.room!(agent.room_id).organization_id), &room_view/1))}
