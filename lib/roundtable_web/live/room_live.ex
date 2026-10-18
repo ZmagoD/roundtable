@@ -23,6 +23,7 @@ defmodule RoundtableWeb.RoomLive do
        organizations: Chat.organizations(),
        organization_id: nil,
        rooms: teams_in(nil),
+       room_work: Chat.room_work_counts(),
        agents: [],
        provider_usage: Chat.provider_usage(),
        participant_tokens: %{},
@@ -53,7 +54,6 @@ defmodule RoundtableWeb.RoomLive do
        agent_form: to_form(%{}, as: :agent),
        runs: [],
        sub_room_runs: [],
-       watching: [],
        approvals: [],
        waiting: %{},
        providers: Roundtable.Agents.providers(),
@@ -75,8 +75,6 @@ defmodule RoundtableWeb.RoomLive do
   def handle_params(params, _, socket) do
     if connected?(socket) && socket.assigns.room,
       do: Phoenix.PubSub.unsubscribe(Roundtable.PubSub, "room:#{socket.assigns.room.id}")
-
-    socket = watch_sub_rooms(socket, [])
 
     room =
       case params["id"] do
@@ -1026,14 +1024,20 @@ defmodule RoundtableWeb.RoomLive do
     {:noreply, socket}
   end
 
-  # A sub-room made just now has to be watched before its first turn starts,
-  # or the card here would not hear about it.
+  def handle_info(:room_activity_updated, socket),
+    do:
+      {:noreply,
+       socket
+       |> assign(room_work: Chat.room_work_counts())
+       |> assign_sub_room_runs()}
+
   def handle_info(:rooms_updated, socket),
     do:
       {:noreply,
        socket
        |> assign(
          rooms: teams_in(socket.assigns.organization_id),
+         room_work: Chat.room_work_counts(),
          organizations: Chat.organizations(),
          model_presets: Chat.model_presets()
        )
@@ -1206,23 +1210,7 @@ defmodule RoundtableWeb.RoomLive do
 
   defp assign_sub_room_runs(socket) do
     ids = Chat.sub_room_ids(socket.assigns.room.id)
-
-    socket
-    |> watch_sub_rooms(ids)
-    |> assign(sub_room_runs: Chat.active_runs_in(ids))
-  end
-
-  # Every handler for a room's topic checks which room it is about or only
-  # refreshes, so listening to the sub-rooms' topics shows nothing of theirs
-  # here except the cards' activity.
-  defp watch_sub_rooms(socket, ids) do
-    if connected?(socket) do
-      watching = socket.assigns.watching
-      Enum.each(watching -- ids, &Phoenix.PubSub.unsubscribe(Roundtable.PubSub, "room:#{&1}"))
-      Enum.each(ids -- watching, &Chat.subscribe/1)
-    end
-
-    assign(socket, watching: ids)
+    assign(socket, sub_room_runs: Chat.active_runs_in(ids))
   end
 
   # The day's spend against the room's budget, as the header shows it: the
@@ -1532,6 +1520,7 @@ defmodule RoundtableWeb.RoomLive do
   attr :parent_id, :integer, default: nil
   attr :current, :map, default: nil
   attr :waiting, :map, default: %{}
+  attr :activity, :map, default: %{}
 
   def room_tree(assigns) do
     assigns = assign(assigns, :level, level(assigns.rooms, assigns.parent_id))
@@ -1556,8 +1545,24 @@ defmodule RoundtableWeb.RoomLive do
             aria-label={waiting_label(@waiting[room.id])}
             title={waiting_label(@waiting[room.id])}
           >{length(@waiting[room.id])}</span>
+          <span
+            :if={@activity[room.id]}
+            id={"room-activity-#{room.id}"}
+            class="room-activity"
+            data-state={@activity[room.id].state}
+            title={@activity[room.id].label}
+            aria-label={@activity[room.id].label}
+            role="status"
+            aria-atomic="true"
+          ><span aria-hidden="true">{@activity[room.id].text}</span></span>
         </.link>
-        <.room_tree rooms={@rooms} parent_id={room.id} current={@current} waiting={@waiting} />
+        <.room_tree
+          rooms={@rooms}
+          parent_id={room.id}
+          current={@current}
+          waiting={@waiting}
+          activity={@activity}
+        />
       </li>
     </ul>
     """

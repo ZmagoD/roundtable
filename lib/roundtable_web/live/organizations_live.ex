@@ -30,6 +30,9 @@ defmodule RoundtableWeb.OrganizationsLive do
   def handle_info(:rooms_updated, socket), do: {:noreply, refresh(socket)}
   def handle_info({:room_updated, _}, socket), do: {:noreply, refresh(socket)}
 
+  # The shared "rooms" topic also carries sidebar-only events this page ignores.
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   @impl true
   def handle_event("new-organization", _params, socket) do
     {:noreply,
