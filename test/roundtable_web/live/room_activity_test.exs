@@ -65,9 +65,17 @@ defmodule RoundtableWeb.RoomActivityTest do
          agent: agent
        } do
     {:ok, view, _} = live(conn, "/rooms/#{room.id}")
-    {:ok, child} = Chat.create_room(%{name: "Child", parent_id: room.id})
-    {:ok, grandchild} = Chat.create_room(%{name: "Grandchild", parent_id: child.id})
-    {:ok, member} = Chat.create_agent(grandchild.id, %{name: "nested", provider: "codex"})
+    {:ok, child} = Chat.create_room(%{name: "Child", directory: File.cwd!()}, parent_id: room.id)
+
+    {:ok, grandchild} =
+      Chat.create_room(%{name: "Grandchild", directory: File.cwd!()}, parent_id: child.id)
+
+    {:ok, member} =
+      Chat.create_agent(grandchild.id, %{
+        name: "nested",
+        provider: "codex"
+      })
+
     Coordinator.post(grandchild.id, "@nested private descendant task")
     assert_receive {:agent_started, _, _, _, _}, 1000
     sync(view)
@@ -98,7 +106,7 @@ defmodule RoundtableWeb.RoomActivityTest do
     [run] = Chat.runs(room.id)
     {:ok, view, _} = live(conn, "/rooms/#{room.id}")
     assert_activity(view, room, "queued", "1 queued")
-    Chat.change(run, status: "waiting_quota")
+    Chat.change(run, status: "waiting_quota", retry_at: DateTime.utc_now(:second))
     sync(view)
     assert_activity(view, room, "waiting_quota", "1 waiting for quota")
     Chat.post(room.id, "@worker another task")

@@ -54,7 +54,6 @@ defmodule RoundtableWeb.RoomLive do
        agent_form: to_form(%{}, as: :agent),
        runs: [],
        sub_room_runs: [],
-       watching: [],
        approvals: [],
        waiting: %{},
        providers: Roundtable.Agents.providers(),
@@ -76,8 +75,6 @@ defmodule RoundtableWeb.RoomLive do
   def handle_params(params, _, socket) do
     if connected?(socket) && socket.assigns.room,
       do: Phoenix.PubSub.unsubscribe(Roundtable.PubSub, "room:#{socket.assigns.room.id}")
-
-    socket = watch_sub_rooms(socket, [])
 
     room =
       case params["id"] do
@@ -1028,7 +1025,11 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   def handle_info(:room_activity_updated, socket),
-    do: {:noreply, assign(socket, room_work: Chat.room_work_counts())}
+    do:
+      {:noreply,
+       socket
+       |> assign(room_work: Chat.room_work_counts())
+       |> assign_sub_room_runs()}
 
   def handle_info(:rooms_updated, socket),
     do:
@@ -1209,23 +1210,7 @@ defmodule RoundtableWeb.RoomLive do
 
   defp assign_sub_room_runs(socket) do
     ids = Chat.sub_room_ids(socket.assigns.room.id)
-
-    socket
-    |> watch_sub_rooms(ids)
-    |> assign(sub_room_runs: Chat.active_runs_in(ids))
-  end
-
-  # Every handler for a room's topic checks which room it is about or only
-  # refreshes, so listening to the sub-rooms' topics shows nothing of theirs
-  # here except the cards' activity.
-  defp watch_sub_rooms(socket, ids) do
-    if connected?(socket) do
-      watching = socket.assigns.watching
-      Enum.each(watching -- ids, &Phoenix.PubSub.unsubscribe(Roundtable.PubSub, "room:#{&1}"))
-      Enum.each(ids -- watching, &Chat.subscribe/1)
-    end
-
-    assign(socket, watching: ids)
+    assign(socket, sub_room_runs: Chat.active_runs_in(ids))
   end
 
   # The day's spend against the room's budget, as the header shows it: the
