@@ -40,6 +40,33 @@ defmodule Roundtable.DataCase do
   def setup_sandbox(tags) do
     pid = Sandbox.start_owner!(Roundtable.Repo, shared: not tags[:async])
     on_exit(fn -> Sandbox.stop_owner(pid) end)
+    # Registered last so it runs first, while the sandbox owner is still alive.
+    on_exit(&stop_workers/0)
+  end
+
+  # The Coordinator outlives every test and rolled-back rows hand their ids to
+  # the next test's agents, so a worker left running by one test counts as
+  # "busy" for an unrelated agent with the same id, or holds one of the
+  # service's worker slots, and the next test's turn never starts.
+  defp stop_workers do
+    pids =
+      Roundtable.AgentSupervisor
+      |> DynamicSupervisor.which_children()
+      |> Enum.map(fn {_, pid, _, _} -> pid end)
+
+    for pid <- pids do
+      ref = Process.monitor(pid)
+      DynamicSupervisor.terminate_child(Roundtable.AgentSupervisor, pid)
+
+      receive do
+        {:DOWN, ^ref, _, _, _} -> :ok
+      end
+    end
+
+    # Its :DOWN messages are handled in order, so this returns once it has
+    # forgotten every worker.
+    _ = :sys.get_state(Roundtable.Coordinator)
+    :ok
   end
 
   @doc """
