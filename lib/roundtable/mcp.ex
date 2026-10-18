@@ -155,18 +155,26 @@ defmodule Roundtable.MCP do
       },
       %{
         name: "send_room_request",
-        description: "Send an explicit question/blocker (ask) or task (delegate). Questions wake the recipient and answers wake you. Delegated completion is recorded without waking you; retrieve detail on demand. Do not repeat this request as a mention in your final reply.",
-        inputSchema: object(%{
-          "room" => room_property(),
-          "participant" => string("Recipient name in that room."),
-          "kind" => %{type: "string", enum: ["ask", "delegate"]},
-          "body" => string("Bounded task with acceptance criteria, or explicit question/blocker.")
-        }, ["room", "participant", "kind", "body"])
+        description:
+          "Send an explicit question/blocker (ask) or task (delegate). Questions wake the recipient and answers wake you. Delegated completion is recorded without waking you; retrieve detail on demand. Do not repeat this request as a mention in your final reply.",
+        inputSchema:
+          object(
+            %{
+              "room" => room_property(),
+              "participant" => string("Recipient name in that room."),
+              "kind" => %{type: "string", enum: ["ask", "delegate"]},
+              "body" =>
+                string("Bounded task with acceptance criteria, or explicit question/blocker.")
+            },
+            ["room", "participant", "kind", "body"]
+          )
       },
       %{
         name: "read_task_detail",
-        description: "Retrieve a supervised child task's work document and up to 10 messages, capped at 2,000 characters each. Only its supervisor in the parent room may read it. Omit before_id for the latest page; use the first returned id for the previous page. Works after task cleanup.",
-        inputSchema: object(%{"room" => room_property(), "before_id" => %{type: "integer"}}, ["room"])
+        description:
+          "Retrieve a supervised child task's work document and up to 10 messages, capped at 2,000 characters each. Only its supervisor in the parent room may read it. Omit before_id for the latest page; use the first returned id for the previous page. Works after task cleanup.",
+        inputSchema:
+          object(%{"room" => room_property(), "before_id" => %{type: "integer"}}, ["room"])
       },
       %{
         name: "list_rooms",
@@ -452,7 +460,11 @@ defmodule Roundtable.MCP do
   def call(_agent, "read_room_history", _args),
     do: {:error, "Provide a positive before_id message id."}
 
-  def call(agent, "send_room_request", %{"kind" => kind, "body" => body, "participant" => name} = args)
+  def call(
+        agent,
+        "send_room_request",
+        %{"kind" => kind, "body" => body, "participant" => name} = args
+      )
       when kind in ["ask", "delegate"] and is_binary(body) and is_binary(name) do
     with {:ok, room} <- room(agent, args),
          target when not is_nil(target) <- Enum.find(Chat.agents(room.id), &(&1.name == name)),

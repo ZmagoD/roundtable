@@ -1827,62 +1827,96 @@ defmodule Roundtable.Chat do
     Repo.transaction(fn ->
       case Repo.get_by(CrossRoomRequest, to_message_id: to_message_id, status: "delivered") do
         nil -> :ok
-        request ->
-          request = Repo.preload(request, [:to_room, :to_agent, :from_message, :from_agent])
-          change(request, status: "answered", answer: answer)
-          source = "#{room_slug(request.to_room)}/#{request.to_agent.name}"
-
-          {body, type} =
-            if request.kind == "delegate" do
-              {"Task result available from #{source} (request #{request.id}). Use read_task_detail for details.", "result"}
-            else
-              mention = if request.from_agent, do: "@#{request.from_agent.name} ", else: ""
-              {"#{mention}— answer from #{source}:\n\n#{answer}", "answer"}
-            end
-
-          {:ok, _} = post(request.from_room_id, body,
-            sender: source, kind: "agent", depth: request.from_message.depth + 1,
-            metadata: %{"cross_room" => type, "request_id" => request.id})
-          :ok
+        request -> record_answer(request, answer)
       end
     end)
+
     :ok
+  end
+
+  defp record_answer(request, answer) do
+    request = Repo.preload(request, [:to_room, :to_agent, :from_message, :from_agent])
+    change(request, status: "answered", answer: answer)
+    source = "#{room_slug(request.to_room)}/#{request.to_agent.name}"
+    {body, type} = answer_notice(request, source, answer)
+
+    {:ok, _} =
+      post(request.from_room_id, body,
+        sender: source,
+        kind: "agent",
+        depth: request.from_message.depth + 1,
+        metadata: %{"cross_room" => type, "request_id" => request.id}
+      )
+
+    :ok
+  end
+
+  # A delegated result is a compact notice, not a message to the requester, so
+  # routine completion never starts a turn; asks mention the asker to wake it.
+  defp answer_notice(%{kind: "delegate"} = request, source, _answer) do
+    {"Task result available from #{source} (request #{request.id}). Use read_task_detail for details.",
+     "result"}
+  end
+
+  defp answer_notice(request, source, answer) do
+    mention = if request.from_agent, do: "@#{request.from_agent.name} ", else: ""
+    {"#{mention}— answer from #{source}:\n\n#{answer}", "answer"}
   end
 
   @doc "Sends an explicitly typed request from the caller's active assignment."
   def send_room_request(agent, target, kind, body) do
-    with run when not is_nil(run) <- turn_in_progress(agent.id) do
-      source = Repo.get!(Message, run.message_id)
-      target_room = room!(target.room_id)
-      caller_room = room!(agent.room_id)
+    target_room = room!(target.room_id)
 
-      if target_room.organization_id == caller_room.organization_id do
-        Repo.transaction(fn ->
-          message = insert_message(agent.room_id, "Sent #{kind} request to #{room_slug(target_room)}/#{target.name}.",
-            sender: agent.name, agent_id: agent.id, kind: "agent", depth: source.depth,
-            metadata: %{"cross_room" => "outgoing"})
-          case request(kind, message, target_room, target, body) do
-            {:ok, request} -> request
-            {:error, reason} -> Repo.rollback(reason)
-          end
-        end)
-      else
-        {:error, "The participant must be in your project."}
-      end
-    else
-      _ -> {:error, "Send requests during an active turn."}
+    case turn_in_progress(agent.id) do
+      nil -> {:error, "Send requests during an active turn."}
+      run -> insert_typed_request(agent, target, target_room, run, kind, body)
     end
   end
+
+  defp insert_typed_request(agent, target, target_room, run, kind, body) do
+    if target_room.organization_id == room!(agent.room_id).organization_id do
+      source = Repo.get!(Message, run.message_id)
+
+      Repo.transaction(fn ->
+        message =
+          insert_message(
+            agent.room_id,
+            "Sent #{kind} request to #{room_slug(target_room)}/#{target.name}.",
+            sender: agent.name,
+            agent_id: agent.id,
+            kind: "agent",
+            depth: source.depth,
+            metadata: %{"cross_room" => "outgoing"}
+          )
+
+        unwrap_request(request(kind, message, target_room, target, body))
+      end)
+    else
+      {:error, "The participant must be in your project."}
+    end
+  end
+
+  defp unwrap_request({:ok, request}), do: request
+  defp unwrap_request({:error, reason}), do: Repo.rollback(reason)
 
   @doc "Bounded child history for its supervisor, including finished tasks."
   def task_detail(agent, room, before_id) do
     caller_room = room!(agent.room_id)
+
     if room.parent_id == agent.room_id and room.checkout_supervisor_id == agent.id and
          room.organization_id == caller_room.organization_id do
-      before_id = before_id || ((Repo.one(from m in Message, where: m.room_id == ^room.id, select: max(m.id)) || 0) + 1)
+      before_id =
+        before_id ||
+          (Repo.one(from m in Message, where: m.room_id == ^room.id, select: max(m.id)) || 0) + 1
+
       if is_integer(before_id) and before_id > 0 do
-        {:ok, %{room_id: room.id, finished: room.checkout_finished,
-          work_document: work_document(room.id), messages: context_messages(room.id, before_id)}}
+        {:ok,
+         %{
+           room_id: room.id,
+           finished: room.checkout_finished,
+           work_document: work_document(room.id),
+           messages: context_messages(room.id, before_id)
+         }}
       else
         {:error, "Provide a positive before_id message id."}
       end
@@ -1928,8 +1962,10 @@ defmodule Roundtable.Chat do
       else
         room.id
         |> messages_after(agent.last_seen_id)
-        |> Enum.reject(&(&1.sender == "system" or &1.metadata["cross_room"] == "result" or
-          (resumed and &1.sender == agent.name)))
+        |> Enum.reject(
+          &(&1.sender == "system" or &1.metadata["cross_room"] == "result" or
+              (resumed and &1.sender == agent.name))
+        )
         |> recent_unread()
       end
 

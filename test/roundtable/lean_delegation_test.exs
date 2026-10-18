@@ -5,11 +5,24 @@ defmodule Roundtable.LeanDelegationTest do
   alias Roundtable.Chat.{CrossRoomRequest, Run}
 
   setup do
-    {:ok, parent} = Chat.build_team(%{name: "Head", directory: File.cwd!(), provider: "codex", context: "Ship changes"})
+    {:ok, parent} =
+      Chat.build_team(%{
+        name: "Head",
+        directory: File.cwd!(),
+        provider: "codex",
+        context: "Ship changes"
+      })
+
     [head] = Chat.agents(parent.id)
     [run] = Chat.runs(parent.id)
     Chat.change(run, status: "running")
-    {:ok, child} = Chat.create_room(%{name: "Task", directory: File.cwd!()}, parent_id: parent.id, supervisor_id: head.id)
+
+    {:ok, child} =
+      Chat.create_room(%{name: "Task", directory: File.cwd!()},
+        parent_id: parent.id,
+        supervisor_id: head.id
+      )
+
     {:ok, owner} = Chat.create_agent(child.id, %{name: "owner", provider: "codex"})
     %{parent: parent, head: head, child: child, owner: owner, run: run}
   end
@@ -28,7 +41,14 @@ defmodule Roundtable.LeanDelegationTest do
   end
 
   test "typed task completes durably once without a head turn or transcript injection", ctx do
-    assert {:ok, _} = MCP.call(ctx.head, "send_room_request", %{"room" => "Task", "participant" => "owner", "kind" => "delegate", "body" => "Implement TASK-9"})
+    assert {:ok, _} =
+             MCP.call(ctx.head, "send_room_request", %{
+               "room" => "Task",
+               "participant" => "owner",
+               "kind" => "delegate",
+               "body" => "Implement TASK-9"
+             })
+
     [request] = Repo.all(CrossRoomRequest)
     assert request.kind == "delegate"
     assert [%Run{agent_id: id}] = Chat.runs(ctx.child.id)
@@ -55,7 +75,15 @@ defmodule Roundtable.LeanDelegationTest do
     {:ok, message} = Chat.post(ctx.child.id, "Start task")
     child_run = Repo.get_by!(Run, message_id: message.id)
     Chat.change(child_run, status: "running")
-    assert {:ok, _} = MCP.call(ctx.owner, "send_room_request", %{"room" => "Head", "participant" => "team-builder", "kind" => "ask", "body" => "Blocked: choose the schema"})
+
+    assert {:ok, _} =
+             MCP.call(ctx.owner, "send_room_request", %{
+               "room" => "Head",
+               "participant" => "team-builder",
+               "kind" => "ask",
+               "body" => "Blocked: choose the schema"
+             })
+
     [request] = Repo.all(CrossRoomRequest)
     assert request.kind == "ask"
     assert length(Chat.runs(ctx.parent.id)) == 2
@@ -67,19 +95,29 @@ defmodule Roundtable.LeanDelegationTest do
 
   test "child detail is bounded, paginated and scoped to its supervisor", ctx do
     for n <- 1..12 do
-      Chat.post(ctx.child.id, "Evidence #{n}: " <> String.duplicate("e", 2100), kind: "agent", sender: "owner")
+      Chat.post(ctx.child.id, "Evidence #{n}: " <> String.duplicate("e", 2100),
+        kind: "agent",
+        sender: "owner"
+      )
     end
+
     assert {:ok, text} = MCP.call(ctx.head, "read_task_detail", %{"room" => "Task"})
     detail = Jason.decode!(text)
     assert length(detail["messages"]) == 10
     assert Enum.all?(detail["messages"], &(String.length(&1["body"]) == 2000 and &1["truncated"]))
     first = hd(detail["messages"])["id"]
-    assert {:ok, older} = MCP.call(ctx.head, "read_task_detail", %{"room" => "Task", "before_id" => first})
+
+    assert {:ok, older} =
+             MCP.call(ctx.head, "read_task_detail", %{"room" => "Task", "before_id" => first})
+
     assert length(Jason.decode!(older)["messages"]) == 2
     assert {:error, _} = MCP.call(ctx.owner, "read_task_detail", %{"room" => "Head"})
     {:ok, other} = Chat.create_agent(ctx.parent.id, %{name: "other", provider: "codex"})
     assert {:error, _} = MCP.call(other, "read_task_detail", %{"room" => "Task"})
-    assert {:error, _} = MCP.call(ctx.head, "read_task_detail", %{"room" => "Task", "before_id" => -1})
+
+    assert {:error, _} =
+             MCP.call(ctx.head, "read_task_detail", %{"room" => "Task", "before_id" => -1})
+
     Chat.change(ctx.child, checkout_finished: true)
     assert {:ok, _} = MCP.call(ctx.head, "read_task_detail", %{"room" => "Task"})
   end
@@ -88,12 +126,16 @@ defmodule Roundtable.LeanDelegationTest do
     Application.put_env(:roundtable, :agent_worker, Roundtable.TestWorker)
     Application.put_env(:roundtable, :test_observer, self())
     Application.put_env(:roundtable, :start_agents, true)
+
     on_exit(fn ->
       Application.put_env(:roundtable, :start_agents, false)
       Application.delete_env(:roundtable, :agent_worker)
       Application.delete_env(:roundtable, :test_observer)
     end)
-    assert {:ok, _} = Coordinator.send_room_request(ctx.head, ctx.owner, "delegate", "Implement the task")
+
+    assert {:ok, _} =
+             Coordinator.send_room_request(ctx.head, ctx.owner, "delegate", "Implement the task")
+
     assert_receive {:agent_started, _, owner, run, _}, 1000
     assert owner.id == ctx.owner.id
     Coordinator.event(run.id, {:output, "Done. Full evidence remains here."})
