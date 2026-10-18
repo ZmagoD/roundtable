@@ -220,14 +220,24 @@ remote, so agents can commit and push the task branch using their normal Git
 credentials. No remote is created and no push happens merely by creating a room.
 Multiple agents in one task room share that room's checkout.
 
-After the subagent reports completion, the captain calls `finish_task` from its
-own room. The browser also has **Finish task and remove copy**. Finishing requires
-no queued, running, approval-waiting or quota-waiting turns, a clean working tree,
-and the task branch's exact HEAD verified on its original remote. It removes
-only the owned clone; it keeps the room history, remote branch and original
-project. A finished room cannot launch more work. A failed push, dirty tree or
-failed ownership check leaves the copy in place. Finish a task before deleting
-its room. Pushes and cleanup do not merge the branch into the original project.
+A task is done only on evidence, never because it is idle or an agent says so.
+The captain (or the human) records what was reviewed with `accept_task`: the
+final commit, the PR number, the precommit result and the parent's completion
+policy. `check_task` (the browser's **Check completion**) then re-reads git and
+GitHub and says what blocks it; `finish_task` (**Finish task and remove copy**)
+repeats the same check. It requires the PR to be merged into `main` with that
+exact commit, every required check to pass, a clean checkout whose HEAD is the
+reviewed commit (so nothing unpushed or added after the merge), and no queued,
+running, approval-waiting or quota-waiting turns, open requests or descendant
+rooms. Unavailable GitHub evidence blocks; it never means done.
+
+Once verified, the PR, merge and check summary is written to the parent room, the
+task is sealed against new posts, participants and child rooms, and only the
+owned clone is removed. With `remove_room` the task room goes too, never the
+parent or the original project. The audit survives a failed cleanup and a
+restart; running `finish_task` again continues it. Passing `automatic` when
+accepting lets Roundtable close that one task itself once the evidence holds;
+rooms without it are never closed by the clock.
 
 Storage defaults to `~/.local/share/roundtable/checkouts`, with at most eight
 retained copies. Configure `:task_checkout_root` and `:task_checkout_limit` under

@@ -38,6 +38,9 @@ defmodule Roundtable.Coordinator do
   @doc "Stops every participant in a room, then removes the room and its history."
   def finish_task(room_id), do: GenServer.call(__MODULE__, {:finish_task, room_id}, :infinity)
 
+  @doc "Finishes every task room the human opted into automatic closing, if its evidence holds."
+  def close_tasks, do: GenServer.call(__MODULE__, :close_tasks, :infinity)
+
   def remove_room(room_id), do: GenServer.call(__MODULE__, {:remove_room, room_id})
 
   def approve(run_id, request_id, decision),
@@ -111,6 +114,13 @@ defmodule Roundtable.Coordinator do
 
   def handle_call({:finish_task, room_id}, _, state) do
     {:reply, Chat.finish_task(room_id), state}
+  end
+
+  def handle_call(:close_tasks, _, state) do
+    # Each room is verified from fresh evidence; one blocked room never stops
+    # the others, and a failed attempt simply waits for the next tick.
+    results = Enum.map(Chat.automatic_task_ids(), &{&1, Chat.finish_task(&1)})
+    {:reply, results, state}
   end
 
   def handle_call({:remove_room, room_id}, _, state) do

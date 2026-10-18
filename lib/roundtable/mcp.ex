@@ -203,9 +203,48 @@ defmodule Roundtable.MCP do
           )
       },
       %{
+        name: "accept_task",
+        description:
+          "Record, as the task's parent supervisor, the evidence that a task room's final commit " <>
+            "was reviewed: its exact commit, PR number, the precommit result and the parent's " <>
+            "completion policy. This is a record, not a close: finish_task still verifies the " <>
+            "merge, required checks and a clean checkout itself.",
+        inputSchema:
+          object(
+            %{
+              "room" => room_property(),
+              "sha" => string("The full 40 character commit that was reviewed."),
+              "pr" => %{"type" => "integer", "description" => "The GitHub pull request number."},
+              "precommit" => string("The last lines of mix precommit for that commit."),
+              "policy" => string("The parent's completion policy, such as main synchronised."),
+              "sync_main" => %{
+                "type" => "boolean",
+                "description" =>
+                  "Also require the clean parent checkout to be on the merged main."
+              },
+              "automatic" => %{
+                "type" => "boolean",
+                "description" =>
+                  "Let Roundtable close this one task by itself once the evidence holds."
+              },
+              "remove_room" => %{
+                "type" => "boolean",
+                "description" => "Remove the task room after its result is kept in the parent."
+              }
+            },
+            ["room", "sha", "pr", "precommit", "policy"]
+          )
+      },
+      %{
+        name: "check_task",
+        description:
+          "Check whether a task room is done, from fresh git and GitHub evidence only. Changes nothing; says what blocks it.",
+        inputSchema: object(%{"room" => room_property()})
+      },
+      %{
         name: "finish_task",
         description:
-          "Finish an idle task room after its agents have committed and pushed. Verifies the remote branch before removing only its managed clone. History remains. Call from the parent room after the task's turns finish.",
+          "Finish a task room whose recorded acceptance still holds: its PR is merged into main with the reviewed commit, required checks passed, nothing is running or left unpushed. Keeps the result in the parent room, removes only the managed clone and, if asked, the task room. Call from the parent room.",
         inputSchema: object(%{"room" => room_property()})
       },
       %{
@@ -477,12 +516,31 @@ defmodule Roundtable.MCP do
     end
   end
 
+  def call(agent, "accept_task", args) do
+    with {:ok, room} <- room(agent, args),
+         evidence = Map.take(args, ~w(sha pr precommit policy sync_main automatic remove_room)),
+         {:ok, accepted} <- Chat.accept_task(room.id, evidence, agent) do
+      done(agent, "recorded acceptance of #{accepted.name} at #{evidence["sha"]}.")
+    end
+  end
+
+  def call(agent, "check_task", args) do
+    with {:ok, room} <- room(agent, args),
+         {:ok, summary} <- Chat.check_task(room.id) do
+      done(
+        agent,
+        "task #{room.name} is done: #{summary["url"]} merged as #{summary["merge_sha"]}, " <>
+          "required checks passed. finish_task will close it."
+      )
+    end
+  end
+
   def call(agent, "finish_task", args) do
     with {:ok, room} <- room(agent, args),
          {:ok, finished} <- Coordinator.finish_task(room.id) do
       done(
         agent,
-        "finished task #{finished.name}. Its managed copy was removed; its history remains."
+        "finished task #{finished["name"]}. Its managed copy was removed; the result stays in the parent room."
       )
     end
   end

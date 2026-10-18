@@ -123,7 +123,11 @@ defmodule Roundtable.TaskCheckouts do
          {:ok, ""} <- git(record["path"], ["status", "--porcelain"]),
          false <- File.exists?(quarantine),
          :ok <- File.rename(record["path"], quarantine),
-         :ok <- File.write(manifest(record["id"]), Jason.encode!(Map.put(record, "cleanup_head", head))) do
+         :ok <-
+           File.write(
+             manifest(record["id"]),
+             Jason.encode!(Map.put(record, "cleanup_head", head))
+           ) do
       verify_quarantine(record, quarantine, head)
     else
       _ -> {:error, "The checkout changed or cleanup could not start. Work was preserved."}
@@ -134,8 +138,16 @@ defmodule Roundtable.TaskCheckouts do
     with {:ok, %{type: :directory}} <- File.lstat(quarantine),
          {:ok, ^head} <- git(quarantine, ["rev-parse", "HEAD"]),
          {:ok, ""} <- git(quarantine, ["status", "--porcelain"]),
-         :ok <- File.write(manifest(record["id"]), Jason.encode!(Map.merge(record,
-           %{"cleanup_head" => head, "cleanup_verified" => true}))) do
+         :ok <-
+           File.write(
+             manifest(record["id"]),
+             Jason.encode!(
+               Map.merge(
+                 record,
+                 %{"cleanup_head" => head, "cleanup_verified" => true}
+               )
+             )
+           ) do
       remove_quarantine(quarantine)
     else
       _ -> {:error, "Cleanup paused: inspect the preserved .closing checkout for new work."}
@@ -144,13 +156,17 @@ defmodule Roundtable.TaskCheckouts do
 
   defp remove_quarantine(path) do
     case File.lstat(path) do
-      {:error, :enoent} -> :ok
+      {:error, :enoent} ->
+        :ok
+
       {:ok, %{type: :directory}} ->
         case File.rm_rf(path) do
           {:ok, _} -> :ok
           _ -> {:error, "Checkout cleanup failed; its audit is retained. Retry to continue."}
         end
-      _ -> {:error, "The cleanup folder was replaced. It was left in place."}
+
+      _ ->
+        {:error, "The cleanup folder was replaced. It was left in place."}
     end
   end
 
@@ -201,11 +217,12 @@ defmodule Roundtable.TaskCheckouts do
   defp capacity do
     limit = Application.get_env(:roundtable, :task_checkout_limit, 8)
 
-    if length(Enum.reject(Path.wildcard(Path.join(root(), "*.json")), &completed_manifest?/1)) < limit,
-      do: :ok,
-      else:
-        {:error,
-         "The #{limit} task checkout slots are in use. Finish a task before starting another."}
+    if length(Enum.reject(Path.wildcard(Path.join(root(), "*.json")), &completed_manifest?/1)) <
+         limit,
+       do: :ok,
+       else:
+         {:error,
+          "The #{limit} task checkout slots are in use. Finish a task before starting another."}
   end
 
   defp completed_manifest?(path) do
