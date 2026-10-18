@@ -918,7 +918,7 @@ defmodule Roundtable.Chat do
       insert_message(
         room.parent_id,
         "Task #{room.name} verified: #{summary["url"]}. " <>
-          "Reviewed #{summary["sha"]}; merged #{summary["merge_sha"]}. Required checks passed. Cleanup pending.",
+          "Reviewed #{summary["sha"]}; merged #{summary["merge_sha"]}. All PR checks passed. Cleanup pending.",
         kind: "system",
         sender: "task checker",
         metadata: %{"task_completion" => summary, "closure_id" => audit.id}
@@ -976,7 +976,7 @@ defmodule Roundtable.Chat do
         change(message,
           body:
             "Task #{summary["name"]}: #{summary["url"]}. " <>
-              "Reviewed #{summary["sha"]}; merged #{summary["merge_sha"]}. Required checks passed. #{status}"
+              "Reviewed #{summary["sha"]}; merged #{summary["merge_sha"]}. All PR checks passed. #{status}"
         )
     end
   end

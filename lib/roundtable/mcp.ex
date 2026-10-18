@@ -231,7 +231,7 @@ defmodule Roundtable.MCP do
           "Record, as the task's parent supervisor, the evidence that a task room's final commit " <>
             "was reviewed: its exact commit, PR number, the precommit result and the parent's " <>
             "completion policy. This is a record, not a close: finish_task still verifies the " <>
-            "merge, required checks and a clean checkout itself.",
+            "merge, the PR checks and a clean checkout itself.",
         inputSchema:
           object(
             %{
@@ -267,7 +267,7 @@ defmodule Roundtable.MCP do
       %{
         name: "finish_task",
         description:
-          "Finish a task room whose recorded acceptance still holds: its PR is merged into main with the reviewed commit, required checks passed, nothing is running or left unpushed. Keeps the result in the parent room, removes only the managed clone and, if asked, the task room. Call from the parent room.",
+          "Finish a task room whose recorded acceptance still holds: its PR is merged into main with the reviewed commit, all its checks passed, nothing is running or left unpushed. Keeps the result in the parent room, removes only the managed clone and, if asked, the task room. Call from the parent room.",
         inputSchema: object(%{"room" => room_property()})
       },
       %{
@@ -578,7 +578,7 @@ defmodule Roundtable.MCP do
       done(
         agent,
         "task #{room.name} is done: #{summary["url"]} merged as #{summary["merge_sha"]}, " <>
-          "required checks passed. finish_task will close it."
+          "all checks passed. finish_task will close it."
       )
     end
   end

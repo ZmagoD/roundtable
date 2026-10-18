@@ -24,7 +24,9 @@ defmodule Roundtable.TaskCompletion do
                to_string(review["pr"]),
                "--repo",
                repo,
-               "--required",
+               # Every check on the PR, not only required ones: a repository
+               # without branch protection has none required, and that must
+               # not read as "nothing to wait for" or as an error.
                "--json",
                "name,bucket,link"
              ],
@@ -80,7 +82,7 @@ defmodule Roundtable.TaskCompletion do
   def verify_checks(checks) do
     ensure(
       is_list(checks) and checks != [] and Enum.all?(checks, &(&1["bucket"] == "pass")),
-      "Required checks are missing, pending or unsuccessful."
+      "The PR checks are missing, pending or unsuccessful."
     )
   end
 

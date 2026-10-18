@@ -556,7 +556,7 @@ defmodule RoundtableWeb.RoomLive do
          put_flash(
            socket,
            :info,
-           "This task is done: #{summary["url"]} is merged and its required checks passed. " <>
+           "This task is done: #{summary["url"]} is merged and all its checks passed. " <>
              "Close it to keep the result in the parent room and remove the copy."
          )}
 

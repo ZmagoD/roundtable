@@ -112,7 +112,7 @@
               class="button secondary"
               phx-click="check-task"
               phx-disable-with="Checking GitHub…"
-              title="Check the merge, required checks and checkout without changing anything"
+              title="Check the merge, the PR checks and checkout without changing anything"
             >Check completion</button>
             <button
               :if={@room.checkout_id && not @room.checkout_finished}
