@@ -506,6 +506,7 @@ a { text-decoration: none; color: inherit; }
 .room-header { height: 120px; padding: 26px 34px; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); background: var(--neutral-surface-1); gap: 20px; }
 .eyebrow { color: var(--neutral-mid-5); font-size: 9px; font-weight: 650; letter-spacing: 1.8px; }
 h1, h2, h3, p { margin: 0; }
+.accept-form { padding: 18px 34px; border-bottom: 1px solid var(--line); background: var(--neutral-surface-1); display: grid; gap: 10px; max-width: 720px; }
 .room-header h1 { font-size: 22px; font-weight: 620; letter-spacing: -.7px; margin: 7px 0 6px; }
 .room-header h1 span { color: var(--green-soft-2); font-weight: 400; margin-right: 5px; }
 .room-header p { color: var(--neutral-mid-7); font-size: 10px; font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; max-width: 45vw; white-space: nowrap; }

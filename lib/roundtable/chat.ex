@@ -844,8 +844,13 @@ defmodule Roundtable.Chat do
 
   defp may_accept?(_room, :human), do: true
 
-  defp may_accept?(room, %Agent{} = agent),
-    do: agent.id == room.checkout_supervisor_id and agent.room_id == room.parent_id
+  # The original supervisor may have been replaced as team head since the task
+  # was made, so whoever heads the parent room now may accept it too.
+  defp may_accept?(room, %Agent{} = agent) do
+    agent.room_id == room.parent_id and
+      (agent.id == room.checkout_supervisor_id or
+         match?(%Agent{id: id} when id == agent.id, team_head(room.parent_id)))
+  end
 
   defp may_accept?(_room, _actor), do: false
 
