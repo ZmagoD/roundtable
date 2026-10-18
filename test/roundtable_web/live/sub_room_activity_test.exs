@@ -52,6 +52,58 @@ defmodule RoundtableWeb.SubRoomActivityTest do
     assert view |> element("#busy-elsewhere-#{ada.id}-#{task.id}") |> render() =~ "Running in"
   end
 
+  for {status, label} <- [{"queued", "Queued in"}, {"waiting_quota", "Waiting for quota in"}] do
+    test "a copy that is #{status} in a sub-room shows as #{status}",
+         %{conn: conn, root: root, ada: ada} do
+      task = sub_room(root, "Task")
+      task |> agent("ada") |> turn(unquote(status))
+
+      {:ok, view, _} = live(conn, "/rooms/#{root.id}")
+
+      assert has_element?(view, "#agent-#{ada.id} .status-dot.#{unquote(status)}")
+      assert has_element?(view, "#agent-#{ada.id} .status.#{unquote(status)}")
+
+      assert view |> element("#busy-elsewhere-#{ada.id}-#{task.id}") |> render() =~
+               unquote(label)
+
+      assert has_element?(
+               view,
+               "#busy-elsewhere-#{ada.id}-#{task.id} a[href='/rooms/#{task.id}']",
+               "Task"
+             )
+    end
+  end
+
+  test "copies busy in several sub-rooms each get their own link",
+       %{conn: conn, root: root, ada: ada} do
+    first = sub_room(root, "First task")
+    second = sub_room(root, "Second task")
+    first_ada = agent(first, "ada")
+    turn(first_ada, "running")
+    second |> agent("ada") |> turn("waiting_quota")
+    # Two turns in one room are still one room to go and look at.
+    turn(first_ada, "queued")
+
+    {:ok, view, _} = live(conn, "/rooms/#{root.id}")
+
+    assert has_element?(
+             view,
+             "#busy-elsewhere-#{ada.id}-#{first.id} a[href='/rooms/#{first.id}']",
+             "First task"
+           )
+
+    assert has_element?(
+             view,
+             "#busy-elsewhere-#{ada.id}-#{second.id} a[href='/rooms/#{second.id}']",
+             "Second task"
+           )
+
+    assert view |> element("#busy-elsewhere-#{ada.id}-#{second.id}") |> render() =~
+             "Waiting for quota in"
+
+    assert length(Regex.scan(~r/id="busy-elsewhere-#{ada.id}-/, render(view))) == 2
+  end
+
   test "the card follows a copy that starts and finishes after the page opened",
        %{conn: conn, root: root, ada: ada} do
     {:ok, view, _} = live(conn, "/rooms/#{root.id}")
