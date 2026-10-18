@@ -47,6 +47,8 @@ defmodule RoundtableWeb.RoomLive do
        room_form: to_form(%{}, as: :room),
        agent_form: to_form(%{}, as: :agent),
        runs: [],
+       sub_room_runs: [],
+       watching: [],
        approvals: [],
        waiting: %{},
        providers: Roundtable.Agents.providers(),
@@ -68,6 +70,8 @@ defmodule RoundtableWeb.RoomLive do
   def handle_params(params, _, socket) do
     if connected?(socket) && socket.assigns.room,
       do: Phoenix.PubSub.unsubscribe(Roundtable.PubSub, "room:#{socket.assigns.room.id}")
+
+    socket = watch_sub_rooms(socket, [])
 
     room =
       case params["id"] do
@@ -988,6 +992,8 @@ defmodule RoundtableWeb.RoomLive do
     {:noreply, socket}
   end
 
+  # A sub-room made just now has to be watched before its first turn starts,
+  # or the card here would not hear about it.
   def handle_info(:rooms_updated, socket),
     do:
       {:noreply,
@@ -997,7 +1003,8 @@ defmodule RoundtableWeb.RoomLive do
          organizations: Chat.organizations(),
          model_presets: Chat.model_presets()
        )
-       |> assign_waiting()}
+       |> assign_waiting()
+       |> assign_sub_room_runs()}
 
   # Any room, not only the open one: the sidebar marks them all.
   def handle_info({:waiting_changed, _room_id}, socket),
@@ -1148,6 +1155,7 @@ defmodule RoundtableWeb.RoomLive do
         |> Enum.sort_by(&{&1.run_id, &1.request_id})
     )
     |> assign_waiting(approvals)
+    |> assign_sub_room_runs()
   end
 
   # The open room is read too, though its link shows no marker: its cards do.
@@ -1156,6 +1164,29 @@ defmodule RoundtableWeb.RoomLive do
     ids = Enum.uniq(Enum.map(socket.assigns.rooms, & &1.id) ++ List.wrap(room && room.id))
     approvals = approvals || Map.values(Coordinator.approvals())
     assign(socket, waiting: Chat.waiting(ids, approvals))
+  end
+
+  defp assign_sub_room_runs(%{assigns: %{room: nil}} = socket), do: socket
+
+  defp assign_sub_room_runs(socket) do
+    ids = Chat.sub_room_ids(socket.assigns.room.id)
+
+    socket
+    |> watch_sub_rooms(ids)
+    |> assign(sub_room_runs: Chat.active_runs_in(ids))
+  end
+
+  # Every handler for a room's topic checks which room it is about or only
+  # refreshes, so listening to the sub-rooms' topics shows nothing of theirs
+  # here except the cards' activity.
+  defp watch_sub_rooms(socket, ids) do
+    if connected?(socket) do
+      watching = socket.assigns.watching
+      Enum.each(watching -- ids, &Phoenix.PubSub.unsubscribe(Roundtable.PubSub, "room:#{&1}"))
+      Enum.each(ids -- watching, &Chat.subscribe/1)
+    end
+
+    assign(socket, watching: ids)
   end
 
   # The day's spend against the room's budget, as the header shows it: the
@@ -1336,6 +1367,24 @@ defmodule RoundtableWeb.RoomLive do
         Enum.find(own, &(&1.status in ["running", "approval", "queued"]))
 
     if active, do: active.status, else: "idle"
+  end
+
+  # A copy is the participant of the same name in a room under this one: the
+  # name is what @room/name addresses, and add_participant reuses it.
+  defp busy_elsewhere(agent, sub_room_runs) do
+    sub_room_runs
+    |> Enum.filter(&(&1.agent.name == agent.name))
+    |> Enum.uniq_by(& &1.agent.room_id)
+    |> Enum.map(&%{room: &1.agent.room, status: status(&1.agent, sub_room_runs)})
+  end
+
+  # Work here is shown first; only an idle participant takes its colour from a
+  # copy that is busy in a sub-room.
+  defp card_status(agent, runs, sub_room_runs) do
+    case {status(agent, runs), busy_elsewhere(agent, sub_room_runs)} do
+      {"idle", [copy | _]} -> copy.status
+      {own, _} -> own
+    end
   end
 
   # Runs arrive newest first. The badge stays while the participant's newest
