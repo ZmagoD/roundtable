@@ -515,6 +515,118 @@ defmodule Roundtable.Chat do
     |> Map.put(:rooms, length(rooms))
   end
 
+  @doc """
+  Who in each of `room_ids` is waiting on the human, and why.
+
+  Approvals are queue state, not rows, so the caller passes in
+  `Coordinator.approvals/0`'s values. Pending proposal cards and unanswered
+  questions are read here. A question is a guess: the participant's latest
+  message ends with "?" and the human has not posted in that room since.
+
+  Returns `%{room_id => [%{agent_id, name, reasons}]}` with only the rooms
+  someone is waiting in, and reasons drawn from `:approval`, `:proposal` and
+  `:question` in that order. A fixed handful of queries however many rooms are
+  listed, because the sidebar asks on every change.
+  """
+  def waiting([], _approvals), do: %{}
+
+  def waiting(room_ids, approvals) do
+    agents = Repo.all(from a in Agent, where: a.room_id in ^room_ids)
+
+    asked_approval =
+      for approval <- approvals, approval.room_id in room_ids do
+        {approval.room_id, approval.agent_id, approval.agent, :approval}
+      end
+
+    # A proposal names its asker only by sender, so the card is credited to
+    # the participant of that name if one is still in the room.
+    asked_proposal =
+      Repo.all(
+        from m in Message,
+          where:
+            m.room_id in ^room_ids and m.kind == "proposal" and
+              fragment("json_extract(?, '$.status')", m.metadata) == "pending",
+          select: {m.room_id, m.sender}
+      )
+      |> Enum.map(fn {room_id, sender} ->
+        agent = Enum.find(agents, &(&1.room_id == room_id and &1.name == sender))
+        {room_id, agent && agent.id, sender, :proposal}
+      end)
+
+    Enum.concat([asked_approval, asked_proposal, unanswered_questions(room_ids, agents)])
+    |> Enum.group_by(fn {room_id, _, _, _} -> room_id end)
+    |> Map.new(fn {room_id, asks} -> {room_id, by_participant(asks)} end)
+  end
+
+  # Joined to the room's own participants, so a cross-room answer, a
+  # supervisor notice or a removed participant's last word never counts.
+  defp unanswered_questions(room_ids, agents) do
+    names = Map.new(agents, &{&1.id, &1.name})
+
+    answered =
+      Map.new(
+        Repo.all(
+          from m in Message,
+            where: m.room_id in ^room_ids and m.sender == "you",
+            group_by: m.room_id,
+            select: {m.room_id, max(m.id)}
+        )
+      )
+
+    latest =
+      from m in Message,
+        join: a in Agent,
+        on: a.id == m.agent_id and a.room_id == m.room_id,
+        where: m.room_id in ^room_ids and m.kind == "agent" and m.sender != "system",
+        group_by: m.agent_id,
+        select: %{id: max(m.id)}
+
+    Repo.all(
+      from m in Message,
+        join: l in subquery(latest),
+        on: m.id == l.id,
+        select: {m.room_id, m.agent_id, m.id, m.body}
+    )
+    |> Enum.filter(fn {room_id, _, id, body} ->
+      id > Map.get(answered, room_id, 0) and asks_a_question?(body)
+    end)
+    |> Enum.map(fn {room_id, agent_id, _, _} ->
+      {room_id, agent_id, names[agent_id], :question}
+    end)
+  end
+
+  # The last paragraph, so a question asked midway and then answered by the
+  # agent itself does not count. Closing emphasis or quotes are allowed after.
+  defp asks_a_question?(body) do
+    body
+    |> String.split(~r/\n\s*\n/)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> List.last("")
+    |> then(&Regex.match?(~r/\?[*_`)"'”’]*\z/u, &1))
+  end
+
+  @reasons [:approval, :proposal, :question]
+
+  defp by_participant(asks) do
+    asks
+    |> Enum.group_by(fn {_, agent_id, name, _} -> {agent_id, name} end, &elem(&1, 3))
+    |> Enum.map(fn {{agent_id, name}, reasons} ->
+      %{agent_id: agent_id, name: name, reasons: Enum.filter(@reasons, &(&1 in reasons))}
+    end)
+    |> Enum.sort_by(& &1.name)
+  end
+
+  @doc """
+  Tells every open page that who is waiting in `room_id` may have changed.
+
+  On the shared "rooms" topic rather than the room's own: pages listen to one
+  room's topic but list them all, and the room topic also carries every streamed
+  chunk of output, which would have each page re-reading the sidebar per token.
+  """
+  def waiting_changed(room_id),
+    do: Phoenix.PubSub.broadcast(Roundtable.PubSub, "rooms", {:waiting_changed, room_id})
+
   def subscribe(room_id), do: Phoenix.PubSub.subscribe(Roundtable.PubSub, topic(room_id))
 
   def broadcast(room_id),
@@ -946,6 +1058,7 @@ defmodule Roundtable.Chat do
     case Repo.delete(agent) do
       {:ok, agent} ->
         broadcast(agent.room_id)
+        waiting_changed(agent.room_id)
         {:ok, agent}
 
       {:error, changeset} ->
@@ -1002,6 +1115,7 @@ defmodule Roundtable.Chat do
       })
 
     broadcast(room_id)
+    waiting_changed(room_id)
     {:ok, message}
   end
 
@@ -1037,6 +1151,7 @@ defmodule Roundtable.Chat do
       {:message_updated, updated}
     )
 
+    waiting_changed(message.room_id)
     {:ok, updated}
   end
 
@@ -1321,6 +1436,7 @@ defmodule Roundtable.Chat do
     if match?({:ok, :ok}, result) do
       Phoenix.PubSub.broadcast(Roundtable.PubSub, "room:#{room_id}", {:history_cleared, room_id})
       broadcast(room_id)
+      waiting_changed(room_id)
     end
 
     result
@@ -1389,6 +1505,8 @@ defmodule Roundtable.Chat do
 
       # The coordinator posts several messages per turn and broadcasts once.
       if Keyword.get(opts, :broadcast, true), do: broadcast(room_id)
+      # Every post can ask a question or answer one, whoever broadcasts the room.
+      if match?({:ok, _}, result), do: waiting_changed(room_id)
       result
     end
   end

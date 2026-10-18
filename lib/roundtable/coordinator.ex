@@ -283,6 +283,7 @@ defmodule Roundtable.Coordinator do
       }
 
       state = %{state | approvals: Map.put(state.approvals, {run.id, request_id}, approval)}
+      Chat.waiting_changed(agent.room_id)
       if wake_delegate(agent, params), do: schedule(state), else: state
     end
   end
@@ -335,6 +336,7 @@ defmodule Roundtable.Coordinator do
       run = Repo.get!(Run, id)
       resume_if_last_approval(state, run)
       Chat.broadcast(Chat.agent!(run.agent_id).room_id)
+      Chat.waiting_changed(approval.room_id)
       {:ok, state}
     else
       _ -> :error
@@ -774,11 +776,17 @@ defmodule Roundtable.Coordinator do
   defp forget(state, id) do
     if worker = state.workers[id], do: Process.demonitor(worker.ref, [:flush])
 
-    %{
-      state
-      | workers: Map.delete(state.workers, id),
-        approvals: Map.reject(state.approvals, fn {{run_id, _}, _} -> run_id == id end)
-    }
+    {dropped, approvals} =
+      Map.split_with(state.approvals, fn {{run_id, _}, _} -> run_id == id end)
+
+    # A turn that ends or is stopped mid-approval takes its question with it.
+    dropped
+    |> Map.values()
+    |> Enum.map(& &1.room_id)
+    |> Enum.uniq()
+    |> Enum.each(&Chat.waiting_changed/1)
+
+    %{state | workers: Map.delete(state.workers, id), approvals: approvals}
   end
 
   defp schedule(state) do
