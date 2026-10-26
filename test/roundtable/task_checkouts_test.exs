@@ -177,6 +177,58 @@ defmodule Roundtable.TaskCheckoutsTest do
     assert File.dir?(source)
   end
 
+  test "the human accepts a task in the browser, prefilled, and closes it", %{
+    conn: conn,
+    source: source,
+    remote: remote
+  } do
+    {:ok, parent} = Chat.create_room(%{name: "Main", directory: source})
+
+    {:ok, task} =
+      Chat.create_room(%{name: "Done task", directory: source, isolated: true},
+        parent_id: parent.id
+      )
+
+    File.write!(Path.join(task.directory, "work.txt"), "done\n")
+    git(task.directory, ["add", "."])
+    git(task.directory, ["commit", "-m", "Work"])
+    head = CompletionFixture.merge(task, remote)
+
+    {:ok, view, _} = live(conn, "/rooms/#{task.id}")
+    html = view |> element("#accept-task") |> render_click()
+    assert html =~ head
+
+    view
+    |> form("#accept-form",
+      accept: %{pr: "7", precommit: "mix precommit: 0 failures", policy: "main synchronised"}
+    )
+    |> render_submit()
+
+    assert Chat.room!(task.id).completion_review["accepted_by"] == "human"
+    view |> element("#finish-task") |> render_click()
+    refute File.dir?(task.directory)
+  end
+
+  test "a bad acceptance is refused with a reason", %{conn: conn, source: source} do
+    {:ok, parent} = Chat.create_room(%{name: "Main", directory: source})
+
+    {:ok, task} =
+      Chat.create_room(%{name: "Odd task", directory: source, isolated: true},
+        parent_id: parent.id
+      )
+
+    {:ok, view, _} = live(conn, "/rooms/#{task.id}")
+    view |> element("#accept-task") |> render_click()
+
+    html =
+      view
+      |> form("#accept-form", accept: %{sha: "abc", pr: "x", precommit: "ok", policy: "p"})
+      |> render_submit()
+
+    assert html =~ "Not accepted"
+    assert Chat.room!(task.id).completion_review == %{}
+  end
+
   defp git(path, args) do
     # CI runners have no git identity, so commits made here would be refused.
     identity = ["-c", "user.name=Roundtable Test", "-c", "user.email=test@roundtable.local"]

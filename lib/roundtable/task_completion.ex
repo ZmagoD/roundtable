@@ -56,6 +56,50 @@ defmodule Roundtable.TaskCompletion do
     end
   end
 
+  @doc """
+  What the accept form starts with: the checkout's HEAD, the PR GitHub knows for
+  the task branch and whatever was recorded before. It only suggests; accepting
+  still goes through `review_present/1` and `verify/1`.
+  """
+  def suggest(room) do
+    review = room.completion_review || %{}
+    sha = with {:ok, head} <- git(room.directory, ["rev-parse", "HEAD"]), do: head
+    pr = review["pr"] || pull_request_number(room)
+
+    %{
+      "sha" => if(is_binary(sha), do: sha, else: review["sha"]),
+      "pr" => pr,
+      "precommit" => review["precommit"],
+      "policy" => review["policy"]
+    }
+  end
+
+  defp pull_request_number(room) do
+    with {:ok, record} <- Roundtable.TaskCheckouts.inspect_owned(room.checkout_id, room.directory),
+         {:ok, repo} <- repository(record.remote),
+         {:ok, [%{"number" => number} | _]} <-
+           json(
+             "gh",
+             [
+               "pr",
+               "list",
+               "--repo",
+               repo,
+               "--head",
+               record.branch,
+               "--state",
+               "all",
+               "--json",
+               "number"
+             ],
+             room.directory
+           ) do
+      number
+    else
+      _ -> nil
+    end
+  end
+
   def review_present(review) do
     ensure(
       is_map(review) and commit?(review["sha"]) and is_integer(review["pr"]) and
