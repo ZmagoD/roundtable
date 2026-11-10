@@ -207,6 +207,24 @@ defmodule Roundtable.CoordinatorTest do
     assert Coordinator.approvals() == %{}
   end
 
+  test "stopping a team ends everyone's running and queued work, and leaves schedules on",
+       %{room: room, ada: ada, linus: linus} do
+    {:ok, schedule} =
+      Chat.create_schedule(room.id, %{"agent_id" => ada.id, "prompt" => "sweep", "at" => "09:00"})
+
+    Coordinator.post(room.id, "@ada do work")
+    assert_receive {:agent_started, _pid, _, _run, _}, 1000
+    Coordinator.post(room.id, "@linus review it")
+    Coordinator.post(room.id, "@ada and then this")
+
+    assert :ok = Coordinator.stop_room(room.id)
+
+    assert Chat.runs(room.id) != []
+    assert Enum.all?(Chat.runs(room.id), &(&1.status == "stopped"))
+    assert Chat.schedule!(schedule.id).enabled
+    assert Chat.agent!(linus.id).room_id == room.id
+  end
+
   test "a participant set to approve its own tools is never held", %{room: room, ada: ada} do
     Chat.change(ada, auto_approve: true)
     Coordinator.post(room.id, "@ada do work")

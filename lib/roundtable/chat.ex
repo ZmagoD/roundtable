@@ -282,6 +282,23 @@ defmodule Roundtable.Chat do
 
   def delete_schedule(id), do: id |> schedule!() |> Repo.delete() |> tap(&notify_room/1)
 
+  @doc """
+  Switches off every schedule in a room and returns how many were on.
+
+  Only future starts: a turn a schedule already began is the room's to stop,
+  so pausing and stopping stay two things the human chooses separately.
+  """
+  def pause_schedules(room_id) do
+    {count, _} =
+      Repo.update_all(
+        from(s in Schedule, where: s.room_id == ^room_id and s.enabled),
+        set: [enabled: false, updated_at: DateTime.utc_now(:second)]
+      )
+
+    broadcast(room_id)
+    count
+  end
+
   @doc "Records that a schedule has woken someone, so the next tick does not."
   def schedule_ran(schedule, at), do: change(schedule, last_run_at: at)
 
@@ -1188,6 +1205,27 @@ defmodule Roundtable.Chat do
     end
   end
 
+  @doc """
+  The briefs a participant in this room works to, outermost first: the
+  project's, then the team's. Its own role is the third layer and lives on the
+  participant. Blank layers are nil, so a preview can say one is missing.
+
+  The prompt reads its briefs from here, so what the human previews is what a
+  turn is given.
+  """
+  def instruction_layers(%Room{} = room) do
+    organization = room.organization_id && Repo.get(Organization, room.organization_id)
+
+    %{
+      organization: organization && organization.name,
+      organization_brief: organization && present(organization.context),
+      team_brief: present(room.context)
+    }
+  end
+
+  defp present(text) when is_binary(text), do: if(String.trim(text) == "", do: nil, else: text)
+  defp present(_text), do: nil
+
   @doc "Updates a participant, serialized with dispatch so switches cannot race a launch."
   def update_agent(agent_id, attrs),
     do: Roundtable.Coordinator.update_agent(agent_id, attrs)
@@ -1887,14 +1925,30 @@ defmodule Roundtable.Chat do
 
   defp turn_recipients(message, body) do
     members = agents(message.room_id)
-    addressed = recipients(body, members)
 
-    # An unknown or cross-room mention must not accidentally wake the default agent.
-    if message.kind == "human" and addressed == [] and
-         not Regex.match?(~r/(?<![\w@])@[a-z][a-z0-9_-]*/i, body) do
-      Enum.filter(members, & &1.head)
-    else
-      addressed
+    if message.kind == "human",
+      do: addressed_by_human(members, body),
+      else: recipients(body, members)
+  end
+
+  @doc """
+  Who a message from the human would start a turn for, before it is sent.
+
+  The same rule posting uses, so the composer's preview cannot promise a
+  different set of people from the one that actually starts work.
+  """
+  def starts_work_for(room_id, body), do: room_id |> agents() |> addressed_by_human(body)
+
+  defp addressed_by_human(members, body) do
+    case recipients(body, members) do
+      # An unknown or cross-room mention must not accidentally wake the default agent.
+      [] ->
+        if Regex.match?(~r/(?<![\w@])@[a-z][a-z0-9_-]*/i, body),
+          do: [],
+          else: Enum.filter(members, & &1.head)
+
+      addressed ->
+        addressed
     end
   end
 
@@ -2363,16 +2417,17 @@ defmodule Roundtable.Chat do
 
     roster = roster(agent.room_id)
     full = full_instructions?(agent, run)
+    layers = instruction_layers(room)
 
     prompt = """
     You are @#{agent.name} in Roundtable, a shared room with a human and other coding agents.
 
     #{identity(agent, full)}
 
-    THIS ROOM#{project(room.organization_id)}
+    THIS ROOM#{project(layers)}
     Room: #{room.name}. Working directory: #{agent.directory}
     #{task_instructions(room)}
-    What this room is working on, and how: #{context(room)}
+    What this room is working on, and how: #{context(layers)}
     That is the shared brief for everyone here. Where it and your own role both apply, follow both;
     where they genuinely conflict, say so rather than quietly picking one.#{learned(room.id)}
     #{working_context(room, agent, head)}
@@ -2646,24 +2701,18 @@ defmodule Roundtable.Chat do
 
   # The project above this room, when it has something to say. Additive: a
   # team's own brief narrows it rather than replacing it, so both are shown.
-  defp project(nil), do: ""
+  defp project(%{organization_brief: nil}), do: ""
 
-  defp project(organization_id) do
-    case Repo.get(Organization, organization_id) do
-      %{context: context} = organization when is_binary(context) and context != "" ->
-        "\nProject: #{organization.name}. The whole project is working on: #{context}" <>
-          "\nEvery team here works to that. This room's own brief adds to it."
-
-      _organization ->
-        ""
-    end
+  defp project(%{organization: name, organization_brief: brief}) do
+    "\nProject: #{name}. The whole project is working on: #{brief}" <>
+      "\nEvery team here works to that. This room's own brief adds to it."
   end
 
   # A room without a brief says so: an agent inventing the team's goal is worse
   # than an agent asking for it.
-  defp context(%{context: context}) when is_binary(context) and context != "", do: context
+  defp context(%{team_brief: brief}) when is_binary(brief), do: brief
 
-  defp context(_room),
+  defp context(_layers),
     do:
       "No shared brief has been set for this room. Work from the conversation, and say what " <>
         "would help if the goal or the conventions here are unclear."

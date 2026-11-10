@@ -106,18 +106,25 @@
                   <p :if={entry.record.context != ""} class="organization-brief">
                     {entry.record.context}
                   </p>
-                  <div :if={entry.teams != []} class="organization-teams">
+                  <ul :if={entry.teams != []} class="organization-teams">
+                    <li :for={team <- entry.teams} id={"team-status-#{team.room.id}"}>
+                      <.link class="room-link" navigate={~p"/rooms/#{team.room.id}"}>
+                        <span class="hash">#</span><span>{team.room.name}</span>
+                      </.link>
+                      <span class="team-summary">{team_summary(team)}</span>
+                      <span class={["team-state", team.state]}>{team.status}</span>
+                    </li>
+                  </ul>
+                  <div :if={entry.teams == []} class="organization-teams-empty">
+                    <strong>No teams yet</strong>
                     <.link
-                      :for={team <- entry.teams}
-                      class="room-link"
-                      navigate={~p"/rooms/#{team.id}"}
+                      id={"create-team-#{entry.record.id}"}
+                      class="text-button"
+                      navigate={~p"/?organization=#{entry.record.id}"}
                     >
-                      <span class="hash">#</span><span>{team.name}</span>
+                      Create a team
                     </.link>
                   </div>
-                  <p :if={entry.teams == []} class="organization-teams-empty">
-                    No teams in this organization yet.
-                  </p>
                 </div>
                 <div class="schedule-card-actions">
                   <button
@@ -160,9 +167,22 @@
                 placeholder="/home/you/Work/project"
               />
               <p class="field-hint">
-                Where this project's teams work and save files. Leave it empty for a project
-                that is not a checkout, such as marketing or sales.
+                Where this project's teams work and save files, including teams that write
+                rather than code. Leave it empty and each team names its own folder.
               </p>
+              <div :if={@editing_id} id="folder-impact" class="field-hint">
+                <p :if={@inheriting != []}>
+                  Teams using this folder: {Enum.map_join(@inheriting, ", ", & &1.name)}.
+                  A change applies to their new turns; work already running keeps its folder.
+                </p>
+                <p :if={@custom != []}>
+                  Teams with their own folder, unaffected: {Enum.map_join(
+                    @custom,
+                    ", ",
+                    & &1.name
+                  )}.
+                </p>
+              </div>
               <.input
                 field={@organization_form[:context]}
                 type="textarea"

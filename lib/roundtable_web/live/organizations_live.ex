@@ -21,6 +21,8 @@ defmodule RoundtableWeb.OrganizationsLive do
        page_title: "Organizations",
        editing_id: nil,
        form_error: nil,
+       inheriting: [],
+       custom: [],
        organization_form: organization_form()
      )
      |> refresh()}
@@ -45,10 +47,15 @@ defmodule RoundtableWeb.OrganizationsLive do
       "context" => organization.context || ""
     }
 
+    {inheriting, custom} =
+      organization.id |> Chat.rooms() |> Enum.split_with(&(&1.directory in [nil, ""]))
+
     {:noreply,
      assign(socket,
        editing_id: organization.id,
        form_error: nil,
+       inheriting: inheriting,
+       custom: custom,
        organization_form: to_form(attrs, as: :organization)
      )}
   end
@@ -61,6 +68,11 @@ defmodule RoundtableWeb.OrganizationsLive do
       end
 
     case saved do
+      # A new project opens on its own, still empty: the next thing to do there
+      # is make its first team, and nothing has started running.
+      {:ok, organization} when is_nil(socket.assigns.editing_id) ->
+        {:noreply, push_navigate(socket, to: ~p"/?organization=#{organization.id}")}
+
       {:ok, _organization} ->
         {:noreply,
          socket
@@ -82,12 +94,49 @@ defmodule RoundtableWeb.OrganizationsLive do
   end
 
   defp refresh(socket) do
+    status = Map.new(Chat.overview().rooms, &{&1.id, &1})
+
     organizations =
       Enum.map(Chat.organizations(), fn organization ->
-        %{record: organization, teams: Chat.rooms(organization.id)}
+        teams =
+          organization.id
+          |> Chat.rooms()
+          |> Enum.map(&team(&1, Map.get(status, &1.id, %{})))
+
+        %{record: organization, teams: teams}
       end)
 
     assign(socket, organizations: organizations, rooms: Chat.rooms())
+  end
+
+  # The one thing to act on first, in words, so the state never rests on colour
+  # alone: someone waiting on you outranks someone working.
+  defp team(room, counts) do
+    head = Chat.team_head(room.id)
+    approval = Map.get(counts, :waiting_for_approval, 0)
+    running = Map.get(counts, :running, 0)
+    queued = Map.get(counts, :queued, 0) + Map.get(counts, :waiting_for_quota, 0)
+
+    {state, label} =
+      cond do
+        approval > 0 -> {"approval", "#{approval} needs approval"}
+        running > 0 -> {"working", "#{running} working"}
+        queued > 0 -> {"queued", "#{queued} queued"}
+        true -> {"idle", "Idle"}
+      end
+
+    %{
+      room: room,
+      head: head && head.name,
+      members: Map.get(counts, :participants, 0),
+      state: state,
+      status: label
+    }
+  end
+
+  def team_summary(team) do
+    head = if team.head, do: "Head: #{team.head}", else: "No team head"
+    "#{head} · #{team.members} #{if team.members == 1, do: "member", else: "members"}"
   end
 
   defp organization_form,

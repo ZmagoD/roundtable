@@ -30,6 +30,9 @@ defmodule Roundtable.Coordinator do
     do: GenServer.call(__MODULE__, {:update_agent, agent_id, attrs}, :infinity)
 
   def stop(agent_id), do: GenServer.call(__MODULE__, {:stop, agent_id})
+
+  @doc "Stops the running and queued turns of everyone in a room. Its schedules stay on."
+  def stop_room(room_id), do: GenServer.call(__MODULE__, {:stop_room, room_id})
   def reset(agent_id), do: GenServer.call(__MODULE__, {:reset, agent_id})
   def clear_history(room_id), do: GenServer.call(__MODULE__, {:clear_history, room_id})
   def resume_due(now), do: GenServer.call(__MODULE__, {:resume_due, now})
@@ -118,6 +121,19 @@ defmodule Roundtable.Coordinator do
     # /stop cannot cancel a turn that already ended in a crash, and leaving it
     # interrupted invites the watchdog to restart it about a minute later.
     Chat.abandon_latest_failure(agent_id)
+    {:reply, :ok, schedule(state)}
+  end
+
+  # One call rather than one per participant, so nothing can be dispatched to
+  # a teammate between two stops.
+  def handle_call({:stop_room, room_id}, _, state) do
+    state =
+      Enum.reduce(Chat.agents(room_id), state, fn agent, state ->
+        state = cancel_agent(state, agent.id)
+        Chat.abandon_latest_failure(agent.id)
+        state
+      end)
+
     {:reply, :ok, schedule(state)}
   end
 

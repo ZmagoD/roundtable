@@ -93,12 +93,17 @@
                   </div>
                   <h3>{schedule.name}</h3>
                   <div class="schedule-target">
-                    {schedule.agent.name} · {schedule.at} · {if schedule.days == "",
-                      do: "Every day",
-                      else: "Days " <> schedule.days}
+                    {schedule.agent.name} · {Schedule.describe(schedule)}
                   </div>
                   <p>{schedule.prompt}</p>
-                  <small>{schedule.room.directory} · Last run: {last_run(schedule.last_run_at)}</small>
+                  <small id={"schedule-next-run-#{schedule.id}"}>
+                    Next run: {Schedule.describe_next_run(schedule)}
+                  </small>
+                  <small>
+                    {Chat.effective_directory(schedule.room)} · Last run: {last_run(
+                      schedule.last_run_at
+                    )}
+                  </small>
                 </div>
                 <div class="schedule-card-actions">
                   <button class="text-button" phx-click="edit-schedule" phx-value-id={schedule.id}>Edit</button>
@@ -159,6 +164,7 @@
             :if={@agents != []}
             for={@schedule_form}
             id="workspace-schedule-form"
+            phx-change="preview-schedule"
             phx-submit="save-schedule"
           >
             <.input
@@ -205,6 +211,10 @@
               type="select"
               options={[{"Yes", "true"}, {"No", "false"}]}
             />
+            <p id="schedule-next-run-preview" class="form-note">
+              Next run: {Schedule.describe_next_run(Schedule.preview(@schedule_form.params))}.
+              Saving does not run it now.
+            </p>
             <button class="button full" type="submit" phx-disable-with="Saving…">
               {if @editing_id, do: "Save changes", else: "Create schedule"}
             </button>

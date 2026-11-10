@@ -65,6 +65,54 @@ defmodule Roundtable.Chat.Schedule do
     "#{schedule.at |> String.split(",") |> Enum.join(", ")} #{describe_days(days(schedule))}"
   end
 
+  @doc """
+  When this next wakes someone, in this machine's local time, or nil while it
+  is switched off or has no valid time. Takes the clock so a test can set it.
+
+  Strictly after `now_local`: an occurrence due this minute is the scheduler's
+  to pick up, and a preview should not promise it a second time.
+  """
+  def next_run(schedule, now_local \\ NaiveDateTime.local_now())
+  def next_run(%__MODULE__{enabled: false}, _now_local), do: nil
+  def next_run(%__MODULE__{at: at}, _now_local) when not is_binary(at), do: nil
+
+  def next_run(%__MODULE__{} = schedule, now_local) do
+    days = days(schedule)
+    times = times(schedule) |> Enum.reject(&is_nil/1)
+    today = NaiveDateTime.to_date(now_local)
+
+    # Eight days, so a weekly schedule whose only time today has passed still
+    # finds next week's.
+    Enum.find_value(0..7, fn offset ->
+      date = Date.add(today, offset)
+      if days == [] or Date.day_of_week(date) in days, do: first_after(date, times, now_local)
+    end)
+  end
+
+  defp first_after(date, times, now_local) do
+    times
+    |> Enum.map(fn {hour, minute} -> NaiveDateTime.new!(date, Time.new!(hour, minute, 0)) end)
+    |> Enum.find(&(NaiveDateTime.compare(&1, now_local) == :gt))
+  end
+
+  @doc """
+  The next run as a person reads it, naming whose clock it is: the scheduler
+  runs on this machine's local time, not the browser's.
+  """
+  def describe_next_run(schedule, now_local \\ NaiveDateTime.local_now()) do
+    case next_run(schedule, now_local) do
+      nil -> "Not scheduled while it is off"
+      at -> Calendar.strftime(at, "%a %d %b at %H:%M") <> ", this machine's time"
+    end
+  end
+
+  @doc "The schedule a form would save, for previewing it before it is saved."
+  def preview(attrs) do
+    %__MODULE__{room_id: 0, agent_id: 0}
+    |> changeset(attrs)
+    |> apply_changes()
+  end
+
   defp describe_days([]), do: "every day"
   defp describe_days([1, 2, 3, 4, 5]), do: "on weekdays"
   defp describe_days([6, 7]), do: "at weekends"

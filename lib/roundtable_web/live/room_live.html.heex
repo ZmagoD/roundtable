@@ -192,6 +192,26 @@
                   {if @terminal, do: "Close terminal", else: "Terminal"}
                 </button>
                 <button
+                  id="stop-team-button"
+                  class="button secondary"
+                  disabled={active_work(@runs) == 0}
+                  phx-click={
+                    JS.push("stop-team") |> JS.remove_attribute("open", to: "#room-more")
+                  }
+                  data-confirm={"Stop all running and queued work in #{@room.name}? Schedules stay on; pause them separately."}
+                  title="Stops every participant's running and queued turns here"
+                >Stop current work</button>
+                <button
+                  id="pause-schedules-button"
+                  class="button secondary"
+                  disabled={not Enum.any?(@schedules, & &1.enabled)}
+                  phx-click={
+                    JS.push("pause-schedules") |> JS.remove_attribute("open", to: "#room-more")
+                  }
+                  data-confirm={"Pause every schedule in #{@room.name}? Work already running keeps going; stop it separately."}
+                  title="Prevents future scheduled starts here"
+                >Pause schedules</button>
+                <button
                   id="clear-history-button"
                   class="button secondary danger"
                   phx-click={
@@ -504,6 +524,13 @@
                   >Send <.icon name="hero-arrow-up-right" class="size-4" /></button>
                 </div>
               </.form>
+              <p :if={@starts_work} id="starts-work" class="composer-hint" aria-live="polite">
+                <%= if @starts_work == [] do %>
+                  Sending starts nobody's turn here. Mention a participant with @ to assign the work.
+                <% else %>
+                  Sending starts work for {Enum.map_join(@starts_work, ", ", &"@#{&1.name}")}.
+                <% end %>
+              </p>
               <p class="composer-hint">
                 <span>Messages go to the team head when selected. @mentions choose someone else.</span><span>/ for commands · @ to mention · Tab to complete · Enter to send · Shift + Enter for a new line</span>
               </p>
@@ -518,6 +545,16 @@
                 aria-label="Add agent"
               ><.icon name="hero-plus" class="size-4" /></button>
             </div>
+            <p
+              :if={@agents != [] and not Enum.any?(@agents, & &1.head)}
+              id="choose-team-head"
+              class="form-note team-head-missing"
+            >
+              <strong>Choose a team head.</strong>
+              Until you do, messages go only to whoever you @mention and nobody delegates the work.
+              Select <em>Make team head</em>
+              on one participant.
+            </p>
             <div class="human-card">
               <div class="avatar human">YO</div><div>
                 <strong>You</strong><small>Workspace owner</small>
@@ -947,6 +984,19 @@
             maxlength="80"
             autofocus
           />
+          <div
+            :if={@editing_room && @layers.organization_brief}
+            id="inherited-organization-brief"
+            class="input-field"
+          >
+            <label>Organization brief, from {@layers.organization}</label>
+            <p class="fixed-field">{@layers.organization_brief}</p>
+            <p class="form-note">
+              Every team in the organization works to this first. <.link navigate={
+                ~p"/organizations"
+              }>Change it in organization settings</.link>.
+            </p>
+          </div>
           <.input
             field={@room_form[:context]}
             label="What this room is working on, and how"
@@ -1030,8 +1080,11 @@
                 <%= if @room && @room.directory == "" do %>
                   From {@organization.name}: {@effective_directory}
                 <% else %>
-                  {@room && @room.directory}
+                  Custom folder: {@room && @room.directory}
                 <% end %>
+              </p>
+              <p :if={active_work(@runs) > 0} id="directory-applies-later" class="form-note">
+                Applies to new turns. Work already running keeps its current folder.
               </p>
               <div class="form-actions">
                 <%= if @room && @room.directory == "" do %>
@@ -1147,9 +1200,32 @@
             the next turn works to the new one and is told the old one no longer
             applies.
           </p>
+          <details :if={@room} id="effective-instructions" class="effective-instructions">
+            <summary>What this participant works to</summary>
+            <p class="form-note">
+              Each turn opens with all three, in this order. Each adds to the one before it.
+            </p>
+            <h4>Organization brief</h4>
+            <p :if={@layers.organization_brief}>{@layers.organization_brief}</p>
+            <p :if={is_nil(@layers.organization_brief)} class="muted">
+              {if @layers.organization,
+                do: "#{@layers.organization} has no shared brief.",
+                else: "This team is not in an organization."}
+            </p>
+            <h4>Team brief</h4>
+            <p :if={@layers.team_brief}>{@layers.team_brief}</p>
+            <p :if={is_nil(@layers.team_brief)} class="muted">
+              No team brief. Set one under Room brief.
+            </p>
+            <h4>Member role</h4>
+            <p :if={(@agent_form[:role].value || "") != ""}>{@agent_form[:role].value}</p>
+            <p :if={(@agent_form[:role].value || "") == ""} class="muted">
+              No role yet. Write one above.
+            </p>
+          </details>
           <div class="input-field">
             <label>Working directory</label>
-            <p class="fixed-field">{@room && @room.directory}</p>
+            <p class="fixed-field">{@effective_directory}</p>
           </div>
           <p class="form-note">
             Everyone in a room works on the same tree. For a separate worktree, make a separate room.
@@ -1223,6 +1299,7 @@
             :if={@agents != []}
             for={@schedule_form}
             id="schedule-form"
+            phx-change="preview-schedule"
             phx-submit="save-schedule"
           >
             <.input
@@ -1269,6 +1346,11 @@
               Times are this machine’s own. What it says arrives as an ordinary mention and starts
               a turn, so it costs what a turn costs. One missed by more than ten minutes — the
               machine asleep, the service stopped — is skipped rather than delivered late.
+            </p>
+            <p id="room-schedule-next-run" class="form-note">
+              Next run: {Roundtable.Chat.Schedule.describe_next_run(
+                Roundtable.Chat.Schedule.preview(@schedule_form.params)
+              )}. Saving does not run it now.
             </p>
             <button class="button full" type="submit" phx-disable-with="Saving…">
               {if @editing_schedule, do: "Update schedule", else: "Save schedule"}
