@@ -18,6 +18,9 @@ defmodule Roundtable.Chat.Room do
     field :context, :string, default: ""
     field :work_document, :string, default: ""
     field :work_revision, :integer, default: 0
+    # Auto mode: every participant approves its own tools and the head keeps
+    # working through the document's open tasks until the human turns it off.
+    field :auto_mode, :boolean, default: false
     # A daily cap on the tokens this room's turns may spend, input plus
     # output, counted in thousands; nil means no cap of its own.
     field :token_budget, :integer
@@ -59,7 +62,8 @@ defmodule Roundtable.Chat.Room do
       :token_budget,
       :sandbox,
       :sandbox_packages,
-      :head_answers_approvals
+      :head_answers_approvals,
+      :auto_mode
     ])
     |> validate_required([:name, :organization_id])
     |> validate_length(:name, max: 80)

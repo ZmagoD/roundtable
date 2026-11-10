@@ -136,6 +136,17 @@
               phx-click="open-work"
               title="Current goal, tasks, decisions and verification"
             >Work document</button><button
+              id="auto-mode-button"
+              class={"button " <> if @room.auto_mode, do: "auto-on", else: "secondary"}
+              phx-click="toggle-auto-mode"
+              data-confirm={
+                if @room.auto_mode,
+                  do: nil,
+                  else:
+                    "Turn on auto mode? Everyone in this room will approve their own tools, and the team head keeps working through the work document's open tasks until you turn it off."
+              }
+              title="Everyone here approves their own tools, and the head keeps working while the work document has open tasks"
+            >{if @room.auto_mode, do: "Auto on", else: "Auto"}</button><button
               id="add-agent-button"
               class="button secondary"
               phx-click="panel"

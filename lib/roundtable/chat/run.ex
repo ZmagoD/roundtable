@@ -22,6 +22,10 @@ defmodule Roundtable.Chat.Run do
     field :output, :string, default: ""
     field :error, :string
     field :context_until_id, :integer
+    # The work document revision this turn started against. The auto-mode loop
+    # compares it with the room's current revision to see whether the turn
+    # recorded any progress.
+    field :work_revision, :integer
     timestamps(type: :utc_datetime)
   end
 end

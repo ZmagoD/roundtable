@@ -147,6 +147,22 @@ without touching your own OpenCode configuration. Vibe runs its turns under
 its `accept-edits` agent, which denies anything else it would have asked about;
 automatic approval runs them with `--auto-approve` instead.
 
+For a whole room at once, use **Auto** in the room header: every participant
+approves its own tools and the team head keeps working through the work
+document's open tasks — each pass has to move the document forward, so the
+loop pauses rather than spins when it stops making progress.
+
+## Give a room a failover pool
+
+Give two participants in a room the same role text and they back each other up.
+When one runs out of provider quota mid-turn, its turn — and everything queued
+behind it — moves to the teammate with the highest cost tier that is idle,
+whose provider is not already near its limit, and whose CLI is installed. The
+partial output goes with it as a handover note, a supervisor message says who
+took over, and the participant that handed the work away stays idle until it
+is mentioned again. A local-model participant with the same role is the last
+link: overflow reaches it before any work is lost.
+
 ## Change a model and have it take effect
 
 Pick a different model on the participant's card, or `/model ada <id>`

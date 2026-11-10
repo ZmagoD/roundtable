@@ -18,6 +18,13 @@ Provider CLIs connect to their configured services to run the models.
   assignment, with fresh sessions to avoid accumulating unrelated context.
 - **Mentions assign work directly.** `@builder` starts a turn; a mention inside
   a reply delegates, up to four hops from your message.
+- **Quota failover, by role.** Participants sharing a role back each other up:
+  when one runs out of provider quota, its turn and the work queued behind it
+  move to the strongest teammate that can still run — a local model being the
+  last link, not the first.
+- **Auto mode.** One switch approves every tool call in the room and keeps the
+  team head working through the work document's open tasks until you turn it
+  off.
 - **You can watch and stop it.** Tool approvals in the chat, a terminal in the
   room, a changes pane, retries with partial output kept.
 - **Ask an agent to build your team.** **Build a team** creates a room and a
@@ -388,6 +395,24 @@ added from it exactly as they are.
 
 ### Continuing after provider quota limits
 
+**A participant that runs out of quota first offers its work to a teammate.**
+Participants in a room whose role text is identical are a failover pool, with
+no configuration of its own: when a turn dies on a usage limit, the turn and
+everything queued behind it move to the pool's participant with the highest
+cost tier that is idle, whose provider is not already reading near its limit,
+and whose CLI is installed. The interrupted turn keeps its partial output as a
+handover note for whoever takes over. A model the human pinned to the
+assignment follows the turn only when the backup speaks the same provider —
+otherwise the backup works on its own default. A supervisor message says who
+took over. The participant that handed its work away stays idle until it is
+mentioned again; it does not take the work back when its quota resets.
+
+The pool is why roles are worth keeping short and identical across teammates —
+the room brief is where shared conventions belong. Empty roles form no pool.
+When a pool has nobody free, the behaviour below applies. Invite an OpenCode
+participant on a local model with the same role as the last link, and overflow
+reaches it before any work is lost.
+
 Enable **Resume after quota resets** on each participant that should wait and
 continue automatically. In the browser chat field:
 
@@ -448,9 +473,10 @@ message from **supervisor**, saying what happened and what happens next.
 - **Crashes and dropped connections.** A failed or interrupted turn is restarted
   up to twice, after a short wait that doubles each time (one minute, then two).
   This includes turns cut off by a service restart.
-- **Usage limits.** A turn stopped by a provider's usage limit waits for the
-  reset and then resumes, when automatic quota retry is on for that participant
-  (see above). Codex's "try again at 12:47 PM" is read as that reset time.
+- **Usage limits.** A turn stopped by a provider's usage limit is first offered
+  to a teammate with the same role (see above); when nobody can take it, it
+  waits for the reset and then resumes, when automatic quota retry is on for
+  that participant. Codex's "try again at 12:47 PM" is read as that reset time.
 - **Silent turns.** A turn with no new output or token count for 20 minutes is
   stopped and then restarted like a crash, so a single command that runs longer
   than that is cut off too. A turn waiting for your approval is never treated
@@ -660,6 +686,34 @@ choose a different working tree within that room. Automatic worktree creation
 and merging are not built in.
 All messages are public within their room. Agents process new messages at the
 next turn boundary; mid-turn steering is not implemented.
+
+### Auto mode
+
+**Auto** in the room header turns the whole room unattended. With it on:
+
+- every participant in the room — and every one who joins while it is on —
+  approves its own tools, as *Approve automatically* does per participant;
+- the team head keeps working: when its turn ends and the work document still
+  lists open tasks, a supervisor message starts its next pass, and the usual
+  delegation-hop cap does not apply to these wake-ups.
+
+The loop has one brake of its own: each pass has to move the work document
+forward. A head turn that ends without touching the document reads as done or
+stuck — auto mode pauses and says so in the room, and carries on from the next
+human message, schedule, or document edit. Everything else that bounds
+unattended work still applies: the room's daily token budget holds turns, a
+quota failure hands the work to a teammate with room to run it (see above), a
+turn still times out after 30 minutes, and an unclaimed task list is only as
+good as the document describes it.
+
+Turn **Auto** off and every participant asks before each tool again, and the
+head stops being woken on its own. A participant's own approval setting can be
+changed as usual afterwards; the next room toggle overrides them all.
+
+Auto mode needs a team head — the loop drives the head, and specialists hand
+work back to it as usual. It suits work the document describes well enough for
+the head to pick the next task unaided. Every pass is posted in the chat, so
+watching the room is watching the work.
 
 The browser renders a reply's Markdown — headings, bullets and fenced code —
 rather than showing its markup.

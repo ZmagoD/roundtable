@@ -346,16 +346,37 @@ defmodule Roundtable.Coordinator do
   end
 
   defp apply_event(state, run, agent, {:done, "rate_limited", quota}) do
-    if agent.auto_retry &&
-         Chat.wait_for_quota(run, quota.message, quota[:resets_at], DateTime.utc_now(:second)) do
-      state |> forget(run.id) |> schedule()
-    else
-      complete_event(state, run, agent, "failed", quota.message)
+    case quota_failure(run, agent, quota) do
+      {:handed_over, _backup} -> state |> forget(run.id) |> schedule()
+      {:waiting, _waiting} -> state |> forget(run.id) |> schedule()
+      :failed -> complete_event(state, run, agent, "failed", quota.message)
     end
   end
 
   defp apply_event(state, run, agent, {:done, status, error}),
     do: complete_event(state, run, agent, status, error)
+
+  # A quota failure first looks for a teammate who can take the work over; only
+  # when nobody can does the turn wait for the provider's reset, and only when
+  # waiting is switched off does it fail. The participant that handed its work
+  # away stays idle until it is mentioned again.
+  defp quota_failure(run, agent, quota) do
+    cond do
+      backup = Chat.failover(run, agent) ->
+        {:handed_over, backup}
+
+      waiting = quota_wait(agent, run, quota) ->
+        {:waiting, waiting}
+
+      true ->
+        :failed
+    end
+  end
+
+  defp quota_wait(agent, run, quota) do
+    if agent.auto_retry,
+      do: Chat.wait_for_quota(run, quota.message, quota[:resets_at], DateTime.utc_now(:second))
+  end
 
   defp complete_event(state, run, agent, status, error) do
     Repo.transaction(fn ->
@@ -363,7 +384,11 @@ defmodule Roundtable.Coordinator do
       finish_turn(status, run, agent, error)
     end)
 
-    if status == "completed", do: wake_if_unhanded(Repo.get!(Run, run.id), agent)
+    if status == "completed" do
+      run = Repo.get!(Run, run.id)
+      wake_if_unhanded(run, agent)
+      auto_continue(run, agent)
+    end
 
     state = forget(state, run.id)
     # A failed turn blocks queued turns for this participant until explicitly retried.
@@ -534,11 +559,19 @@ defmodule Roundtable.Coordinator do
         :ok
 
       {:quota, quota} ->
-        if waiting = Chat.wait_for_quota(run, quota.message, quota[:resets_at], now) do
-          Chat.release_held(agent.id)
-          notice(agent, "hit its usage limit. Its turn resumes at #{clock(waiting.retry_at)}.")
-        else
-          give_up(run, agent, "hit its usage limit, and automatic quota retry is off for it")
+        case quota_failure(run, agent, quota) do
+          {:handed_over, backup} ->
+            notice(
+              agent,
+              "hit its usage limit. Its turn and queued work moved to #{backup.name} until it is mentioned again."
+            )
+
+          {:waiting, waiting} ->
+            Chat.release_held(agent.id)
+            notice(agent, "hit its usage limit. Its turn resumes at #{clock(waiting.retry_at)}.")
+
+          :failed ->
+            give_up(run, agent, "hit its usage limit, and automatic quota retry is off for it")
         end
 
       {:retry, reason} ->
@@ -585,6 +618,45 @@ defmodule Roundtable.Coordinator do
         "#{agent.name} finished without handing the work on. Its reply begins: " <>
           "“#{Supervision.gist(run.output)}”"
       )
+    end
+  end
+
+  # Auto mode keeps the head working while the work document still lists open
+  # tasks. Each pass has to move the document forward — a turn that ends
+  # without touching it reads as done or stuck, and the loop stops rather than
+  # burning quota on a spin. The room's token budget and quota failover bound
+  # the rest; the human can always turn auto mode off.
+  defp auto_continue(run, agent) do
+    room = Chat.room!(agent.room_id)
+
+    with %Agent{} = head <- Chat.team_head(agent.room_id),
+         true <- room.auto_mode and head.id == agent.id do
+      open = Chat.open_tasks(room.work_document)
+
+      cond do
+        open == [] ->
+          :ok
+
+        is_integer(run.work_revision) and run.work_revision < room.work_revision ->
+          # No wake cap here: the document-progress rule above is the bound,
+          # and every pass is visible in the room's own chat.
+          Chat.supervisor_notice(
+            room.id,
+            "@#{head.name} auto mode: the work document still lists #{length(open)} open " <>
+              "task(s). Continue with the next one, or mark them done in the document if " <>
+              "the work is finished.",
+            "auto_continue"
+          )
+
+        true ->
+          Chat.supervisor_notice(
+            room.id,
+            "#{agent.name} finished its turn, the work document did not change, and " <>
+              "#{length(open)} task(s) still look open. Auto mode pauses here: update the " <>
+              "document or say what to do next.",
+            "notice"
+          )
+      end
     end
   end
 
@@ -725,7 +797,13 @@ defmodule Roundtable.Coordinator do
       {prompt, until_id} = Chat.prompt(agent, run)
 
       run =
-        Chat.change(run, status: "running", context_until_id: until_id, output: "", error: nil)
+        Chat.change(run,
+          status: "running",
+          context_until_id: until_id,
+          output: "",
+          error: nil,
+          work_revision: Chat.room!(agent.room_id).work_revision
+        )
 
       worker_module = Application.get_env(:roundtable, :agent_worker, Roundtable.Agents.Worker)
 

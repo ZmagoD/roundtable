@@ -53,7 +53,7 @@ defmodule Roundtable.QuotaRetryTest do
     assert agent.session_id == "saved-session"
     assert run.id == waiting.id
     assert run.message_id == message.id
-    assert prompt =~ "RESUMING AFTER A QUOTA WAIT"
+    assert prompt =~ "RESUMING AN INTERRUPTED ASSIGNMENT"
     assert prompt =~ "files updated"
     Coordinator.resume_due(waiting.retry_at)
     refute_receive {:agent_started, _, _, _, _}, 50

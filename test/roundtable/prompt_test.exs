@@ -101,7 +101,7 @@ defmodule Roundtable.PromptTest do
     run = %{ctx.run | retry_count: 1, retry_context: "Already changed the parser."}
     {prompt, _} = Chat.prompt(ctx.resumed, run)
     assert prompt =~ "WHO YOU ARE AND HOW YOU WORK"
-    assert prompt =~ "RESUMING AFTER A QUOTA WAIT"
+    assert prompt =~ "RESUMING AN INTERRUPTED ASSIGNMENT"
     assert prompt =~ "Already changed the parser."
   end
 

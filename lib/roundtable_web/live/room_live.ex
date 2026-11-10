@@ -513,6 +513,14 @@ defmodule RoundtableWeb.RoomLive do
     end
   end
 
+  def handle_event("toggle-auto-mode", _, %{assigns: %{room: room}} = socket)
+      when not is_nil(room) do
+    Chat.set_auto_mode(room.id, not room.auto_mode)
+    {:noreply, refresh(socket)}
+  end
+
+  def handle_event("toggle-auto-mode", _, socket), do: {:noreply, socket}
+
   def handle_event("clear-history", _, %{assigns: %{room: room}} = socket)
       when not is_nil(room) do
     case Coordinator.clear_history(room.id) do
