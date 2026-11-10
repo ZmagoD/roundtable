@@ -61,6 +61,24 @@ defmodule RoundtableWeb.OrganizationSwitcherTest do
     assert render(view) =~ "A little space for your next big idea."
   end
 
+  test "an empty project's selection is in the URL, so refresh and Back keep it",
+       %{conn: conn} = ctx do
+    {:ok, empty} = Chat.create_organization(%{"name" => "Empty project"})
+    {:ok, view, _html} = live(conn, ~p"/rooms/#{ctx.alpha_eng.id}")
+
+    view |> element("#switch-organization-#{empty.id}") |> render_click()
+    assert_patch(view, "/?organization=#{empty.id}")
+
+    {:ok, reloaded, _html} = live(conn, "/?organization=#{empty.id}")
+    assert has_element?(reloaded, "#switch-organization-#{empty.id}.selected")
+    refute render(reloaded) =~ "Alpha Engineering"
+  end
+
+  test "an unknown project in the URL falls back to the usual one", %{conn: conn} do
+    assert {:ok, _view, _html} = live(conn, "/?organization=999999")
+    assert {:ok, _view, _html} = live(conn, "/?organization=nonsense")
+  end
+
   test "the switcher links to where organizations are managed", %{conn: conn} = ctx do
     {:ok, view, _html} = live(conn, ~p"/rooms/#{ctx.alpha_eng.id}")
 

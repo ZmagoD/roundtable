@@ -2,6 +2,7 @@ defmodule RoundtableWeb.SchedulesLive do
   use RoundtableWeb, :live_view
 
   alias Roundtable.Chat
+  alias Roundtable.Chat.Schedule
 
   @impl true
   def mount(_params, _session, socket) do
@@ -76,6 +77,9 @@ defmodule RoundtableWeb.SchedulesLive do
   rescue
     ArgumentError -> {:noreply, assign(socket, form_error: "Choose a participant.")}
   end
+
+  def handle_event("preview-schedule", %{"schedule" => attrs}, socket),
+    do: {:noreply, assign(socket, schedule_form: to_form(attrs, as: :schedule))}
 
   def handle_event("toggle-schedule", %{"id" => id}, socket) do
     schedule = Chat.schedule!(String.to_integer(id))

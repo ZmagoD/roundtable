@@ -841,9 +841,19 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .field-hint { color: var(--neutral-mid-5); font-size: 11px; margin: -6px 0 14px; }
 .form-actions { display: flex; align-items: center; gap: 14px; margin-top: 18px; }
 .organization-brief { color: var(--green-mid-22); font-size: 11px; margin: 8px 0 0; }
-.organization-teams { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.organization-teams { display: grid; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
+.organization-teams li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .organization-teams .room-link { padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; font-size: 11px; }
-.organization-teams-empty { color: var(--neutral-mid-5); font-size: 11px; margin: 10px 0 0; }
+.team-summary { color: var(--neutral-mid-5); font-size: 11px; }
+.team-state { font-size: 10px; font-weight: 550; padding: 2px 6px; border-radius: 4px; color: var(--neutral-mid-5); }
+.team-state.working { color: var(--green-mid-27); background: var(--green-surface-18); }
+.team-state.approval { color: var(--warm-mid-7); background: var(--warm-surface-2); }
+.team-state.queued { color: var(--blue-mid-3); background: var(--blue-surface-1); }
+.organization-teams-empty { display: flex; align-items: center; gap: 10px; color: var(--neutral-mid-5); font-size: 11px; margin: 10px 0 0; }
+.team-head-missing { margin: 0 0 10px; }
+.effective-instructions { margin: 6px 0 12px; }
+.effective-instructions h4 { margin: 10px 0 2px; font-size: 11px; font-weight: 600; }
+.effective-instructions p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 900px) { .schedule-form-panel { position: static; } }
 .organization-switcher { display: grid; gap: 4px; margin-bottom: 18px; }
 .organization-switcher .eyebrow { margin-bottom: 2px; }

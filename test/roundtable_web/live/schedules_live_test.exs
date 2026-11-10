@@ -98,4 +98,32 @@ defmodule RoundtableWeb.SchedulesLiveTest do
     assert has_element?(view, "#schedule-modal", "Add an agent")
     refute has_element?(view, "#workspace-schedule-form")
   end
+
+  test "shows when each schedule next runs, and previews it while editing",
+       %{conn: conn, room: room, agent: agent} do
+    {:ok, schedule} =
+      Chat.create_schedule(room.id, %{
+        name: "Morning review",
+        agent_id: agent.id,
+        prompt: "Review open changes",
+        at: "09:00"
+      })
+
+    {:ok, view, _html} = live(conn, "/schedules")
+    assert view |> element("#schedule-next-run-#{schedule.id}") |> render() =~ ~r/at 09:00/
+
+    view |> element("button[phx-click=edit-schedule]") |> render_click()
+
+    view
+    |> form("#workspace-schedule-form", schedule: %{at: "17:45"})
+    |> render_change()
+
+    assert view |> element("#schedule-next-run-preview") |> render() =~ ~r/at 17:45/
+
+    view
+    |> form("#workspace-schedule-form", schedule: %{enabled: "false"})
+    |> render_change()
+
+    assert view |> element("#schedule-next-run-preview") |> render() =~ "while it is off"
+  end
 end

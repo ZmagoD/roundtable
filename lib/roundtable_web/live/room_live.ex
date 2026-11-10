@@ -39,6 +39,8 @@ defmodule RoundtableWeb.RoomLive do
        editing_renamable: true,
        editing_room: nil,
        schedules: [],
+       layers: %{organization: nil, organization_brief: nil, team_brief: nil},
+       starts_work: nil,
        schedule_form: to_form(%{"days" => "", "at" => "09:00"}, as: :schedule),
        editing_schedule: nil,
        work_form: to_form(%{}, as: :work),
@@ -78,15 +80,7 @@ defmodule RoundtableWeb.RoomLive do
 
     socket = watch_sub_rooms(socket, [])
 
-    room =
-      case params["id"] do
-        nil -> List.first(teams_in(showing_organization(socket)))
-        id -> Enum.find(Chat.rooms(), &(to_string(&1.id) == id))
-      end
-
-    # Opening a team is how you say which project you are in, so the sidebar
-    # follows the room rather than the other way round.
-    organization_id = (room && room.organization_id) || showing_organization(socket)
+    {room, organization_id} = opening(params, socket)
 
     if room && connected?(socket), do: Chat.subscribe(room.id)
 
@@ -124,10 +118,7 @@ defmodule RoundtableWeb.RoomLive do
       # A project with no teams yet still opens: the sidebar shows it empty
       # rather than leaving you in the previous project's conversation.
       nil ->
-        {:noreply,
-         socket
-         |> close_terminal()
-         |> assign(organization_id: organization_id, room: nil, rooms: [], panel: nil)}
+        {:noreply, push_patch(socket, to: ~p"/?organization=#{organization_id}")}
 
       room ->
         {:noreply,
@@ -316,6 +307,37 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   def handle_event("save-schedule", _attrs, socket), do: {:noreply, socket}
+
+  def handle_event("preview-schedule", %{"schedule" => attrs}, socket),
+    do: {:noreply, assign(socket, schedule_form: to_form(attrs, as: :schedule))}
+
+  def handle_event("stop-team", _params, %{assigns: %{room: room}} = socket)
+      when not is_nil(room) do
+    :ok = Coordinator.stop_room(room.id)
+
+    {:noreply,
+     socket
+     |> put_flash(
+       :info,
+       "Stopped the running and queued work in #{room.name}. Schedules stay on; the next " <>
+         "message or scheduled time starts new work."
+     )
+     |> refresh()}
+  end
+
+  def handle_event("pause-schedules", _params, %{assigns: %{room: room}} = socket)
+      when not is_nil(room) do
+    paused = Chat.pause_schedules(room.id)
+
+    {:noreply,
+     socket
+     |> put_flash(
+       :info,
+       "Paused #{paused} #{if paused == 1, do: "schedule", else: "schedules"} in #{room.name}. " <>
+         "Nothing that is already running was stopped. Switch them back on under Schedules."
+     )
+     |> refresh()}
+  end
 
   def handle_event("toggle-schedule", %{"id" => id}, socket) do
     schedule = Chat.schedule!(String.to_integer(id))
@@ -821,7 +843,11 @@ defmodule RoundtableWeb.RoomLive do
         do: Map.put(attrs, "preset_id", ""),
         else: attrs
 
-    {:noreply, assign(socket, message_form: to_form(attrs, as: :message))}
+    {:noreply,
+     assign(socket,
+       message_form: to_form(attrs, as: :message),
+       starts_work: starts_work(socket, attrs)
+     )}
   end
 
   def handle_event("room-draft", %{"room" => attrs}, socket) do
@@ -1101,7 +1127,10 @@ defmodule RoundtableWeb.RoomLive do
       {:ok, _} ->
         {:noreply,
          socket
-         |> assign(message_form: to_form(Map.put(attrs, "body", ""), as: :message))
+         |> assign(
+           message_form: to_form(Map.put(attrs, "body", ""), as: :message),
+           starts_work: nil
+         )
          |> refresh()
          |> push_event("sent", %{})}
 
@@ -1183,6 +1212,7 @@ defmodule RoundtableWeb.RoomLive do
       activity: Coordinator.activity(),
       now: DateTime.utc_now(),
       effective_directory: Chat.effective_directory(socket.assigns.room),
+      layers: Chat.instruction_layers(socket.assigns.room),
       organization:
         Enum.find(Chat.organizations(), &(&1.id == socket.assigns.room.organization_id)),
       approvals:
@@ -1240,6 +1270,53 @@ defmodule RoundtableWeb.RoomLive do
 
   # The teams of one project. Without a project — an installation with none
   # yet — every team, so the sidebar is never mysteriously empty.
+  # `?organization=` is how a project with no teams yet stays chosen across a
+  # refresh or Back: there is no room in the URL to say which project it is.
+  # Opening a team is how you say which project you are in, so otherwise the
+  # sidebar follows the room rather than the other way round.
+  defp opening(params, socket) do
+    requested = requested_organization(params["organization"])
+
+    room =
+      case params["id"] do
+        nil -> List.first(teams_in(requested || showing_organization(socket)))
+        id -> Enum.find(Chat.rooms(), &(to_string(&1.id) == id))
+      end
+
+    {room, (room && room.organization_id) || requested || showing_organization(socket)}
+  end
+
+  # Who sending this draft would start work for, worked out the way posting
+  # does. Nil while there is nothing to send, or when it is a command, which
+  # starts nobody's turn by being typed.
+  defp starts_work(%{assigns: %{room: nil}}, _attrs), do: nil
+
+  defp starts_work(socket, attrs) do
+    body = String.trim(attrs["body"] || "")
+    target = Enum.find(socket.assigns.agents, &(&1.name == attrs["to"]))
+
+    cond do
+      body == "" -> nil
+      String.starts_with?(body, "/") and not String.starts_with?(body, "//") -> nil
+      target -> [target]
+      true -> Chat.starts_work_for(socket.assigns.room.id, body)
+    end
+  end
+
+  @active_statuses ~w(running approval queued waiting_quota)
+
+  # Turns that "Stop current work" would end, so the menu can say there are none.
+  defp active_work(runs), do: Enum.count(runs, &(&1.status in @active_statuses))
+
+  defp requested_organization(nil), do: nil
+
+  defp requested_organization(id) do
+    case Integer.parse(id) do
+      {id, ""} -> if Enum.any?(Chat.organizations(), &(&1.id == id)), do: id
+      _ -> nil
+    end
+  end
+
   defp teams_in(nil), do: Chat.rooms()
   defp teams_in(organization_id), do: Chat.rooms(organization_id)
 
