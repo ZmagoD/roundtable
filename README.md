@@ -184,6 +184,21 @@ page. That is the same access the agents in the room already have, and the same
 reason the service binds to loopback, checks origins, and says not to put it
 behind a proxy without authentication.
 
+### The room in a headset
+
+**View in XR** appears in the room header once the room has participants.
+Click it, put on a headset, and the team stands around you: one panel per
+participant, the team head kept at the front and the rest in the sidebar's
+order, arranged so a crowded room compresses toward the front rather than
+putting someone behind your back. Each panel carries its participant's status —
+running loud, approvals warm, waiting for quota, queued, or quiet idle — and
+the browser draws the names over them.
+
+It is WebXR and plain WebGL, with nothing new installed, so it needs a
+browser that can open an immersive session. It is a view of the same room, not
+a separate one: the chat keeps running, and ending the session returns you to
+the page.
+
 ### Choosing the project directory
 
 The room form completes paths as you type, so you are not recalling one from
@@ -464,6 +479,29 @@ turn without completing the broader goal is not automatically prompted again.
 Roundtable coordinates the named participants in its rooms; provider-internal
 subagents are managed by their provider session.
 
+### A daily token budget
+
+A provider's quota limit is the provider's; a budget is yours. Give a room a
+**Daily token budget** — thousands of tokens, input plus output, per rolling
+day — and once its own runs have reported that much spend, new turns wait
+instead of starting. Leave it empty for no cap.
+
+Only what this room itself reported counts: a budget is per team, not a share
+of a service-wide pool, and it is counted from run records rather than
+estimated. A turn already running is never pushed aside by it, and neither is
+a participant its provider has benched; the budget holds queued work, whoever
+would run it — including a turn quota failover just moved.
+
+A held turn says so once, as a supervisor message, and resumes on its own when
+the rolling day moves on and yesterday's spend falls out of the window.
+Retrying the turn runs it anyway: a held turn is not a refusal, and the person
+in front of the budget said to spend.
+
+While a room has a budget, its header shows how much of today's is spent.
+Rooms without one run free, unless the service sets
+`ROUNDTABLE_DAILY_TOKEN_BUDGET` — the same rule in thousands of tokens for
+every room that does not name its own, and a room's own budget always wins.
+
 ### Keeping work moving
 
 A watchdog checks every room once a minute, so a turn that stops does not sit
@@ -701,10 +739,11 @@ The loop has one brake of its own: each pass has to move the work document
 forward. A head turn that ends without touching the document reads as done or
 stuck — auto mode pauses and says so in the room, and carries on from the next
 human message, schedule, or document edit. Everything else that bounds
-unattended work still applies: the room's daily token budget holds turns, a
-quota failure hands the work to a teammate with room to run it (see above), a
-turn still times out after 30 minutes, and an unclaimed task list is only as
-good as the document describes it.
+unattended work still applies: the room's daily token budget holds turns
+([see above](#a-daily-token-budget)), a quota failure hands the work to a
+teammate with room to run it (see above), a turn still times out after
+30 minutes, and an unclaimed task list is only as good as the document
+describes it.
 
 Turn **Auto** off and every participant asks before each tool again, and the
 head stops being woken on its own. A participant's own approval setting can be
