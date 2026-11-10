@@ -73,6 +73,120 @@ defmodule RoundtableWeb.OrganizationsLiveTest do
     assert Chat.organization!(organization.id).name == "Alpha Co"
   end
 
+  describe "editing an organization" do
+    setup do
+      {:ok, organization} =
+        Chat.create_organization(%{
+          "name" => "Alpha",
+          "directory" => File.cwd!(),
+          "context" => "Ship the billing service."
+        })
+
+      %{organization: organization}
+    end
+
+    test "opens the form filled with what is saved, and focuses it",
+         %{conn: conn, organization: organization} do
+      {:ok, view, _html} = live(conn, ~p"/organizations")
+
+      view |> element("#edit-organization-#{organization.id}") |> render_click()
+
+      assert view |> element(".schedule-form-panel h2") |> render() =~ "Edit organization"
+      assert has_element?(view, ~s|#organization_name[value="Alpha"]|)
+      assert has_element?(view, ~s|#organization_directory[value="#{File.cwd!()}"]|)
+      assert view |> element("#organization_context") |> render() =~ "Ship the billing service."
+      assert has_element?(view, "#organization-#{organization.id}.selected")
+      assert has_element?(view, "#cancel-edit-organization")
+      assert_push_event(view, "focus", %{to: "#organization_name"})
+    end
+
+    test "saves every field and goes back to an empty new form",
+         %{conn: conn, organization: organization} do
+      {:ok, view, _html} = live(conn, ~p"/organizations")
+      view |> element("#edit-organization-#{organization.id}") |> render_click()
+
+      view
+      |> form("#organization-form",
+        organization: %{name: "Alpha Co", directory: "", context: "Sell the billing service."}
+      )
+      |> render_submit()
+
+      saved = Chat.organization!(organization.id)
+      assert saved.name == "Alpha Co"
+      assert saved.directory in [nil, ""]
+      assert saved.context == "Sell the billing service."
+
+      assert view |> element("#organization-#{organization.id}") |> render() =~ "Alpha Co"
+      assert view |> element(".schedule-form-panel h2") |> render() =~ "Add an organization"
+      assert has_element?(view, ~s|#organization_name[value=""]|)
+      refute has_element?(view, "#cancel-edit-organization")
+    end
+
+    test "does not create a second organization", %{conn: conn, organization: organization} do
+      before = length(Chat.organizations())
+      {:ok, view, _html} = live(conn, ~p"/organizations")
+      view |> element("#edit-organization-#{organization.id}") |> render_click()
+
+      view
+      |> form("#organization-form", organization: %{name: "Alpha 2"})
+      |> render_submit()
+
+      assert length(Chat.organizations()) == before
+    end
+
+    test "keeps the edit open with the error when the folder does not exist",
+         %{conn: conn, organization: organization} do
+      {:ok, view, _html} = live(conn, ~p"/organizations")
+      view |> element("#edit-organization-#{organization.id}") |> render_click()
+
+      view
+      |> form("#organization-form", organization: %{directory: "/no/such/place"})
+      |> render_submit()
+
+      assert view |> element("#organization-form-error") |> render() =~
+               "must be an existing absolute directory"
+
+      assert view |> element(".schedule-form-panel h2") |> render() =~ "Edit organization"
+      assert has_element?(view, ~s|#organization_directory[value="/no/such/place"]|)
+      assert Chat.organization!(organization.id).directory == File.cwd!()
+    end
+
+    test "refuses a name another organization already has",
+         %{conn: conn, organization: organization} do
+      {:ok, _} = Chat.create_organization(%{"name" => "Beta"})
+      {:ok, view, _html} = live(conn, ~p"/organizations")
+      view |> element("#edit-organization-#{organization.id}") |> render_click()
+
+      view
+      |> form("#organization-form", organization: %{name: "Beta"})
+      |> render_submit()
+
+      assert has_element?(view, "#organization-form-error")
+      assert Chat.organization!(organization.id).name == "Alpha"
+    end
+
+    test "cancel drops the edit without saving it", %{conn: conn, organization: organization} do
+      {:ok, view, _html} = live(conn, ~p"/organizations")
+      view |> element("#edit-organization-#{organization.id}") |> render_click()
+      view |> element("#cancel-edit-organization") |> render_click()
+
+      assert view |> element(".schedule-form-panel h2") |> render() =~ "Add an organization"
+      assert has_element?(view, ~s|#organization_name[value=""]|)
+      assert Chat.organization!(organization.id).name == "Alpha"
+    end
+
+    test "New organization leaves the edit for an empty form",
+         %{conn: conn, organization: organization} do
+      {:ok, view, _html} = live(conn, ~p"/organizations")
+      view |> element("#edit-organization-#{organization.id}") |> render_click()
+      view |> element("#new-organization") |> render_click()
+
+      assert view |> element(".schedule-form-panel h2") |> render() =~ "Add an organization"
+      assert has_element?(view, ~s|#organization_name[value=""]|)
+      assert_push_event(view, "focus", %{to: "#organization_name"})
+    end
+  end
+
   test "counts the teams in an organization", %{conn: conn} do
     {:ok, organization} = Chat.create_organization(%{"name" => "Alpha"})
 

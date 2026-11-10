@@ -33,7 +33,9 @@ defmodule RoundtableWeb.OrganizationsLive do
   @impl true
   def handle_event("new-organization", _params, socket) do
     {:noreply,
-     assign(socket, editing_id: nil, form_error: nil, organization_form: organization_form())}
+     socket
+     |> assign(editing_id: nil, form_error: nil, organization_form: organization_form())
+     |> focus_form()}
   end
 
   def handle_event("edit-organization", %{"id" => id}, socket) do
@@ -46,11 +48,13 @@ defmodule RoundtableWeb.OrganizationsLive do
     }
 
     {:noreply,
-     assign(socket,
+     socket
+     |> assign(
        editing_id: organization.id,
        form_error: nil,
        organization_form: to_form(attrs, as: :organization)
-     )}
+     )
+     |> focus_form()}
   end
 
   def handle_event("save-organization", %{"organization" => attrs}, socket) do
@@ -80,6 +84,12 @@ defmodule RoundtableWeb.OrganizationsLive do
     {:noreply,
      assign(socket, editing_id: nil, form_error: nil, organization_form: organization_form())}
   end
+
+  # On a narrow window the form sits below the list, so a click on Edit would
+  # change nothing the person can see. Focus is pushed rather than done with
+  # JS.focus on the click: LiveView never rewrites a focused input, so focusing
+  # before the patch lands would keep the Name field empty.
+  defp focus_form(socket), do: push_event(socket, "focus", %{to: "#organization_name"})
 
   defp refresh(socket) do
     organizations =

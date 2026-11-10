@@ -58,6 +58,10 @@ window.addEventListener("roundtable:open-dialog", event => {
   if (!event.target.open) event.target.showModal()
 })
 window.addEventListener("roundtable:close-dialog", event => event.target.close())
+window.addEventListener("phx:focus", ({detail}) => {
+  const target = document.querySelector(detail.to)
+  if (target) target.focus({preventScroll: false})
+})
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
