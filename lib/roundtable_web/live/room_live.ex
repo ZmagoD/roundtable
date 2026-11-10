@@ -516,7 +516,9 @@ defmodule RoundtableWeb.RoomLive do
   def handle_event("toggle-auto-mode", _, %{assigns: %{room: room}} = socket)
       when not is_nil(room) do
     Chat.set_auto_mode(room.id, not room.auto_mode)
-    {:noreply, refresh(socket)}
+    # The header's switch is drawn from the room in the assigns, and the next
+    # toggle reads the same assign: the room itself has to be read back.
+    {:noreply, reload_room(socket)}
   end
 
   def handle_event("toggle-auto-mode", _, socket), do: {:noreply, socket}
