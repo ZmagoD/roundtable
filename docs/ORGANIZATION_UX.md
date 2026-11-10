@@ -1,8 +1,8 @@
 # Organizations, teams and project inheritance
 
-UX implementation contract for the organization work. This describes intended
-behavior, not shipped functionality. Reviewed against the working tree at
-`4fa63af` with the organization backend changes still uncommitted.
+UX implementation contract for the organization work. Most of it has shipped;
+**Status** at the end says which parts, and what is still open. Where the
+shipped interface differs from the wording below, the status says so.
 
 ## Product structure
 
@@ -146,7 +146,55 @@ cost information must not appear as zero.
 - QA uses an isolated database with provider execution disabled. Browser review
   and the repository's required checks gate implementation sign-off.
 
-The next visible implementation should deliver organization creation, switching
-and scoped team navigation. Project inheritance is a separate backend-and-UI
-slice with the acceptance cases above; the current name-only organization schema
-does not satisfy it. This design does not certify either slice as complete.
+## Status
+
+Reviewed against the code on 2026-11-10.
+
+Shipped, with tests:
+
+- Organizations with an optional folder and shared brief; existing rooms moved
+  to **Existing workspace** with their folders and briefs kept as team settings.
+- Organization switcher scoped to one organization's teams. The selection is in
+  the URL (`/?organization=<id>` for an organization without teams, the team's
+  own URL otherwise), so refresh and Back keep it.
+- Creating an organization opens it, empty, and starts nothing.
+- Overview on **Organizations**: per team, its head, member count and status
+  (needs approval, working, queued, idle) in words, from real run state. An
+  empty organization shows **No teams yet** with **Create a team**.
+- Folder inheritance with provenance (*From <organization>: path* / *Custom
+  folder: path*), **Use a different folder** and **Use the project's folder**.
+  Organization folder edits list the inheriting and custom teams. **Applies to
+  new turns** shows while work is active, and the next turn in a different folder
+  starts a fresh provider session. A team needs a resolved folder; nothing falls
+  back to the home directory.
+- Effective instructions: the prompt and the preview read the same three layers
+  (**Organization brief**, **Team brief**, **Member role**). The team's settings
+  show the inherited organization brief read-only with a link to change it.
+- Team head: one at a time, changed atomically, removable with an explicit
+  "Leave the team without a head". A team without one shows **Choose a team head**.
+- Schedules show the next run in the machine's local time, previewed before
+  saving. Saving does not run a schedule.
+- **Stop current work** and **Pause schedules** per team, each naming the team
+  and saying what it does not do. Tests check that each leaves the other alone.
+- Before sending, the composer says whose turn the message will start; a name
+  without `@` visibly starts nobody's.
+- Cross-room mentions resolve only inside the sender's organization and refuse
+  an ambiguous team name.
+
+Different from the wording above, deliberately or for now:
+
+- **Message team head** is the composer's *Primary contact* recipient, the
+  default whenever a team has a head.
+- Members and schedules are side panels of the team conversation rather than
+  separate tabs.
+- There are no cross-organization recipients at all, so there is no
+  cross-organization search to design.
+
+Not yet verified or not built:
+
+- Release acceptance by hand: keyboard-only operation, focus trapping and
+  restoration in every dialog, widths of 1440, 390 and 320 CSS pixels in both
+  themes and at 200% zoom, and a labelled **Teams** drawer at phone widths.
+- Cost displays have not been audited for the reported / estimated /
+  unavailable distinction.
+- A QA pass on an isolated database with provider execution disabled.

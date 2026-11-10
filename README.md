@@ -8,7 +8,10 @@ Provider CLIs connect to their configured services to run the models.
 
 ![A room with three agents working on a checkout service](docs/images/room-light.png)
 
-- **A room is a project.** One working tree, shared by everyone in it, with a
+- **Organizations hold your projects; rooms are their teams.** An organization
+  has a folder and a shared brief. Each team works in that folder unless it
+  names its own, and its brief adds to the organization's.
+- **A room is a team.** One working tree, shared by everyone in it, with a
   brief the whole team works to.
 - **Participants are named and briefed.** A role that says how to work, a model,
   a relative cost tier — and the roster is what they use to hand work to each
@@ -18,8 +21,10 @@ Provider CLIs connect to their configured services to run the models.
   assignment, with fresh sessions to avoid accumulating unrelated context.
 - **Mentions assign work directly.** `@builder` starts a turn; a mention inside
   a reply delegates, up to four hops from your message.
-- **You can watch and stop it.** Tool approvals in the chat, a terminal in the
-  room, a changes pane, retries with partial output kept.
+- **You can watch and stop it.** Tool approvals in the chat, what each running
+  turn is doing right now, which rooms are waiting on you, a terminal in the
+  room, a changes pane, retries with partial output kept, and one control to
+  stop a whole team's work.
 - **Ask an agent to build your team.** **Build a team** creates a room and a
   helper that can add participants, reuse profiles and configure schedules.
 - **Schedule standing instructions.** Wake an existing participant with a prompt
@@ -79,6 +84,10 @@ The service scans the next 99 ports if the preferred port is occupied. It never
 uses ports 3000 or 4000. Override the preferred port with `PORT=4320`.
 The probe is best effort: a different process can claim a port between the
 availability check and the web server binding it.
+
+If `mix setup` stops with *Could not find an SCM for dependency :phoenix*, the
+Elixir you are running has no Hex, which happens after a version manager
+installs a new Elixir. Run `mix local.hex --force` and try again.
 
 ## Background service
 
@@ -319,6 +328,11 @@ A room is addressed from another room by its name in lowercase with dashes, so
 @design-team/grace what spacing should the room list use?
 ```
 
+A cross-room mention reaches only teams in the same organization. Two
+organizations can each have a Design Team without one receiving the other's
+questions, and a name that matches more than one team there is refused rather
+than guessed.
+
 The question is delivered into Design Team as an ordinary turn for `@grace`,
 carrying only what was asked — not the asking room's history. When that turn
 finishes, the answer is posted back into the asking room. An agent can do the
@@ -332,6 +346,41 @@ browser chat field.
 The four-hop cap spans rooms: a cross-room request inherits the asking
 message's depth, so Platform → Design → Platform terminates like any other
 chain rather than resetting each time it crosses a boundary.
+
+### Organizations
+
+An organization is a project or a business, and holds the teams that work on
+it. Create one from **Manage organizations**, under the switcher above the team
+list. It needs only a name. A project folder and a shared brief
+are optional. Creating one opens it, empty, and starts nothing.
+
+The switcher shows one organization's teams at a time. The selected
+organization is part of the page address (`/?organization=<id>` while it has no
+teams, the team's own address once you open one), so a refresh or **Back**
+keeps you where you were.
+
+The **Organizations** page lists every team with its head, how many members it
+has and what it is doing: *needs approval*, *working*, *queued* or *idle*,
+always in words. An organization with no teams offers **Create a team**.
+
+**Folders.** A team works in its organization's folder unless you give it its
+own. Its settings show which it is, *From Acme: /path* or *Custom folder:
+/path*, with **Use a different folder** or **Use the project's folder** to
+switch. Inheriting is live: change the organization's folder and every team
+still using it follows. Editing the organization lists which teams that moves
+and which keep their own. A folder change applies to new turns. Work already
+running keeps its folder, and the next turn starts a fresh provider session
+rather than resuming one opened elsewhere. A team must have a folder, its own or
+an inherited one; Roundtable never falls back to your home directory.
+
+**Briefs.** Every turn opens with three layers, in order: the organization
+brief, the team brief and the participant's own role. Each adds to the one
+before. The team's settings show the inherited organization brief above its own,
+and a participant's form has **What this participant works to**, a preview of
+all three exactly as a turn receives them.
+
+Rooms that existed before organizations were placed in **Existing workspace**
+with their folders and briefs unchanged.
 
 ## A walkthrough
 
@@ -355,7 +404,11 @@ your system:
    and give each participant a role.
 3. Write a message or select a recipient. `@ada` starts Ada's turn;
    `@all` schedules everyone. Select **Make team head** on one participant to
-   route unaddressed messages to them automatically.
+   route unaddressed messages to them automatically. A team without a head says
+   **Choose a team head** above its members until you do. Under the message
+   field, Roundtable says whose turn sending will start before you send, so
+   naming someone in prose (`ada might know`) is visibly different from
+   assigning them work (`@ada`).
 4. With a head, agents receive the work document and their assigned message.
    Without one, they receive unread room messages. Final replies go into the
    room; a mention in a reply can delegate to another agent.
@@ -363,6 +416,10 @@ your system:
    native session. New sessions receive the work document in teams with a head,
    or bounded room history otherwise. Stopped and failed work
    can be retried explicitly.
+6. To stop everyone at once, choose **Stop current work** under the room's
+   **More** menu. It ends every running and queued turn in that team and leaves
+   its schedules on. **Pause schedules**, next to it, switches the team's
+   schedules off and leaves running work alone. Neither does the other's job.
 
 There is one active turn per participant, up to four active turns overall,
 and at most four automatic delegation hops from a human message. Agent tool
@@ -370,6 +427,24 @@ permissions remain subject to the provider's rules. Codex and Claude approval
 requests are presented in the chat; OpenCode's CLI adapter uses its configured
 permissions and cannot interactively grant a new approval. Errors are visible
 with partial output and a retry control. Each turn has a 30-minute timeout.
+
+### Seeing what is happening
+
+A participant's card shows its state in words as well as colour. While a turn
+runs, the room shows the step it is on, named from the provider's own tool
+events, how long that step and the whole turn have taken, and how many messages
+are queued behind it. A turn inside one long command, such as a test suite,
+still looks busy rather than stuck.
+
+When someone is waiting on you, the room link in the sidebar says so, with a
+count, the names and the reason: a tool approval, a request card to accept or
+an unanswered question. The asking participant's card says **Waiting for you**.
+A participant working in a sub-room shows as busy in its own room too, with a
+link to where the work is.
+
+Each card also shows how much of its provider's quota is left, with a meter
+that turns warm near the limit, and when the window resets if the provider
+says. A provider that never reports quota says so rather than showing a number.
 
 ### Agent profiles: one library, any room
 
@@ -385,6 +460,21 @@ in that room, with its own provider session and its own queue, so the same
 seeing each other's transcript. Give it a different name to add the same profile
 twice in one room. Editing or deleting a profile leaves participants already
 added from it exactly as they are.
+
+### Changing a participant's provider or model
+
+Edit a participant to move it to another model or another provider. Its name,
+role, the work document, room notes and recent conversation carry over. The
+provider's own session and hidden reasoning cannot, so its next turn starts a
+fresh session and is told to continue from what the room has written down.
+
+A model change applies straight away to queued turns, except ones you pinned
+to a model. A turn already running finishes on the model it started with. A
+provider change waits until the participant has nothing running or queued,
+including quota waits. When adding a participant every provider is listed;
+when switching, only providers installed on this machine are. A switch to a
+provider that has no tool approval channel (OpenCode, Grok, Vibe) needs you to
+choose automatic approval explicitly. Saving a change never starts a turn.
 
 ### Continuing after provider quota limits
 
@@ -669,6 +759,15 @@ session pointer, but leaves the room conversation intact. Old native transcripts
 remain managed by the provider CLI. Roundtable does not currently offer a picker
 for those older sessions.
 
+### Letting the team head answer approvals
+
+By default only you answer tool approvals. In a team's settings, **Who answers
+tool approvals** can be set to *The team head, for its teammates*. A teammate
+waiting on a tool, in the team or in a task room it opened, then wakes the
+head, which allows or declines it and posts its reason in that room. The head
+is woken once per batch of waiting requests. Its own requests still come to
+you, and you can answer any card yourself. Room tools cannot turn this on.
+
 ### Ask for a room instead of filling the form
 
 Choose **Build a team** in the sidebar to start without manually adding your
@@ -749,11 +848,36 @@ room, and a tool that rearranges rooms with nowhere to say no is not one worth
 having. The service answers them at `/mcp` on its own loopback port; turn them
 off for everyone with `config :roundtable, :mcp_url, false`.
 
+### Sub-rooms and task rooms
+
+A room an agent creates from inside another belongs to it, as a sub-room, and
+is listed under it. Deleting a team deletes its sub-rooms with it, in one step.
+The delete is refused, naming the rooms, while any of them holds task work that
+has not been pushed.
+
+A task room can be *isolated*: Roundtable makes a managed clone of the
+project's committed files on its own `roundtable/task-…` branch, under
+`~/.local/share/roundtable/checkouts`, so the original folder is never
+written to. Its result is kept in the parent room without starting another
+turn for the head, which reads the detail when it needs it.
+
+A task is closed on evidence, not on say-so. The parent records what it
+reviewed (the exact commit, the PR, the precommit result) and Roundtable then
+checks, from fresh git and GitHub data, that the PR merged that commit into
+`main`, that every check on the PR passed and there was at least one, and that
+the checkout is clean with nothing left unpushed. **Check completion** in the
+task room's header runs those checks and changes nothing. **Finish task and
+remove copy** runs them and, if they hold, keeps the result in the parent and
+removes the clone.
+
 ### Standing instructions
 
 A room can wake one of its participants at the same times every day:
 **Schedules** under the room header's **More** menu, or by asking an agent that
 has the tools for it.
+
+Each schedule shows when it next runs, in this machine's local time, and the
+form previews that before you save. Saving never runs it straight away.
 
 A schedule has a name and sends one message to one participant at times of day you choose —
 `09:00`, or `09:00,17:30` — every day, on weekdays, or on the days you pick.
