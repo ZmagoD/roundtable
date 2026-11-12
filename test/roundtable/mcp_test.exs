@@ -10,6 +10,7 @@ defmodule Roundtable.MCPTest do
   """
   use Roundtable.DataCase, async: false
 
+  alias Roundtable.Agents.Grok
   alias Roundtable.Chat
   alias Roundtable.Chat.{Agent, Message, Run}
   alias Roundtable.MCP
@@ -809,6 +810,44 @@ defmodule Roundtable.MCPTest do
         assert Enum.any?(args, &(&1 =~ "/mcp")),
                "#{agent.provider} launches without the room tools: #{inspect(args)}"
       end
+    end
+
+    # Grok cannot ask, so it is given the rooms only once the human has
+    # approved everything for it, through its own config and the environment.
+    test "grok is given the tools only while it approves its own", %{room: room} do
+      home = Path.join(System.tmp_dir!(), "rt-grok-#{System.unique_integer([:positive])}")
+      Application.put_env(:roundtable, :grok_home, home)
+
+      on_exit(fn ->
+        File.rm_rf(home)
+
+        Application.put_env(
+          :roundtable,
+          :grok_home,
+          Path.join(System.tmp_dir!(), "roundtable-test-grok-home")
+        )
+      end)
+
+      {:ok, grok} = Chat.create_agent(room.id, %{"name" => "gro", "provider" => "grok"})
+      refute MCP.offered?(grok)
+      assert token_in(Protocol.env(grok)) == nil
+      Grok.command(grok, "go")
+      refute File.exists?(Path.join(home, "config.toml"))
+
+      {:ok, grok} = Chat.update_agent(grok.id, %{"auto_approve" => true})
+      turn(grok)
+      assert MCP.offered?(grok)
+      env = Protocol.env(grok)
+      assert {_, _token} = token_in(env)
+      assert {_, ~c"http://127.0.0.1:4002/mcp"} = List.keyfind(env, ~c"ROUNDTABLE_MCP_URL", 0)
+
+      {_, args} = Grok.command(grok, "go")
+      assert "--always-approve" in args
+      # Neither the token nor the address is ever written; only their names are.
+      config = File.read!(Path.join(home, "config.toml"))
+      assert config =~ "[mcp_servers.roundtable]"
+      assert config =~ "${ROUNDTABLE_MCP_TOKEN:-}"
+      refute config =~ "127.0.0.1"
     end
 
     test "a provider with no way to say no is given nothing", %{room: room} do

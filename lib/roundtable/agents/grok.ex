@@ -14,6 +14,12 @@ defmodule Roundtable.Agents.Grok do
   for a prompt nobody can answer — or with every tool approved, when the human
   turned automatic approval on for this participant.
 
+  It takes no MCP server on the command line, so a participant given the room
+  tools (see `Roundtable.MCP.offered?/1`) is wired in through Grok's own user
+  config instead: one entry, added once and never rewritten, whose address and
+  token come from the turn's environment. Grok drops an entry whose address is
+  empty, so outside a Roundtable turn the human's own sessions never see it.
+
   A step `acceptEdits` does not cover, such as a shell command, is not refused
   but cancelled, and the turn ends with nothing more than "cancelled". Its own
   log calls the turn successful, so the room is told what that usually means.
@@ -22,7 +28,18 @@ defmodule Roundtable.Agents.Grok do
 
   import Roundtable.Agents.Worker, only: [close_stdin: 1]
 
+  require Logger
+
   alias Roundtable.Agents.{Messages, Protocol}
+  alias Roundtable.MCP
+
+  @tool_server """
+  # Added by Roundtable for its grok participants. Grok leaves it out unless a
+  # Roundtable turn sets these variables, so other sessions do not see it.
+  [mcp_servers.roundtable]
+  url = "${ROUNDTABLE_MCP_URL:-}"
+  headers = { "Authorization" = "Bearer ${ROUNDTABLE_MCP_TOKEN:-}" }
+  """
 
   @cancelled "Grok cancelled this turn, most likely at a step that needed permission, " <>
                "such as a shell command. It cannot ask the room for permission, so it " <>
@@ -36,6 +53,8 @@ defmodule Roundtable.Agents.Grok do
   # 128 KB; a room long enough to exceed that fails visibly at spawn rather
   # than silently truncating.
   def command(agent, prompt) do
+    if MCP.offered?(agent), do: ensure_tool_server()
+
     args =
       [
         "-p",
@@ -49,6 +68,46 @@ defmodule Roundtable.Agents.Grok do
         Protocol.optional("--model", agent.model)
 
     {"grok", args}
+  end
+
+  @doc """
+  Adds Roundtable's entry to Grok's user config unless one is there.
+
+  Appends rather than rewrites: the file is the human's, and anything they put
+  in it stays exactly as it was. An entry of theirs named `roundtable` is left
+  alone. A failure is logged and the turn runs without the tools.
+  """
+  def ensure_tool_server(home \\ grok_home()) do
+    path = Path.join(home, "config.toml")
+
+    with {:ok, current} <- read_config(path),
+         false <- current =~ ~r/^\s*\[mcp_servers\.\"?roundtable\"?\]|^\s*roundtable\s*=/m,
+         :ok <- File.mkdir_p(home),
+         :ok <- File.write(path, separator(current) <> @tool_server, [:append]) do
+      :ok
+    else
+      true ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Could not give Grok the room tools in #{path}: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp read_config(path) do
+    case File.read(path) do
+      {:error, :enoent} -> {:ok, ""}
+      result -> result
+    end
+  end
+
+  defp separator(""), do: ""
+  defp separator(current), do: if(String.ends_with?(current, "\n"), do: "\n", else: "\n\n")
+
+  defp grok_home do
+    Application.get_env(:roundtable, :grok_home) || System.get_env("GROK_HOME") ||
+      Path.expand("~/.grok")
   end
 
   defp permissions(agent) do

@@ -35,6 +35,13 @@ defmodule Roundtable.MCP do
   # rearrange the rooms with nowhere for the human to say no.
   @providers ["claude", "codex"]
 
+  # Grok has no approval channel either, but once the human has approved every
+  # tool for a grok participant there is nothing left for one to ask, so that
+  # participant is given the rooms too. Its CLI reads them from its own config,
+  # with the address and token from the turn's environment — see
+  # `Roundtable.Agents.Grok`.
+  @approving_providers ["grok"]
+
   @doc """
   Where the tool server answers, or `nil` when there is nothing to reach.
 
@@ -51,10 +58,17 @@ defmodule Roundtable.MCP do
   end
 
   @doc "Whether this participant's CLI is one the tools can be wired into."
-  def offered?(%{provider: provider} = agent),
-    do: provider in @providers and is_integer(Map.get(agent, :id)) and url() != nil
+  def offered?(%{provider: _} = agent),
+    do: wired?(agent) and is_integer(Map.get(agent, :id)) and url() != nil
 
   def offered?(_agent), do: false
+
+  defp wired?(%{provider: provider}) when provider in @providers, do: true
+
+  defp wired?(%{provider: provider} = agent) when provider in @approving_providers,
+    do: Map.get(agent, :auto_approve) == true
+
+  defp wired?(_agent), do: false
 
   @doc """
   A bearer token that says which participant is calling, and for which turn.

@@ -349,6 +349,41 @@ defmodule Roundtable.Agents.ProtocolTest do
                event |> Grok.handle_event(approving) |> settle()
     end
 
+    test "the room tools are added to Grok's config once, beside what is there" do
+      home = Path.join(System.tmp_dir!(), "rt-grok-#{System.unique_integer([:positive])}")
+      on_exit(fn -> File.rm_rf(home) end)
+      File.mkdir_p!(home)
+      path = Path.join(home, "config.toml")
+      File.write!(path, "[models]\ndefault = \"grok-4.7\"")
+
+      assert :ok = Grok.ensure_tool_server(home)
+      assert :ok = Grok.ensure_tool_server(home)
+
+      config = File.read!(path)
+      assert String.starts_with?(config, "[models]\ndefault = \"grok-4.7\"\n\n")
+      assert length(String.split(config, "[mcp_servers.roundtable]")) == 2
+    end
+
+    test "an entry of the human's own named roundtable is left alone" do
+      home = Path.join(System.tmp_dir!(), "rt-grok-#{System.unique_integer([:positive])}")
+      on_exit(fn -> File.rm_rf(home) end)
+      File.mkdir_p!(home)
+      path = Path.join(home, "config.toml")
+      mine = "[mcp_servers.roundtable]\nurl = \"http://elsewhere/mcp\"\n"
+      File.write!(path, mine)
+
+      assert :ok = Grok.ensure_tool_server(home)
+      assert File.read!(path) == mine
+    end
+
+    test "with no config yet, the entry is the whole file" do
+      home = Path.join(System.tmp_dir!(), "rt-grok-#{System.unique_integer([:positive])}")
+      on_exit(fn -> File.rm_rf(home) end)
+
+      assert :ok = Grok.ensure_tool_server(home)
+      assert File.read!(Path.join(home, "config.toml")) =~ ~r/\A# Added by Roundtable/
+    end
+
     test "an empty session id is not a session" do
       # The CLI sends session_id: "" before it has one.
       assert %{session: nil} =
