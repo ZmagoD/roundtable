@@ -167,10 +167,7 @@ all. If your CLI has both, add a clause to `flags/3`. If it has no approval
 channel, do not — a tool that rearranges the rooms with nowhere to say no is not
 worth having.
 
-Grok is the one exception, and a narrow one. It has no approval channel, so it
-is offered the tools only while the human has set its participant to approve
-every tool anyway; there is then nothing left for it to ask. It also takes no
-server on the command line, so `Roundtable.Agents.Grok` adds one entry to Grok's
-user config, once, whose address and token are `${ROUNDTABLE_MCP_URL}` and
-`${ROUNDTABLE_MCP_TOKEN}` from the turn's environment. Grok drops an entry whose
-address is empty, so the human's own sessions never see it.
+Grok takes no server on the command line, but in `grok agent stdio` (the
+Agent Client Protocol) the server is part of the `session/new` request, and
+`session/request_permission` is its approval channel, so it is wired in there
+— see `Roundtable.Agents.Grok`.

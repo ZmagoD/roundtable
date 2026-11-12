@@ -265,139 +265,168 @@ defmodule Roundtable.Agents.ProtocolTest do
   end
 
   describe "grok" do
-    test "runs headless in the Messages wire format" do
-      {exe, args} = Grok.command(%{session_id: nil, model: nil}, "do the thing")
+    test "runs as an ACP agent, with the prompt kept off the argument list" do
+      assert {"grok", ["agent", "stdio"]} =
+               Grok.command(%{session_id: nil, model: nil}, "a secret plan")
 
-      assert exe == "grok"
-      # The CLI documents no way to read the prompt from stdin.
-      assert Enum.chunk_every(args, 2, 1) |> Enum.member?(["-p", "do the thing"])
-
-      assert Enum.chunk_every(args, 2, 1)
-             |> Enum.member?(["--output-format", "streaming-messages-json"])
-
-      assert "--include-partial-messages" in args
-      refute "--resume" in args
-      refute "--model" in args
+      {_, args} = Grok.command(%{session_id: nil, model: "grok-4.7", auto_approve: true}, "go")
+      assert args == ["agent", "--always-approve", "--model", "grok-4.7", "stdio"]
     end
 
-    test "resumes a session and pins a model when there is one" do
-      {_, args} = Grok.command(%{session_id: "s-1", model: "grok-4.6"}, "go")
-      pairs = Enum.chunk_every(args, 2, 1)
+    test "initialises, opens a session in the room's folder, then prompts" do
+      state = state()
+      Grok.start(state)
+      assert %{"id" => 1, "method" => "initialize"} = written(state)
 
-      assert ["--resume", "s-1"] in pairs
-      assert ["--model", "grok-4.6"] in pairs
+      Grok.handle_event(%{"id" => 1, "result" => %{"protocolVersion" => 1}}, state)
+      assert %{"id" => 2, "method" => "session/new", "params" => params} = written(state)
+      assert params["cwd"] == "/tmp"
+      # Bare test agents have no id, so they are offered no tools.
+      assert params["mcpServers"] == []
+
+      state = Grok.handle_event(%{"id" => 2, "result" => %{"sessionId" => "s-1"}}, state)
+      assert state.session == "s-1"
+
+      assert %{"id" => 3, "method" => "session/prompt", "params" => prompt} = written(state)
+
+      assert prompt == %{
+               "sessionId" => "s-1",
+               "prompt" => [%{"type" => "text", "text" => "do the thing"}]
+             }
     end
 
-    test "it reads the same events Claude Code emits" do
+    test "resumes its session, and starts a new one when that fails" do
+      state = state(%{session: "old"})
+      Grok.handle_event(%{"id" => 1, "result" => %{}}, state)
+      assert %{"method" => "session/resume", "params" => %{"sessionId" => "old"}} = written(state)
+
+      state = Grok.handle_event(%{"id" => 2, "error" => %{"message" => "not found"}}, state)
+      assert %{"id" => 4, "method" => "session/new", "params" => params} = written(state)
+      refute Map.has_key?(params, "sessionId")
+
+      state = Grok.handle_event(%{"id" => 4, "result" => %{"sessionId" => "new"}}, state)
+      assert state.session == "new"
+      assert %{"method" => "session/prompt"} = written(state)
+    end
+
+    test "streams this turn's text, with tool calls between paragraphs" do
       state = state()
 
-      assert %{session: "s-9"} =
-               Grok.handle_event(%{"type" => "system", "session_id" => "s-9"}, state)
+      chunk =
+        &%{
+          "method" => "session/update",
+          "params" => %{
+            "update" => %{
+              "sessionUpdate" => "agent_message_chunk",
+              "content" => %{"type" => "text", "text" => &1}
+            }
+          }
+        }
 
-      assert %{output: "streamed"} =
-               %{
-                 "type" => "stream_event",
-                 "event" => %{
-                   "type" => "content_block_delta",
-                   "delta" => %{"type" => "text_delta", "text" => "streamed"}
-                 }
-               }
-               |> Grok.handle_event(state)
-               |> settle()
+      # Replayed history before the prompt is not this turn's answer.
+      assert %{output: ""} = Grok.handle_event(chunk.("old answer"), state)
 
-      assert %{finished: {"completed", nil}} =
-               %{"type" => "result", "result" => "done"}
-               |> Grok.handle_event(state)
-               |> settle()
+      state =
+        state
+        |> Map.put(:prompting, true)
+        |> then(&Grok.handle_event(chunk.("Looking."), &1))
+        |> then(
+          &Grok.handle_event(
+            %{
+              "method" => "session/update",
+              "params" => %{
+                "update" => %{
+                  "sessionUpdate" => "tool_call",
+                  "kind" => "execute",
+                  "title" => "mix test"
+                }
+              }
+            },
+            &1
+          )
+        )
+        |> then(&Grok.handle_event(chunk.("All green."), &1))
+        |> settle()
+
+      assert state.output == "Looking.\n\nAll green."
+      assert state.activity == "Running a shell command: mix test"
     end
 
-    test "an unauthenticated run fails with what the CLI said" do
-      # Captured from a real `grok -p ... --output-format streaming-messages-json`.
-      event = %{
-        "type" => "result",
-        "subtype" => "error_during_execution",
-        "is_error" => true,
-        "errors" => ["Not signed in. To authenticate without a browser, run:\n  grok login"],
-        "session_id" => ""
+    test "a finished prompt completes with its usage, and a bare cancel fails" do
+      state = Map.merge(state(), %{output: "done", usage_attempt: "a"})
+
+      result = %{
+        "stopReason" => "end_turn",
+        "usage" => %{"inputTokens" => 10, "outputTokens" => 3, "cachedReadTokens" => 4}
       }
 
-      assert %{finished: {"failed", message}} = event |> Grok.handle_event(state()) |> settle()
+      assert %{finished: {"completed", nil}, usage_tokens: tokens} =
+               Grok.handle_event(%{"id" => 3, "result" => result}, state)
+
+      assert tokens == %{"input" => 10, "output" => 3, "cached" => 4}
+
+      assert %{finished: {"failed", "Grok cancelled this turn."}} =
+               Grok.handle_event(
+                 %{"id" => 3, "result" => %{"stopReason" => "cancelled"}},
+                 state()
+               )
+    end
+
+    test "a permission request becomes an approval, answered with the matching option" do
+      request = %{
+        "jsonrpc" => "2.0",
+        "id" => 7,
+        "method" => "session/request_permission",
+        "params" => %{
+          "sessionId" => "s-1",
+          "toolCall" => %{
+            "toolCallId" => "t1",
+            "title" => "rm -rf build",
+            "rawInput" => %{"command" => "rm -rf build"}
+          },
+          "options" => [
+            %{"optionId" => "always", "kind" => "allow_always"},
+            %{"optionId" => "once", "kind" => "allow_once"},
+            %{"optionId" => "no", "kind" => "reject_once"}
+          ]
+        }
+      }
+
+      state = Grok.handle_event(request, state())
+      assert %{7 => %{"display_name" => "rm -rf build"} = pending} = state.pending
+
+      Grok.approve(state, 7, "accept", pending)
+
+      assert %{
+               "id" => 7,
+               "result" => %{"outcome" => %{"outcome" => "selected", "optionId" => "once"}}
+             } = written(state)
+
+      Grok.approve(state, 7, "decline", pending)
+      assert %{"result" => %{"outcome" => %{"optionId" => "no"}}} = written(state)
+
+      Grok.approve(state, 7, "decline", %{"options" => []})
+      assert %{"result" => %{"outcome" => %{"outcome" => "cancelled"}}} = written(state)
+    end
+
+    test "a request the room cannot serve is refused, not left hanging" do
+      state = state()
+      Grok.handle_event(%{"id" => 9, "method" => "fs/read_text_file", "params" => %{}}, state)
+      assert %{"id" => 9, "error" => %{"code" => -32_601}} = written(state)
+    end
+
+    test "a failed request fails the turn with what Grok said" do
+      assert %{finished: {"failed", message}} =
+               Grok.handle_event(
+                 %{"id" => 3, "error" => %{"message" => "Not signed in"}},
+                 state()
+               )
+
       assert message =~ "Not signed in"
     end
 
-    test "edits are accepted, and every tool only when the human turned that on" do
-      {_, args} = Grok.command(%{session_id: nil, model: nil}, "go")
-      assert ["--permission-mode", "acceptEdits"] in Enum.chunk_every(args, 2, 1)
-      refute "--always-approve" in args
-
-      {_, args} = Grok.command(%{session_id: nil, model: nil, auto_approve: true}, "go")
-      assert "--always-approve" in args
-      refute "--permission-mode" in args
-    end
-
-    test "a bare cancel says what it usually means, unless every tool was approved" do
-      event = %{"type" => "result", "is_error" => true, "errors" => ["cancelled"]}
-
-      assert %{finished: {"failed", message}} = event |> Grok.handle_event(state()) |> settle()
-      assert message =~ "cannot ask the room for permission"
-      assert message =~ "automatic approval"
-
-      approving =
-        state(%{agent: %{directory: "/tmp", model: nil, session_id: nil, auto_approve: true}})
-
-      assert %{finished: {"failed", "cancelled"}} =
-               event |> Grok.handle_event(approving) |> settle()
-    end
-
-    test "the room tools are added to Grok's config once, beside what is there" do
-      home = Path.join(System.tmp_dir!(), "rt-grok-#{System.unique_integer([:positive])}")
-      on_exit(fn -> File.rm_rf(home) end)
-      File.mkdir_p!(home)
-      path = Path.join(home, "config.toml")
-      File.write!(path, "[models]\ndefault = \"grok-4.7\"")
-
-      assert :ok = Grok.ensure_tool_server(home)
-      assert :ok = Grok.ensure_tool_server(home)
-
-      config = File.read!(path)
-      assert String.starts_with?(config, "[models]\ndefault = \"grok-4.7\"\n\n")
-      assert length(String.split(config, "[mcp_servers.roundtable]")) == 2
-    end
-
-    test "an entry of the human's own named roundtable is left alone" do
-      home = Path.join(System.tmp_dir!(), "rt-grok-#{System.unique_integer([:positive])}")
-      on_exit(fn -> File.rm_rf(home) end)
-      File.mkdir_p!(home)
-      path = Path.join(home, "config.toml")
-      mine = "[mcp_servers.roundtable]\nurl = \"http://elsewhere/mcp\"\n"
-      File.write!(path, mine)
-
-      assert :ok = Grok.ensure_tool_server(home)
-      assert File.read!(path) == mine
-    end
-
-    test "with no config yet, the entry is the whole file" do
-      home = Path.join(System.tmp_dir!(), "rt-grok-#{System.unique_integer([:positive])}")
-      on_exit(fn -> File.rm_rf(home) end)
-
-      assert :ok = Grok.ensure_tool_server(home)
-      assert File.read!(Path.join(home, "config.toml")) =~ ~r/\A# Added by Roundtable/
-    end
-
-    test "an empty session id is not a session" do
-      # The CLI sends session_id: "" before it has one.
-      assert %{session: nil} =
-               Grok.handle_event(%{"type" => "system", "session_id" => ""}, state())
-    end
-
-    test "it cannot grant an approval" do
-      assert Grok.approve(state(), "r1", "accept", %{}) == :unsupported
-    end
-
-    test "a clean exit counts only when something was said" do
-      assert Grok.exit_status(0, %{output: "answer", diagnostics: ""}) == {"completed", nil}
-      assert {"failed", _} = Grok.exit_status(0, %{output: "", diagnostics: "why"})
-      assert {"failed", _} = Grok.exit_status(2, %{output: "answer", diagnostics: "why"})
+    test "it exits with what it printed" do
+      assert {"failed", "Grok exited (1). why"} = Grok.exit_status(1, %{diagnostics: "why"})
     end
   end
 

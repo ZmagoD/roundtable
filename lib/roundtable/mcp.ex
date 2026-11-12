@@ -30,17 +30,11 @@ defmodule Roundtable.MCP do
   # ends a token's life is its own run finishing — see `participant/1`.
   @max_age 30 * 60
 
-  # Providers whose CLI takes an MCP server on the command line *and* has an
-  # approval channel back to the room. Without the second, a participant could
-  # rearrange the rooms with nowhere for the human to say no.
-  @providers ["claude", "codex"]
-
-  # Grok has no approval channel either, but once the human has approved every
-  # tool for a grok participant there is nothing left for one to ask, so that
-  # participant is given the rooms too. Its CLI reads them from its own config,
-  # with the address and token from the turn's environment — see
-  # `Roundtable.Agents.Grok`.
-  @approving_providers ["grok"]
+  # Providers whose CLI takes an MCP server per turn (a flag, or Grok's ACP
+  # session request) *and* has an approval channel back to the room. Without
+  # the second, a participant could rearrange the rooms with nowhere for the
+  # human to say no.
+  @providers ["claude", "codex", "grok"]
 
   @doc """
   Where the tool server answers, or `nil` when there is nothing to reach.
@@ -58,17 +52,10 @@ defmodule Roundtable.MCP do
   end
 
   @doc "Whether this participant's CLI is one the tools can be wired into."
-  def offered?(%{provider: _} = agent),
-    do: wired?(agent) and is_integer(Map.get(agent, :id)) and url() != nil
+  def offered?(%{provider: provider} = agent),
+    do: provider in @providers and is_integer(Map.get(agent, :id)) and url() != nil
 
   def offered?(_agent), do: false
-
-  defp wired?(%{provider: provider}) when provider in @providers, do: true
-
-  defp wired?(%{provider: provider} = agent) when provider in @approving_providers,
-    do: Map.get(agent, :auto_approve) == true
-
-  defp wired?(_agent), do: false
 
   @doc """
   A bearer token that says which participant is calling, and for which turn.

@@ -100,7 +100,7 @@ handed back rather than started.
 
 Every call stops for your approval like any other tool use, unless that
 participant approves its own, and each change is written into the room as it
-happens. OpenCode, Grok and Vibe participants do not get the tools: they have no
+happens. OpenCode and Vibe participants do not get the tools: they have no
 approval channel, so there would be nowhere to say no.
 
 ## Have a room start its own morning
@@ -138,8 +138,8 @@ roundtable logs | grep auto-approved
 ```
 
 The roster marks who is on it. Turn it back off with *Ask me before each tool*
-or `/auto <agent> off`. OpenCode and Grok have no interactive approval channel —
-they use their own configured permissions and never ask in the first place.
+or `/auto <agent> off`. OpenCode has no interactive approval channel — it uses
+its own configured permissions and never asks in the first place.
 OpenCode rejects anything its configuration leaves at "ask" (reading outside
 the room's directory, for example), which ends the turn. Turning automatic
 approval on for an OpenCode participant allows every tool for its turns,

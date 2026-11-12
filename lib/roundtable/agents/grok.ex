@@ -1,144 +1,223 @@
 defmodule Roundtable.Agents.Grok do
   @moduledoc """
-  Adapter for `grok -p`, the xAI CLI.
+  Adapter for `grok agent stdio`, which speaks the Agent Client Protocol (ACP):
+  JSON-RPC over stdio, the way `codex app-server` does.
 
-  Its `--output-format streaming-messages-json` is, by its own help, "NDJSON in
-  the Anthropic Messages API wire format", so the events are the ones
-  `Roundtable.Agents.Messages` already understands — confirmed against a real
-  run of the CLI, not assumed from the documentation.
+  ACP gives Grok what `grok -p` could not: the room tools are handed to each
+  session in `session/new` (or `session/resume`) as an MCP server, so they live
+  only as long as the turn, and a tool that needs permission is asked of the
+  client with `session/request_permission`, which becomes an approval card in
+  the room. A participant set to approve its own tools runs with
+  `--always-approve` and is never asked.
 
-  It has no interactive approval channel: permissions come from its own
-  `--allow`/`--deny` rules and `--permission-mode`, the way OpenCode's come
-  from its configuration. So `approve/4` reports that it cannot grant one, and
-  the turn runs under `acceptEdits` rather than a mode that would sit waiting
-  for a prompt nobody can answer — or with every tool approved, when the human
-  turned automatic approval on for this participant.
-
-  It takes no MCP server on the command line, so a participant given the room
-  tools (see `Roundtable.MCP.offered?/1`) is wired in through Grok's own user
-  config instead: one entry, added once and never rewritten, whose address and
-  token come from the turn's environment. Grok drops an entry whose address is
-  empty, so outside a Roundtable turn the human's own sessions never see it.
-
-  A step `acceptEdits` does not cover, such as a shell command, is not refused
-  but cancelled, and the turn ends with nothing more than "cancelled". Its own
-  log calls the turn successful, so the room is told what that usually means.
+  The shapes for `initialize` and `session/new` were confirmed against the
+  installed CLI. Those for a running turn follow the ACP specification and the
+  names in Grok's own binary; no real turn was run to capture them.
   """
   @behaviour Roundtable.Agents.Adapter
 
-  import Roundtable.Agents.Worker, only: [close_stdin: 1]
+  import Roundtable.Agents.Worker, only: [write: 2, put_output: 2, approval: 3, activity: 2]
 
-  require Logger
+  alias Roundtable.Agents.{Activity, Protocol}
+  alias Roundtable.{Coordinator, MCP}
 
-  alias Roundtable.Agents.{Messages, Protocol}
-  alias Roundtable.MCP
-
-  @tool_server """
-  # Added by Roundtable for its grok participants. Grok leaves it out unless a
-  # Roundtable turn sets these variables, so other sessions do not see it.
-  [mcp_servers.roundtable]
-  url = "${ROUNDTABLE_MCP_URL:-}"
-  headers = { "Authorization" = "Bearer ${ROUNDTABLE_MCP_TOKEN:-}" }
-  """
-
-  @cancelled "Grok cancelled this turn, most likely at a step that needed permission, " <>
-               "such as a shell command. It cannot ask the room for permission, so it " <>
-               "stops instead. Turn on automatic approval for this participant, or give " <>
-               "the step to a Claude Code or Codex participant."
+  @initialize 1
+  @open_session 2
+  @prompt 3
+  # A session that cannot be resumed, from a CLI reinstalled or a history
+  # removed, is replaced rather than failing every later turn the same way.
+  @fresh_session 4
 
   def id, do: "grok"
   def label, do: "Grok"
-  # `-p` takes the prompt as an argument, and the CLI documents no way to read
-  # it from stdin, so that is where it goes. Linux caps a single argument at
-  # 128 KB; a room long enough to exceed that fails visibly at spawn rather
-  # than silently truncating.
-  def command(agent, prompt) do
-    if MCP.offered?(agent), do: ensure_tool_server()
 
-    args =
-      [
-        "-p",
-        prompt,
-        "--output-format",
-        "streaming-messages-json",
-        "--include-partial-messages"
-      ] ++
-        permissions(agent) ++
-        Protocol.optional("--resume", agent.session_id) ++
-        Protocol.optional("--model", agent.model)
-
-    {"grok", args}
+  # Everything else, the prompt included, goes over stdin once the protocol is
+  # up, so nothing about the turn reaches the argument list.
+  def command(agent, _prompt) do
+    {"grok",
+     ["agent"] ++
+       approvals(agent) ++ Protocol.optional("--model", Map.get(agent, :model)) ++ ["stdio"]}
   end
 
-  @doc """
-  Adds Roundtable's entry to Grok's user config unless one is there.
+  defp approvals(agent),
+    do: if(Map.get(agent, :auto_approve), do: ["--always-approve"], else: [])
 
-  Appends rather than rewrites: the file is the human's, and anything they put
-  in it stays exactly as it was. An entry of theirs named `roundtable` is left
-  alone. A failure is logged and the turn runs without the tools.
-  """
-  def ensure_tool_server(home \\ grok_home()) do
-    path = Path.join(home, "config.toml")
-
-    with {:ok, current} <- read_config(path),
-         false <- current =~ ~r/^\s*\[mcp_servers\.\"?roundtable\"?\]|^\s*roundtable\s*=/m,
-         :ok <- File.mkdir_p(home),
-         :ok <- File.write(path, separator(current) <> @tool_server, [:append]) do
-      :ok
-    else
-      true ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("Could not give Grok the room tools in #{path}: #{inspect(reason)}")
-        {:error, reason}
-    end
+  def start(state) do
+    write(state, %{
+      jsonrpc: "2.0",
+      id: @initialize,
+      method: "initialize",
+      params: %{
+        protocolVersion: 1,
+        # The room hands out no files or terminals of its own; Grok uses its
+        # built-in tools in the participant's folder.
+        clientCapabilities: %{fs: %{readTextFile: false, writeTextFile: false}, terminal: false},
+        clientInfo: %{name: "roundtable", version: "0.1.0"}
+      }
+    })
   end
 
-  defp read_config(path) do
-    case File.read(path) do
-      {:error, :enoent} -> {:ok, ""}
-      result -> result
-    end
+  @doc "Answers a permission request with the option that matches the human's decision."
+  def approve(state, id, decision, request) do
+    outcome =
+      case pick(request["options"], decision) do
+        nil -> %{outcome: "cancelled"}
+        option_id -> %{outcome: "selected", optionId: option_id}
+      end
+
+    write(state, %{jsonrpc: "2.0", id: id, result: %{outcome: outcome}})
   end
 
-  defp separator(""), do: ""
-  defp separator(current), do: if(String.ends_with?(current, "\n"), do: "\n", else: "\n\n")
+  # A one-off answer first: the human approved this call, not every later one.
+  defp pick(options, decision) when is_list(options) do
+    kinds =
+      if decision == "accept",
+        do: ["allow_once", "allow_always"],
+        else: ["reject_once", "reject_always"]
 
-  defp grok_home do
-    Application.get_env(:roundtable, :grok_home) || System.get_env("GROK_HOME") ||
-      Path.expand("~/.grok")
+    Enum.find_value(kinds, fn kind ->
+      Enum.find_value(options, &(&1["kind"] == kind && &1["optionId"]))
+    end)
   end
 
-  defp permissions(agent) do
-    if Map.get(agent, :auto_approve),
-      do: ["--always-approve"],
-      else: ["--permission-mode", "acceptEdits"]
-  end
+  defp pick(_options, _decision), do: nil
 
-  # Nothing to send: the prompt was an argument. Closing stdin stops the CLI
-  # waiting on input that is never coming.
-  def start(state), do: close_stdin(state)
-
-  def approve(_state, _id, _decision, _request), do: :unsupported
-
-  def exit_status(0, %{output: output}) when output != "", do: {"completed", nil}
   def exit_status(code, state), do: {"failed", "Grok exited (#{code}). #{state.diagnostics}"}
 
-  def handle_event(event, state) do
-    case Messages.handle(event, state) do
-      {:ok, state} -> explain_cancel(state)
-      :unhandled -> state
+  def handle_event(%{"id" => @initialize, "result" => _}, state) do
+    open_session(state, if(state.session, do: "session/resume", else: "session/new"))
+  end
+
+  def handle_event(%{"id" => @open_session, "error" => _}, %{session: session} = state)
+      when is_binary(session),
+      do: open_session(%{state | session: nil}, "session/new", @fresh_session)
+
+  def handle_event(%{"id" => id, "result" => result}, state)
+      when id in [@open_session, @fresh_session] do
+    session = result["sessionId"] || state.session
+    if session != state.session, do: Coordinator.event(state.run.id, {:session, session})
+
+    write(state, %{
+      jsonrpc: "2.0",
+      id: @prompt,
+      method: "session/prompt",
+      params: %{sessionId: session, prompt: [%{type: "text", text: state.prompt}]}
+    })
+
+    state |> Map.put(:session, session) |> Map.put(:prompting, true)
+  end
+
+  def handle_event(%{"id" => @prompt, "result" => result}, state) do
+    state = Roundtable.Agents.Usage.report(state, tokens(result["usage"]))
+    %{state | finished: stopped(result["stopReason"], state)}
+  end
+
+  def handle_event(%{"id" => id, "error" => error}, state) when is_integer(id),
+    do: %{state | finished: Roundtable.Quota.failure(error)}
+
+  def handle_event(
+        %{"id" => id, "method" => "session/request_permission", "params" => params},
+        state
+      ) do
+    call = params["toolCall"] || %{}
+
+    approval(
+      state,
+      id,
+      Map.merge(params, %{"display_name" => call["title"], "input" => call["rawInput"]})
+    )
+  end
+
+  # Grok may ask the client for other things, such as its own extensions; the
+  # room offers none of them, and an unanswered request would stall the turn.
+  def handle_event(%{"id" => id, "method" => method}, state) do
+    write(state, %{
+      jsonrpc: "2.0",
+      id: id,
+      error: %{code: -32_601, message: "Roundtable does not support #{method}."}
+    })
+
+    state
+  end
+
+  def handle_event(%{"method" => "session/update", "params" => %{"update" => update}}, state),
+    do: update(update, state)
+
+  def handle_event(_event, state), do: state
+
+  # A resumed session can replay its history before the turn; only what comes
+  # after the prompt was sent belongs to this turn.
+  defp update(_update, state) when not is_map_key(state, :prompting), do: state
+
+  defp update(%{"sessionUpdate" => "agent_message_chunk", "content" => content}, state) do
+    case content do
+      %{"type" => "text", "text" => text} when is_binary(text) ->
+        # Text on both sides of a tool call is two paragraphs, not one run-on.
+        gap = if Map.get(state, :after_tool, false) and state.output != "", do: "\n\n", else: ""
+
+        state
+        |> Map.put(:after_tool, false)
+        |> put_output(state.output <> gap <> text)
+
+      _ ->
+        state
     end
   end
 
-  # With every tool approved there is no permission to have stopped at, so a
-  # cancel then is left as the CLI said it and retried like any other failure.
-  defp explain_cancel(%{finished: {"failed", message}} = state) do
-    if String.trim(message) =~ ~r/\Acancell?ed\z/i and !Map.get(state.agent, :auto_approve),
-      do: %{state | finished: {"failed", @cancelled}},
-      else: state
+  defp update(%{"sessionUpdate" => "agent_thought_chunk"}, state),
+    do: activity(state, Activity.thinking())
+
+  defp update(%{"sessionUpdate" => "tool_call"} = call, state),
+    do: state |> Map.put(:after_tool, true) |> activity(Activity.acp(call))
+
+  defp update(%{"sessionUpdate" => "tool_call_update", "status" => status}, state)
+       when status in ["completed", "failed"],
+       do: activity(state, Activity.thinking())
+
+  defp update(_update, state), do: state
+
+  # The turn's reason for stopping. A refusal or cancel with nothing said is a
+  # failure the room should see; one that said something is its answer.
+  defp stopped(reason, state) when reason in ["end_turn", "max_tokens", "max_turn_requests"] do
+    if state.output != "",
+      do: {"completed", nil},
+      else: {"failed", "Grok ended its turn (#{reason}) without a reply."}
   end
 
-  defp explain_cancel(state), do: state
+  defp stopped("refusal", _state), do: {"failed", "Grok declined to answer this request."}
+  defp stopped("cancelled", _state), do: {"failed", "Grok cancelled this turn."}
+  defp stopped(reason, _state), do: {"failed", "Grok stopped (#{inspect(reason)})."}
+
+  defp tokens(usage) do
+    Roundtable.Usage.tokens(usage, [
+      {"input", "inputTokens"},
+      {"output", "outputTokens"},
+      {"cached", "cachedReadTokens"},
+      {"cache_write", "cachedWriteTokens"}
+    ])
+  end
+
+  defp open_session(state, method, id \\ @open_session) do
+    params = %{cwd: state.agent.directory, mcpServers: tools(state.agent)}
+    params = if state.session, do: Map.put(params, :sessionId, state.session), else: params
+    write(state, %{jsonrpc: "2.0", id: id, method: method, params: params})
+    state
+  end
+
+  # The token travels over stdin in the session request, never in the argument
+  # list, and is good only for this turn: see `Roundtable.MCP.token/1`.
+  defp tools(agent) do
+    if MCP.offered?(agent) do
+      [
+        %{
+          type: "http",
+          name: "roundtable",
+          url: MCP.url(),
+          headers: [%{name: "Authorization", value: "Bearer #{MCP.token(agent)}"}]
+        }
+      ]
+    else
+      []
+    end
+  end
 end

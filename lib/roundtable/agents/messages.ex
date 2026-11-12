@@ -1,16 +1,14 @@
 defmodule Roundtable.Agents.Messages do
   @moduledoc """
-  Events in the Anthropic Messages wire format.
+  Events in the Anthropic Messages wire format, as Claude Code speaks it.
 
-  Claude Code speaks it, and Grok CLI documents its
-  `--output-format streaming-messages-json` as "NDJSON in the Anthropic
-  Messages API wire format". The clauses that are genuinely shared live here
-  rather than being written twice and drifting apart the first time one of them
-  is fixed.
+  Grok's `--output-format streaming-messages-json` is the same format and was
+  read through here until Grok moved to the Agent Client Protocol for its
+  approval channel. The module stays separate so another CLI that speaks it
+  can share it.
 
   Returns `:unhandled` for anything it does not recognise, so an adapter can
-  add the parts that are its own — Claude Code's approval channel, for one,
-  which Grok has no equivalent of.
+  add the parts that are its own, such as Claude Code's approval channel.
   """
   import Roundtable.Agents.Worker, only: [put_output: 2, activity: 2]
 

@@ -47,6 +47,36 @@ defmodule Roundtable.Agents.Activity do
   def codex(%{"type" => "reasoning"}), do: thinking()
   def codex(_item), do: nil
 
+  @doc """
+  The step for an Agent Client Protocol tool call, from its kind and title.
+
+  The title is the agent's own words for the call, so it is kept as the detail
+  where the kind alone says little.
+  """
+  # How Grok titles an MCP call has not been seen from a real turn, so any
+  # title naming the server counts.
+  def acp(%{"title" => title} = call) when is_binary(title) do
+    if title =~ ~r/roundtable/i, do: "Using the room tools", else: acp_kind(call)
+  end
+
+  def acp(call), do: acp_kind(call)
+
+  defp acp_kind(%{"kind" => "execute"} = call),
+    do: detail("Running a shell command", call["title"])
+
+  defp acp_kind(%{"kind" => kind} = call) when kind in ["edit", "delete", "move"],
+    do: detail("Editing", call["title"])
+
+  defp acp_kind(%{"kind" => "read"} = call), do: detail("Reading", call["title"])
+  defp acp_kind(%{"kind" => "search"}), do: "Searching the code"
+  defp acp_kind(%{"kind" => "fetch"}), do: "Looking something up on the web"
+  defp acp_kind(%{"kind" => "think"}), do: thinking()
+
+  defp acp_kind(%{"title" => title}) when is_binary(title) and title != "",
+    do: detail("Using", title)
+
+  defp acp_kind(_call), do: nil
+
   @doc "Between tool calls: the model is working out what to do next."
   def thinking, do: "Thinking"
 

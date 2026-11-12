@@ -17,7 +17,7 @@ defmodule Roundtable.Supervision do
   @silent_after 20 * 60
 
   # Nothing a retry can fix: the same turn would fail the same way.
-  @permanent ~r/context (?:window|length)|maximum context|insufficient_quota|credit balance|billing|payment required|authentication|unauthorized|not logged in|log in|no folder to work in|permission requested|cannot ask the room for permission/i
+  @permanent ~r/context (?:window|length)|maximum context|insufficient_quota|credit balance|billing|payment required|authentication|unauthorized|not logged in|log in|no folder to work in|permission requested/i
 
   # Turns queued behind one that failed are stopped with this, not the human's
   # "Stopped", so the watchdog can tell them apart: these wait on the failed

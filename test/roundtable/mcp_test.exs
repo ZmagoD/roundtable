@@ -606,11 +606,20 @@ defmodule Roundtable.MCPTest do
       assert browser_added.auto_approve
     end
 
+    # Grok asks through ACP, so it joins the way Claude Code and Codex do.
+    test "grok has an approval channel and joins without a card", %{ada: ada, room: room} do
+      assert {:ok, text} =
+               MCP.call(ada, "add_participant", %{"name" => "gro", "provider" => "grok"})
+
+      assert text =~ "added gro"
+      assert "gro" in Enum.map(Chat.agents(room.id), & &1.name)
+    end
+
     test "providers without approval channels are proposed, directly and through profiles", %{
       ada: ada,
       room: room
     } do
-      for provider <- ["opencode", "grok", "vibe"] do
+      for provider <- ["opencode", "vibe"] do
         {:ok, profile} =
           Chat.create_agent_profile(%{
             "name" => "#{provider}-dev",
@@ -627,7 +636,7 @@ defmodule Roundtable.MCPTest do
       assert Enum.map(Chat.agents(room.id), & &1.id) == [ada.id]
 
       proposals = Repo.all(from m in Message, where: m.kind == "proposal")
-      assert length(proposals) == 6
+      assert length(proposals) == 4
       assert Enum.all?(proposals, &(&1.metadata["status"] == "pending" and &1.sender == "ada"))
       assert Repo.all(from r in Run, where: r.message_id in ^Enum.map(proposals, & &1.id)) == []
     end
@@ -812,42 +821,25 @@ defmodule Roundtable.MCPTest do
       end
     end
 
-    # Grok cannot ask, so it is given the rooms only once the human has
-    # approved everything for it, through its own config and the environment.
-    test "grok is given the tools only while it approves its own", %{room: room} do
-      home = Path.join(System.tmp_dir!(), "rt-grok-#{System.unique_integer([:positive])}")
-      Application.put_env(:roundtable, :grok_home, home)
-
-      on_exit(fn ->
-        File.rm_rf(home)
-
-        Application.put_env(
-          :roundtable,
-          :grok_home,
-          Path.join(System.tmp_dir!(), "roundtable-test-grok-home")
-        )
-      end)
-
+    # Grok takes the server in its ACP session request rather than a flag, so
+    # that request is what has to carry it, with this turn's token.
+    test "a grok session is opened with the room tools", %{room: room} do
       {:ok, grok} = Chat.create_agent(room.id, %{"name" => "gro", "provider" => "grok"})
-      refute MCP.offered?(grok)
-      assert token_in(Protocol.env(grok)) == nil
-      Grok.command(grok, "go")
-      refute File.exists?(Path.join(home, "config.toml"))
-
-      {:ok, grok} = Chat.update_agent(grok.id, %{"auto_approve" => true})
       turn(grok)
       assert MCP.offered?(grok)
-      env = Protocol.env(grok)
-      assert {_, _token} = token_in(env)
-      assert {_, ~c"http://127.0.0.1:4002/mcp"} = List.keyfind(env, ~c"ROUNDTABLE_MCP_URL", 0)
 
-      {_, args} = Grok.command(grok, "go")
-      assert "--always-approve" in args
-      # Neither the token nor the address is ever written; only their names are.
-      config = File.read!(Path.join(home, "config.toml"))
-      assert config =~ "[mcp_servers.roundtable]"
-      assert config =~ "${ROUNDTABLE_MCP_TOKEN:-}"
-      refute config =~ "127.0.0.1"
+      port = Port.open({:spawn_executable, "/bin/cat"}, [:binary])
+      state = %{agent: grok, session: nil, port: port}
+      Grok.handle_event(%{"id" => 1, "result" => %{}}, state)
+
+      assert_receive {^port, {:data, data}}, 1000
+      request = data |> Jason.decode!() |> Map.fetch!("write") |> Jason.decode!()
+
+      assert %{"method" => "session/new", "params" => %{"mcpServers" => [server]}} = request
+      assert %{"name" => "roundtable", "url" => "http://127.0.0.1:4002/mcp"} = server
+      assert [%{"name" => "Authorization", "value" => "Bearer " <> token}] = server["headers"]
+      assert {:ok, %{id: id}} = MCP.participant(token)
+      assert id == grok.id
     end
 
     test "a provider with no way to say no is given nothing", %{room: room} do

@@ -4,7 +4,6 @@ defmodule Roundtable.Agents.Protocol do
 
   # Where a provider that cannot take a secret on the command line reads it.
   @token_variable "ROUNDTABLE_MCP_TOKEN"
-  @url_variable "ROUNDTABLE_MCP_URL"
 
   # Overrides come before the subcommand, which is where codex looks for them.
   def command(%{provider: "codex"} = a), do: {"codex", tools(a) ++ ["app-server"]}
@@ -124,14 +123,9 @@ defmodule Roundtable.Agents.Protocol do
 
   defp token_env(agent) do
     if MCP.offered?(agent),
-      do: [{~c"#{@token_variable}", String.to_charlist(MCP.token(agent))}] ++ url_env(agent),
+      do: [{~c"#{@token_variable}", String.to_charlist(MCP.token(agent))}],
       else: []
   end
-
-  # The address is not a secret, but Grok's entry is written once and the
-  # port can change with every start of the service.
-  defp url_env(%{provider: "grok"}), do: [{~c"#{@url_variable}", String.to_charlist(MCP.url())}]
-  defp url_env(_agent), do: []
 
   @doc "A flag and its value, or nothing: an empty value would be a parse error."
   def optional(_flag, value) when value in [nil, ""], do: []

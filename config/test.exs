@@ -17,10 +17,6 @@ config :roundtable, Roundtable.Repo,
 # would otherwise try to remove its container. Sandbox tests set a fake.
 config :roundtable, :docker, "roundtable-test-no-docker"
 
-# Giving a grok participant the room tools adds an entry to Grok's own config;
-# no test may write to the real one.
-config :roundtable, :grok_home, Path.join(System.tmp_dir!(), "roundtable-test-grok-home")
-
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :roundtable, RoundtableWeb.Endpoint,

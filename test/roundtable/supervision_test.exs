@@ -41,8 +41,7 @@ defmodule Roundtable.SupervisionTest do
           "Context window exceeded",
           "Credit balance too low",
           "The team has no folder to work in. Give this team or its project a folder, then retry.",
-          "OpenCode exited (0). ! permission requested: external_directory (/tmp/*); auto-rejecting",
-          "Grok cancelled this turn. It cannot ask the room for permission, so it stops instead."
+          "OpenCode exited (0). ! permission requested: external_directory (/tmp/*); auto-rejecting"
         ] do
       assert {:give_up, _} = Supervision.decide(run(error: error), @now)
     end
