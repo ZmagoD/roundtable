@@ -78,7 +78,20 @@ defmodule Roundtable.Supervision do
     |> Protocol.error_message()
     |> String.split("\n", trim: true)
     |> List.first("")
-    |> String.slice(0, 200)
+    |> shorten(300)
+  end
+
+  # Long enough for an explanation that says what to do; cut between words
+  # when it is not, so a notice never ends half way through one.
+  defp shorten(line, limit) do
+    if String.length(line) <= limit do
+      line
+    else
+      line
+      |> String.slice(0, limit)
+      |> String.replace(~r/\s+\S*\z/u, "")
+      |> Kernel.<>("…")
+    end
   end
 
   def gist(_text), do: ""

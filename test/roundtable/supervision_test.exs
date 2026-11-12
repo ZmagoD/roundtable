@@ -71,5 +71,9 @@ defmodule Roundtable.SupervisionTest do
   test "a notice quotes only the first line of a reply" do
     assert Supervision.gist("Done.\nFiles: a, b") == "Done."
     assert Supervision.gist(nil) == ""
+
+    long = String.duplicate("word ", 100)
+    assert String.ends_with?(Supervision.gist(long), "word…")
+    assert String.length(Supervision.gist(long)) <= 301
   end
 end
