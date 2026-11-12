@@ -148,6 +148,7 @@ defmodule Roundtable.QuotaRetryTest do
 
     Chat.update_agent(ctx.agent.id, %{auto_retry: true})
     {_, waiting} = wait_for_quota(ctx)
+    :ok = Chat.clear_team_head(ctx.agent.room_id)
     Coordinator.remove_agent(ctx.agent.id)
     Coordinator.resume_due(waiting.retry_at)
     refute_receive {:agent_started, _, _, _, _}, 50

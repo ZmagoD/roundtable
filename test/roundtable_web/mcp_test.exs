@@ -120,6 +120,7 @@ defmodule RoundtableWeb.Plugs.MCPTest do
 
   test "a token for a participant that has gone is refused", %{conn: conn, ada: ada} do
     token = MCP.token(ada)
+    :ok = Chat.clear_team_head(ada.room_id)
     {:ok, _} = Chat.delete_agent(ada.id)
 
     conn =

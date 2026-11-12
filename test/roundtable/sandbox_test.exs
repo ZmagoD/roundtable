@@ -309,7 +309,8 @@ defmodule Roundtable.SandboxTest do
   describe "removing" do
     test "a participant removes its container" do
       log = fake_docker()
-      {_room, agent} = boxed()
+      {room, agent} = boxed()
+      :ok = Chat.clear_team_head(room.id)
 
       assert {:ok, _} = Coordinator.remove_agent(agent.id)
 

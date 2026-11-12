@@ -238,6 +238,7 @@ defmodule Roundtable.TaskCompletionTest do
     {:ok, _} = Chat.post(ctx.task.id, "@builder carry on")
     assert {:error, reason} = Chat.check_task(ctx.task.id)
     assert reason =~ "turns"
+    :ok = Chat.clear_team_head(ctx.task.id)
     Chat.delete_agent(worker.id)
     assert {:ok, _} = Chat.check_task(ctx.task.id)
 

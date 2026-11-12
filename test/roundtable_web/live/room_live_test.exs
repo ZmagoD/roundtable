@@ -458,6 +458,20 @@ defmodule RoundtableWeb.RoomLiveTest do
     end
   end
 
+  test "removing the team head says who leads now, or why it cannot go", %{conn: conn} do
+    {:ok, room} = Chat.create_room(%{name: "Heads", directory: File.cwd!()})
+    {:ok, ada} = Chat.create_agent(room.id, %{name: "ada", provider: "claude"})
+    {:ok, linus} = Chat.create_agent(room.id, %{name: "linus", provider: "codex"})
+    {:ok, view, _} = live(conn, "/rooms/#{room.id}")
+
+    html = view |> render_click("remove-agent", %{"id" => to_string(ada.id)})
+    assert html =~ "@linus is the team head now"
+
+    html = view |> render_click("remove-agent", %{"id" => to_string(linus.id)})
+    assert html =~ "leads this team and is its only participant"
+    assert Chat.team_head(room.id).id == linus.id
+  end
+
   test "an empty first message starts nothing and says why", %{conn: conn} do
     with_fake_cli("codex")
     {:ok, view, _} = live(conn, "/")
@@ -1332,6 +1346,7 @@ defmodule RoundtableWeb.RoomLiveTest do
       html = render(view)
       assert html =~ "data-confirm"
 
+      :ok = Chat.clear_team_head(room.id)
       view |> element("[phx-click=remove-agent][phx-value-id='#{agent.id}']") |> render_click()
 
       assert Chat.agents(room.id) == []

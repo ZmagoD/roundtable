@@ -1411,15 +1411,53 @@ defmodule Roundtable.Chat do
   def delete_agent(agent_id) do
     agent = Repo.get!(Agent, agent_id)
 
-    case Repo.delete(agent) do
-      {:ok, agent} ->
-        broadcast(agent.room_id)
-        waiting_changed(agent.room_id)
-        {:ok, agent}
-
-      {:error, changeset} ->
-        {:error, changeset}
+    with :ok <- check_removal(agent),
+         {:ok, agent} <- delete_and_succeed(agent) do
+      broadcast(agent.room_id)
+      waiting_changed(agent.room_id)
+      {:ok, agent}
     end
+  end
+
+  @doc """
+  Whether a participant may leave its room.
+
+  A head with nobody to hand the role to is refused: the team would be left
+  with nobody its work goes through, and nobody to make head in its place.
+  The coordinator asks before it stops the participant's queue, so a refused
+  removal leaves the participant exactly as it was.
+  """
+  def check_removal(%Agent{head: true} = agent) do
+    if successor(agent), do: :ok, else: {:error, :only_head}
+  end
+
+  def check_removal(%Agent{}), do: :ok
+
+  # The longest-standing teammate takes over, in the same transaction as the
+  # removal, so the team is never seen without a head. The delete lands first
+  # because the one-head-per-team index would refuse the hand-over otherwise.
+  defp delete_and_succeed(%Agent{head: true} = agent) do
+    Repo.transaction(fn ->
+      with {:ok, deleted} <- Repo.delete(agent),
+           %Agent{} = next <- successor(agent) do
+        Repo.update_all(from(a in Agent, where: a.id == ^next.id), set: [head: true])
+        deleted
+      else
+        nil -> Repo.rollback(:only_head)
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
+  end
+
+  defp delete_and_succeed(agent), do: Repo.delete(agent)
+
+  defp successor(agent) do
+    Repo.one(
+      from a in Agent,
+        where: a.room_id == ^agent.room_id and a.id != ^agent.id,
+        order_by: a.id,
+        limit: 1
+    )
   end
 
   @doc """

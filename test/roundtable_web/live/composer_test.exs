@@ -56,6 +56,7 @@ defmodule RoundtableWeb.ComposerTest do
     ctx.view |> element("#cancel-remove-agent") |> render_click()
     assert Chat.agent!(ctx.agent.id)
     submit(ctx.view, "/remove ada")
+    :ok = Chat.clear_team_head(ctx.room.id)
     ctx.view |> element("#confirm-remove-agent") |> render_click()
     assert Chat.agents(ctx.room.id) == []
     assert Enum.any?(Chat.messages(ctx.room.id), &(&1.id == message.id))

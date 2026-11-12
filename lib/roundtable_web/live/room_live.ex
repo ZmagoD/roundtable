@@ -492,8 +492,18 @@ defmodule RoundtableWeb.RoomLive do
             {:noreply,
              socket
              |> assign(panel: nil, editing_agent: nil)
-             |> put_flash(:info, "@#{agent.name} removed. What it said stays in the room.")
+             |> put_flash(:info, removed_notice(agent))
              |> refresh()}
+
+          {:error, :only_head} ->
+            {:noreply,
+             socket
+             |> assign(panel: nil)
+             |> put_flash(
+               :error,
+               "@#{agent.name} leads this team and is its only participant, so it stays. " <>
+                 "Add someone else first, and they take over as head when @#{agent.name} leaves."
+             )}
 
           {:error, _} ->
             {:noreply, put_flash(socket, :error, "Could not remove @#{agent.name}.")}
@@ -1265,6 +1275,18 @@ defmodule RoundtableWeb.RoomLive do
         organization -> organization.id
       end
   end
+
+  defp removed_notice(%{head: true} = agent) do
+    case Chat.team_head(agent.room_id) do
+      nil ->
+        "@#{agent.name} removed. What it said stays in the room."
+
+      head ->
+        "@#{agent.name} removed. What it said stays in the room, and @#{head.name} is the team head now."
+    end
+  end
+
+  defp removed_notice(agent), do: "@#{agent.name} removed. What it said stays in the room."
 
   # A new team belongs to the project the sidebar is showing. Without this it
   # falls back to the oldest project, which also decided the folder the

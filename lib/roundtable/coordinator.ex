@@ -152,14 +152,16 @@ defmodule Roundtable.Coordinator do
   def handle_call({:remove_agent, agent_id}, _, state) do
     # A participant already removed (two tabs, a stale proposal) must not take
     # the queue down with it: the Coordinator holds every other room's turns.
-    if Chat.agent(agent_id) do
+    with %{} = agent <- Chat.agent(agent_id),
+         :ok <- Chat.check_removal(agent) do
       # Cancel before deleting: a worker mid-turn holds a row that is about to go.
       state = cancel_agent(state, agent_id)
       result = Chat.delete_agent(agent_id)
       discard_containers([agent_id])
       {:reply, result, state}
     else
-      {:reply, {:error, :not_found}, state}
+      nil -> {:reply, {:error, :not_found}, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 

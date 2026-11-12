@@ -263,6 +263,7 @@ defmodule Roundtable.MCPTest do
       assert {:error, :invalid} = MCP.participant("not-a-token")
       assert {:error, :invalid} = MCP.participant(nil)
 
+      :ok = Chat.clear_team_head(ada.room_id)
       {:ok, _} = Chat.delete_agent(ada.id)
       assert {:error, :gone} = MCP.participant(MCP.token(ada))
     end

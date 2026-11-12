@@ -129,6 +129,7 @@ defmodule Roundtable.TaskCheckoutsTest do
 
     {:ok, _} = Chat.post(task.id, "@builder work")
     assert {:error, _} = MCP.call(agent, "check_task", %{"room" => to_string(task.id)})
+    :ok = Chat.clear_team_head(task.id)
     Chat.delete_agent(builder.id)
     assert {:ok, _} = MCP.call(agent, "check_task", %{"room" => to_string(task.id)})
     assert {:ok, _} = MCP.call(agent, "finish_task", %{"room" => to_string(task.id)})

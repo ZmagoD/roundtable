@@ -66,10 +66,16 @@ defmodule Roundtable.Proposals do
     with {:ok, agent} <- still_here(agent_id) do
       case Coordinator.remove_agent(agent.id) do
         {:ok, _} -> {:ok, "#{agent.name} was removed. What it said stays in the room."}
+        {:error, :only_head} -> {:error, only_head(agent)}
         {:error, _} -> {:error, "Could not remove #{agent.name}."}
       end
     end
   end
+
+  defp only_head(agent),
+    do:
+      "#{agent.name} leads this team and is its only participant, so it stays. " <>
+        "Add someone else first, and they take over as head when #{agent.name} leaves."
 
   defp room_exists(room_id) do
     if Enum.any?(Chat.rooms(), &(&1.id == room_id)),

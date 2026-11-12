@@ -40,6 +40,41 @@ defmodule Roundtable.RemovalTest do
     assert said.agent_id == nil
   end
 
+  describe "removing the team head" do
+    test "hands the role to the longest-standing teammate", %{room: room, ada: ada} do
+      {:ok, grace} = Chat.create_agent(room.id, %{"name" => "grace", "provider" => "claude"})
+      {:ok, _} = Chat.set_team_head(ada.id)
+
+      assert {:ok, _} = Coordinator.remove_agent(ada.id)
+
+      assert %Agent{name: "linus"} = Chat.team_head(room.id)
+      refute Chat.agent!(grace.id).head
+    end
+
+    test "is refused when nobody else is left to lead", %{room: room, ada: ada, linus: linus} do
+      {:ok, _} = Coordinator.remove_agent(linus.id)
+      {:ok, _} = Chat.set_team_head(ada.id)
+      {:ok, _} = Chat.post(room.id, "@ada keep working")
+
+      assert {:error, :only_head} = Coordinator.remove_agent(ada.id)
+      assert {:error, :only_head} = Chat.delete_agent(ada.id)
+
+      # Refused before the queue is touched, so its work carries on.
+      assert Chat.agent!(ada.id).head
+      assert [%Run{status: status}] = Chat.runs(room.id)
+      assert status in ["queued", "running"]
+    end
+
+    test "is still allowed for a lone participant who is not head", %{room: room, ada: ada} do
+      {:ok, _} = Coordinator.remove_agent(ada.id)
+      [linus] = Chat.agents(room.id)
+      :ok = Chat.clear_team_head(room.id)
+
+      assert {:ok, _} = Coordinator.remove_agent(linus.id)
+      assert Chat.agents(room.id) == []
+    end
+  end
+
   test "its runs go with it, and nobody else's do", %{room: room, ada: ada, linus: linus} do
     {:ok, _} = Chat.post(room.id, "@ada and @linus both")
     assert length(Chat.runs(room.id)) == 2

@@ -149,6 +149,7 @@ defmodule Roundtable.SchedulerTest do
 
     test "one whose participant has left the room", %{room: room, ada: ada} do
       schedule(room, ada, %{"at" => "09:00"})
+      :ok = Chat.clear_team_head(room.id)
       {:ok, _} = Chat.delete_agent(ada.id)
 
       assert Chat.schedules() == []

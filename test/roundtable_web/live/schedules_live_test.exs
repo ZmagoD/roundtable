@@ -91,6 +91,7 @@ defmodule RoundtableWeb.SchedulesLiveTest do
   end
 
   test "shows an empty state when no agents exist", %{conn: conn, agent: agent} do
+    :ok = Chat.clear_team_head(agent.room_id)
     Chat.delete_agent(agent.id)
     {:ok, view, _html} = live(conn, "/schedules")
     assert has_element?(view, ".empty-state")
