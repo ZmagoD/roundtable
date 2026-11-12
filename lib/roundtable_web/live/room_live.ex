@@ -27,6 +27,7 @@ defmodule RoundtableWeb.RoomLive do
        provider_usage: Chat.provider_usage(),
        participant_tokens: %{},
        activity: %{},
+       slots_full: false,
        now: DateTime.utc_now(),
        last_message_id: 0,
        model_presets: Chat.model_presets(),
@@ -745,7 +746,7 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   def handle_event("build-team", %{"team" => attrs}, socket) do
-    case Coordinator.build_team(attrs) do
+    case Coordinator.build_team(in_showing_organization(attrs, socket)) do
       {:ok, room} ->
         {:noreply, push_patch(socket, to: ~p"/rooms/#{room.id}")}
 
@@ -767,7 +768,7 @@ defmodule RoundtableWeb.RoomLive do
       "provider" => team_provider(socket.assigns.providers)
     }
 
-    case Coordinator.build_team(attrs) do
+    case Coordinator.build_team(in_showing_organization(attrs, socket)) do
       {:ok, room} ->
         {:noreply, push_patch(socket, to: ~p"/rooms/#{room.id}")}
 
@@ -781,7 +782,7 @@ defmodule RoundtableWeb.RoomLive do
   end
 
   def handle_event("create-room", %{"room" => attrs}, socket) do
-    case Chat.create_room(attrs) do
+    case Chat.create_room(in_showing_organization(attrs, socket)) do
       {:ok, room} ->
         {:noreply, push_patch(socket, to: ~p"/rooms/#{room.id}")}
 
@@ -1168,6 +1169,7 @@ defmodule RoundtableWeb.RoomLive do
   defp refresh(socket) do
     id = socket.assigns.room.id
     approvals = Map.values(Coordinator.approvals())
+    activity = Coordinator.activity()
 
     messages = Chat.messages_after(id, socket.assigns.last_message_id)
 
@@ -1190,7 +1192,8 @@ defmodule RoundtableWeb.RoomLive do
       schedules: Chat.schedules(id),
       notes: Chat.room_notes(id),
       runs: Chat.runs(id),
-      activity: Coordinator.activity(),
+      activity: activity,
+      slots_full: Coordinator.working(activity, approvals) >= Coordinator.max_workers(),
       now: DateTime.utc_now(),
       effective_directory: Chat.effective_directory(socket.assigns.room),
       organization:
@@ -1261,6 +1264,16 @@ defmodule RoundtableWeb.RoomLive do
         nil -> nil
         organization -> organization.id
       end
+  end
+
+  # A new team belongs to the project the sidebar is showing. Without this it
+  # falls back to the oldest project, which also decided the folder the
+  # defaults above were drawn for.
+  defp in_showing_organization(attrs, socket) do
+    case showing_organization(socket) do
+      nil -> attrs
+      id -> Map.put(attrs, "organization_id", id)
+    end
   end
 
   # A new team in a project that has a folder inherits it by default: the

@@ -10,13 +10,24 @@ defmodule Roundtable.Coordinator do
   use GenServer
   require Logger
 
-  # Turns that may run at once, across every room.
+  # Turns that may run at once, across every room. A turn parked on an
+  # approval is idle until someone answers, so it does not count: four
+  # unanswered cards in rooms nobody is looking at would otherwise stall every
+  # other room with no sign why.
   @max_workers 4
   import Ecto.Query
   alias Roundtable.{Chat, Git, Repo, Supervision, Usage}
   alias Roundtable.Chat.{Agent, Message, Run}
 
   def start_link(_), do: GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
+
+  def max_workers, do: @max_workers
+
+  @doc "How many turns hold a slot: running turns by run id, less those parked on an approval."
+  def working(running, approvals) do
+    parked = MapSet.new(approvals, & &1.run_id)
+    Enum.count(Map.keys(running), &(not MapSet.member?(parked, &1)))
+  end
 
   def post(room_id, body, opts \\ []),
     do: GenServer.call(__MODULE__, {:post, room_id, body, opts})
@@ -335,7 +346,9 @@ defmodule Roundtable.Coordinator do
 
       state = %{state | approvals: Map.put(state.approvals, {run.id, request_id}, approval)}
       Chat.waiting_changed(agent.room_id)
-      if wake_delegate(agent, params), do: schedule(state), else: state
+      wake_delegate(agent, params)
+      # Parking frees this turn's slot, so a queued turn may start now.
+      schedule(state)
     end
   end
 
@@ -724,10 +737,12 @@ defmodule Roundtable.Coordinator do
   # A room over its daily token budget is the same kind of not-now: the turn
   # waits and the watchdog says why, and neither a running turn nor one the
   # provider itself has benched is pushed aside by it.
+  # An answered approval resumes its turn whatever the count, so the cap can
+  # be briefly exceeded; that beats making the human's answer wait in line.
   defp start_if_free(run, state) do
     busy = Enum.any?(state.workers, fn {_, w} -> w.agent_id == run.agent_id end)
 
-    if map_size(state.workers) < @max_workers and not busy and
+    if working(state.workers, Map.values(state.approvals)) < @max_workers and not busy and
          not Chat.waiting_for_quota?(run.agent_id) do
       start_compatible(run, state)
     else

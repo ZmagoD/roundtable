@@ -364,9 +364,16 @@
                     :if={run.output == "" and run.status != "waiting_quota"}
                     class="muted"
                   >
-                    {if run.status == "queued",
-                      do: "Waiting for a turn…",
-                      else: "Working on the assignment…"}
+                    {cond do
+                      run.status == "queued" and @slots_full ->
+                        "Waiting for a free slot. #{Coordinator.max_workers()} turns are running across your teams, and this one starts when one of them finishes."
+
+                      run.status == "queued" ->
+                        "Waiting for a turn…"
+
+                      true ->
+                        "Working on the assignment…"
+                    end}
                   </p>
                 </div>
               </article>
@@ -1157,13 +1164,6 @@
             behaviour belongs, not only the subject. Change it whenever you like:
             the next turn works to the new one and is told the old one no longer
             applies.
-          </p>
-          <div class="input-field">
-            <label>Working directory</label>
-            <p class="fixed-field">{@room && @room.directory}</p>
-          </div>
-          <p class="form-note">
-            Everyone in a room works on the same tree. For a separate worktree, make a separate room.
           </p>
           <.input
             field={@agent_form[:preset_id]}

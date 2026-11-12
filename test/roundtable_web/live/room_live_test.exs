@@ -419,6 +419,45 @@ defmodule RoundtableWeb.RoomLiveTest do
     assert has_element?(view, "#start-form", "Claude Code in #{folder}")
   end
 
+  describe "a team started while another project is showing" do
+    setup %{conn: conn} do
+      with_fake_cli("claude")
+      {:ok, second} = Chat.create_organization(%{name: "Second", directory: File.cwd!()})
+      {:ok, view, _} = live(conn, "/")
+      view |> element("#switch-organization-#{second.id}") |> render_click()
+      %{view: view, second: second}
+    end
+
+    test "from the welcome message joins that project", %{view: view, second: second} do
+      view
+      |> form("#start-form", start: %{context: "Plan a billing service."})
+      |> render_submit()
+
+      assert [%{organization_id: id}] = Chat.rooms()
+      assert id == second.id
+      assert has_element?(view, "#switch-organization-#{second.id}[aria-current]")
+    end
+
+    test "from the team form joins that project", %{view: view, second: second} do
+      view |> element("#build-team-button") |> render_click()
+
+      view
+      |> form("#team-form", team: %{name: "Payments", provider: "claude", context: "Plan it."})
+      |> render_submit()
+
+      assert [%{organization_id: id}] = Chat.rooms()
+      assert id == second.id
+    end
+
+    test "from the room form joins that project", %{view: view, second: second} do
+      view |> element("#new-room-button") |> render_click()
+      view |> form("#room-form", room: %{name: "Checkout"}) |> render_submit()
+
+      assert [%{organization_id: id}] = Chat.rooms()
+      assert id == second.id
+    end
+  end
+
   test "an empty first message starts nothing and says why", %{conn: conn} do
     with_fake_cli("codex")
     {:ok, view, _} = live(conn, "/")
@@ -946,15 +985,12 @@ defmodule RoundtableWeb.RoomLiveTest do
       assert html =~ "some-retired-model"
     end
 
-    test "the agent form shows the room's directory rather than asking for one", %{
-      view: view,
-      room: room
-    } do
+    # The folder belongs to the room and is already in its header.
+    test "the agent form neither asks for nor repeats the room's directory", %{view: view} do
       html = view |> element("#add-agent-button") |> render_click()
 
       refute html =~ ~s(name="agent[directory]")
-      assert html =~ room.directory
-      assert html =~ "make a separate room"
+      refute has_element?(view, "#agent-form", "Working directory")
     end
 
     test "the room form suggests directories instead of asking you to remember one", %{view: view} do
@@ -1144,11 +1180,9 @@ defmodule RoundtableWeb.RoomLiveTest do
         |> element(".agent-edit[phx-value-id='#{agent.id}']")
         |> render_click()
 
-      # A live session is built on the adapter and the working tree, so they are
-      # shown as facts rather than controls.
+      # A live session is built on the working tree, so it is not a control.
       assert html =~ ~s(name="agent[provider]")
       refute html =~ ~s(name="agent[directory]")
-      assert html =~ "fixed-field"
       assert html =~ agent.provider
 
       assert html =~ "switch-context-note"

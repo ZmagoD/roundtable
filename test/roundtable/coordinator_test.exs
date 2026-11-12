@@ -207,6 +207,43 @@ defmodule Roundtable.CoordinatorTest do
     assert Coordinator.approvals() == %{}
   end
 
+  test "a turn with any unanswered approval holds no slot" do
+    running = %{1 => %{}, 2 => %{}, 3 => %{}}
+    approvals = [%{run_id: 2, request_id: "a"}, %{run_id: 2, request_id: "b"}]
+
+    assert Coordinator.working(running, approvals) == 2
+    assert Coordinator.working(running, []) == 3
+  end
+
+  test "turns parked on an approval leave their slot to queued work", %{room: room} do
+    agents =
+      for n <- 1..(Coordinator.max_workers() + 1) do
+        {:ok, agent} =
+          Chat.create_agent(room.id, %{
+            "name" => "parked#{n}",
+            "provider" => "codex",
+            "directory" => File.cwd!()
+          })
+
+        agent
+      end
+
+    {parked, [last]} = Enum.split(agents, -1)
+
+    for agent <- parked do
+      Coordinator.post(room.id, "@#{agent.name} do work")
+      assert_receive {:agent_started, _, _, run, _}, 1000
+      Coordinator.event(run.id, {:approval, "req", %{"command" => "mix test"}})
+    end
+
+    assert map_size(Coordinator.approvals()) == Coordinator.max_workers()
+    Coordinator.post(room.id, "@#{last.name} do work")
+    assert_receive {:agent_started, _, %{id: id}, _, _}, 1000
+    assert id == last.id
+
+    Enum.each(agents, &Coordinator.stop(&1.id))
+  end
+
   test "a participant set to approve its own tools is never held", %{room: room, ada: ada} do
     Chat.change(ada, auto_approve: true)
     Coordinator.post(room.id, "@ada do work")
