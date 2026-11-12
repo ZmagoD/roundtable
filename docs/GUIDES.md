@@ -100,8 +100,8 @@ handed back rather than started.
 
 Every call stops for your approval like any other tool use, unless that
 participant approves its own, and each change is written into the room as it
-happens. OpenCode and Vibe participants do not get the tools: they have no
-approval channel, so there would be nowhere to say no.
+happens. OpenCode participants do not get the tools: they have no approval
+channel, so there would be nowhere to say no.
 
 ## Have a room start its own morning
 
@@ -143,9 +143,9 @@ its own configured permissions and never asks in the first place.
 OpenCode rejects anything its configuration leaves at "ask" (reading outside
 the room's directory, for example), which ends the turn. Turning automatic
 approval on for an OpenCode participant allows every tool for its turns,
-without touching your own OpenCode configuration. Vibe runs its turns under
-its `accept-edits` agent, which denies anything else it would have asked about;
-automatic approval runs them with `--auto-approve` instead.
+without touching your own OpenCode configuration. Vibe runs its turns in its
+`accept-edits` mode: edits go ahead, and anything else it would ask about comes
+to the room as an approval. Automatic approval switches it to `auto-approve`.
 
 For a whole room at once, use **Auto** in the room header: every participant
 approves its own tools and the team head keeps working through the work

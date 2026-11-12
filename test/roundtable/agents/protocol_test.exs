@@ -431,58 +431,8 @@ defmodule Roundtable.Agents.ProtocolTest do
   end
 
   describe "vibe" do
-    # The shape `vibe -p --output streaming` prints: one completed
-    # `PublicHistoryEntry` per line, camel-cased, as defined by the installed
-    # CLI's vibe/app_server/models.py.
-    defp vibe_entry(fields) do
-      Map.merge(
-        %{
-          "id" => "e-#{System.unique_integer([:positive])}",
-          "sessionId" => "v-1",
-          "turnId" => "t-2",
-          "createdAt" => 0,
-          "updatedAt" => 0,
-          "generationStatus" => "completed"
-        },
-        fields
-      )
-    end
-
-    defp vibe_says(text, turn \\ "t-2") do
-      vibe_entry(%{
-        "turnId" => turn,
-        "type" => "message",
-        "role" => "assistant",
-        "content" => [%{"type" => "text", "text" => text}]
-      })
-    end
-
-    test "reads its prompt from stdin and asks before anything but edits" do
-      {exe, args} = Vibe.command(%{session_id: nil, model: nil}, "do the thing")
-
-      assert exe == "vibe"
-      assert ["-p", "--output"] == Enum.take(args, 2)
-      assert ["--output", "streaming"] in Enum.chunk_every(args, 2, 1)
-      assert ["--agent", "accept-edits"] in Enum.chunk_every(args, 2, 1)
-      assert "--trust" in args
-      refute "do the thing" in args
-      refute "--resume" in args
-
-      state = state()
-      port = state.port
-      Vibe.start(state)
-      assert_receive {^port, {:data, data}}, 1000
-
-      assert [%{"write" => "do the thing"}, %{"close_stdin" => true}] =
-               data |> String.split("\n", trim: true) |> Enum.map(&Jason.decode!/1)
-    end
-
-    test "resumes a session, and approves everything only when told to" do
-      {_, args} = Vibe.command(%{session_id: "v-1", model: nil, auto_approve: true}, "go")
-
-      assert ["--resume", "v-1"] in Enum.chunk_every(args, 2, 1)
-      assert "--auto-approve" in args
-      refute "--agent" in args
+    test "runs as an ACP agent, with nothing about the turn on the command line" do
+      assert {"vibe-acp", []} = Vibe.command(%{session_id: "v-1", model: "devstral"}, "plan")
     end
 
     test "a model is pinned through the environment, which is the only way in" do
@@ -493,47 +443,59 @@ defmodule Roundtable.Agents.ProtocolTest do
       assert model.(%{provider: "claude", model: "devstral"}) == nil
     end
 
-    test "only the newest turn is this one's output, after a resumed history replays" do
-      state =
-        [
-          vibe_entry(%{
-            "turnId" => "t-1",
-            "type" => "message",
-            "role" => "user",
-            "content" => []
-          }),
-          vibe_says("an old answer", "t-1"),
-          vibe_entry(%{"type" => "message", "role" => "user", "content" => []}),
-          vibe_says("Looking"),
-          vibe_entry(%{"type" => "reasoning", "text" => "private"}),
-          vibe_says("Done")
-        ]
-        |> Enum.reduce(state(), &Vibe.handle_event/2)
-        |> settle()
+    # The default mode is the human's own `default_agent`, so it is set every
+    # turn, after the session opens and before the prompt.
+    test "sets its approval mode before prompting" do
+      for {auto, mode} <- [{false, "accept-edits"}, {true, "auto-approve"}] do
+        state =
+          state(%{agent: %{directory: "/tmp", model: nil, session_id: nil, auto_approve: auto}})
 
-      assert state.session == "v-1"
-      assert state.output == "Looking\n\nDone"
-      assert Vibe.exit_status(0, state) == {"completed", nil}
+        state = Vibe.handle_event(%{"id" => 2, "result" => %{"sessionId" => "v-1"}}, state)
+
+        assert %{"id" => 5, "method" => "session/set_mode", "params" => params} = written(state)
+        assert params == %{"modeId" => mode, "sessionId" => "v-1"}
+
+        state = Vibe.handle_event(%{"id" => 5, "result" => %{}}, state)
+        assert %{"id" => 3, "method" => "session/prompt"} = written(state)
+        assert state.prompting
+      end
     end
 
-    test "a failed turn says what went wrong" do
-      state =
-        vibe_entry(%{
-          "type" => "notice",
-          "level" => "error",
-          "message" => "Invalid API key",
-          "detail" => %{"kind" => "agent_changed", "agentName" => "x"}
-        })
-        |> Vibe.handle_event(state())
+    # Captured from the installed vibe-acp: a resume answers with no session id.
+    test "a resumed session keeps the id it was resumed with" do
+      state = state(%{session: "v-1"})
+      Vibe.handle_event(%{"id" => 1, "result" => %{}}, state)
+      assert %{"method" => "session/resume", "params" => %{"sessionId" => "v-1"}} = written(state)
 
-      assert {"failed", message} = Vibe.exit_status(1, state)
-      assert message =~ "Invalid API key"
-      assert {"failed", _} = Vibe.exit_status(0, state)
+      assert %{session: "v-1"} = Vibe.handle_event(%{"id" => 2, "result" => %{}}, state)
+    end
+
+    test "a permission request is answered with the option the human chose" do
+      # Option ids and kinds as vibe/acp/utils.py builds them.
+      request = %{
+        "id" => 11,
+        "method" => "session/request_permission",
+        "params" => %{
+          "toolCall" => %{"title" => "bash: pytest"},
+          "options" => [
+            %{"optionId" => "allow_once", "kind" => "allow_once"},
+            %{"optionId" => "allow_always", "kind" => "allow_always"},
+            %{"optionId" => "reject_once", "kind" => "reject_once"}
+          ]
+        }
+      }
+
+      state = Vibe.handle_event(request, state())
+      Vibe.approve(state, 11, "decline", state.pending[11])
+      assert %{"result" => %{"outcome" => %{"optionId" => "reject_once"}}} = written(state)
     end
 
     test "a rate limit waits instead of failing" do
       assert {"rate_limited", _} =
                Vibe.exit_status(1, %{output: "", diagnostics: "Error: Rate limit exceeded\n"})
+
+      assert {"failed", "Mistral Vibe exited (1). boom"} =
+               Vibe.exit_status(1, %{output: "", diagnostics: "boom"})
     end
 
     test "is offered as a provider, with no model list invented for it" do
@@ -543,18 +505,8 @@ defmodule Roundtable.Agents.ProtocolTest do
       assert Agents.models("vibe") == []
     end
 
-    test "is not handed the room tools, having nowhere to ask for approval" do
-      refute Roundtable.MCP.offered?(%{id: 1, provider: "vibe"})
-
-      assert Vibe.command(%{session_id: nil, model: nil}, "go")
-             |> elem(1)
-             |> Enum.all?(&(not String.contains?(&1, "mcp")))
-    end
-
-    test "it cannot grant an approval, and ignores what it does not know" do
-      assert Vibe.approve(state(), "r1", "accept", %{}) == :unsupported
-      state = state()
-      assert Vibe.handle_event(%{"type" => "teleportComplete", "url" => "u"}, state) == state
+    test "is handed the room tools, now that it can ask for approval" do
+      assert Roundtable.MCP.offered?(%{id: 1, provider: "vibe"}) == (Roundtable.MCP.url() != nil)
     end
   end
 

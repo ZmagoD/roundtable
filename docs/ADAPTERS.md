@@ -167,7 +167,9 @@ all. If your CLI has both, add a clause to `flags/3`. If it has no approval
 channel, do not — a tool that rearranges the rooms with nowhere to say no is not
 worth having.
 
-Grok takes no server on the command line, but in `grok agent stdio` (the
-Agent Client Protocol) the server is part of the `session/new` request, and
-`session/request_permission` is its approval channel, so it is wired in there
-— see `Roundtable.Agents.Grok`.
+Grok and Vibe take no server on the command line, but over the Agent Client
+Protocol (`grok agent stdio`, `vibe-acp`) the server is part of the
+`session/new` request, and `session/request_permission` is the approval channel,
+so they are wired in there. A CLI that speaks ACP needs only a thin adapter on
+`Roundtable.Agents.Acp` — see `Roundtable.Agents.Grok` and
+`Roundtable.Agents.Vibe`.

@@ -606,20 +606,27 @@ defmodule Roundtable.MCPTest do
       assert browser_added.auto_approve
     end
 
-    # Grok asks through ACP, so it joins the way Claude Code and Codex do.
-    test "grok has an approval channel and joins without a card", %{ada: ada, room: room} do
-      assert {:ok, text} =
-               MCP.call(ada, "add_participant", %{"name" => "gro", "provider" => "grok"})
+    # Grok and Vibe ask through ACP, so they join the way Claude Code and Codex do.
+    test "grok and vibe have an approval channel and join without a card", %{
+      ada: ada,
+      room: room
+    } do
+      for provider <- ["grok", "vibe"] do
+        assert {:ok, text} =
+                 MCP.call(ada, "add_participant", %{"name" => provider, "provider" => provider})
 
-      assert text =~ "added gro"
-      assert "gro" in Enum.map(Chat.agents(room.id), & &1.name)
+        assert text =~ "added #{provider}"
+      end
+
+      assert ["ada", "grok", "vibe"] ==
+               room.id |> Chat.agents() |> Enum.map(& &1.name) |> Enum.sort()
     end
 
     test "providers without approval channels are proposed, directly and through profiles", %{
       ada: ada,
       room: room
     } do
-      for provider <- ["opencode", "vibe"] do
+      for provider <- ["opencode"] do
         {:ok, profile} =
           Chat.create_agent_profile(%{
             "name" => "#{provider}-dev",
@@ -636,7 +643,7 @@ defmodule Roundtable.MCPTest do
       assert Enum.map(Chat.agents(room.id), & &1.id) == [ada.id]
 
       proposals = Repo.all(from m in Message, where: m.kind == "proposal")
-      assert length(proposals) == 4
+      assert length(proposals) == 2
       assert Enum.all?(proposals, &(&1.metadata["status"] == "pending" and &1.sender == "ada"))
       assert Repo.all(from r in Run, where: r.message_id in ^Enum.map(proposals, & &1.id)) == []
     end

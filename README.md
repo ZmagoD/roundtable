@@ -625,7 +625,7 @@ head selected, only that agent can update the document through those tools;
 you can always edit it. History retrieval is scoped to the caller's room,
 returning at most ten messages per page and 2,000 characters per message.
 Long messages are marked truncated; agents can ask their author for details.
-OpenCode, Vibe, or installations with room tools disabled still receive the
+OpenCode, or installations with room tools disabled, still receive the
 document, but must ask for missing context and propose document updates for you
 to apply. Choose a participant with room tools as the head for automatic upkeep.
 
@@ -824,8 +824,8 @@ projects with no folder set, the caller’s room folder is the boundary. To make
 a room elsewhere, use the browser.
 
 Participants added through tools always start with automatic approval off,
-even when a saved profile has it on. Claude Code, Codex and Grok participants join
-straight away. OpenCode and Vibe have no tool approval channel, so asking
+even when a saved profile has it on. Claude Code, Codex, Grok and Vibe participants join
+straight away. OpenCode has no tool approval channel, so asking
 for one checks the details and leaves a card in the room instead, showing the
 name, provider, model and role; the participant joins when you click **Add**.
 Making someone the team head and removing a participant work the same way,
@@ -838,8 +838,8 @@ automatic approval; change that yourself in the browser if you want unattended w
 
 The tools are wired in per turn, with a token that says which participant is
 calling, so the rooms only ever change on behalf of someone who is actually in
-one. OpenCode and Vibe participants are not given them: their CLIs read MCP
-servers from their own configuration and have no approval channel back to the
+one. OpenCode participants are not given them: its CLI reads MCP
+servers from its own configuration and has no approval channel back to the
 room, and a tool that rearranges rooms with nowhere to say no is not one worth
 having. The service answers them at `/mcp` on its own loopback port; turn them
 off for everyone with `config :roundtable, :mcp_url, false`.
@@ -958,7 +958,7 @@ parallel work, keep separate named agents for your regular model/role combinatio
 | Claude Code | `claude -p`, streaming JSON/control protocol | Session ID | Tool approval |
 | Grok | `grok agent stdio`, Agent Client Protocol (JSON-RPC over stdio) | Session ID | Tool approval, or all with automatic approval |
 | OpenCode | `opencode run --format json` | Session ID | CLI configuration only |
-| Mistral Vibe | `vibe -p --output streaming`, completed history entries | Session ID | `accept-edits`, or all with automatic approval |
+| Mistral Vibe | `vibe-acp`, Agent Client Protocol (JSON-RPC over stdio) | Session ID | Edits accepted, other tools approved in the room, or all with automatic approval |
 
 Adding one is a module, not a fork: adapters implement
 `Roundtable.Agents.Adapter` and are registered in application configuration, so

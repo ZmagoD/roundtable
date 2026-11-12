@@ -30,11 +30,11 @@ defmodule Roundtable.MCP do
   # ends a token's life is its own run finishing — see `participant/1`.
   @max_age 30 * 60
 
-  # Providers whose CLI takes an MCP server per turn (a flag, or Grok's ACP
+  # Providers whose CLI takes an MCP server per turn (a flag, or an ACP
   # session request) *and* has an approval channel back to the room. Without
   # the second, a participant could rearrange the rooms with nowhere for the
   # human to say no.
-  @providers ["claude", "codex", "grok"]
+  @providers ["claude", "codex", "grok", "vibe"]
 
   @doc """
   Where the tool server answers, or `nil` when there is nothing to reach.
