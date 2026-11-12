@@ -461,6 +461,43 @@ defmodule Roundtable.Agents.ProtocolTest do
       end
     end
 
+    # The session/new answer as the installed vibe-acp gave it for a folder
+    # holding an AGENTS.md it had not been told to trust.
+    test "trusts the room's folder before setting the mode, when Vibe offers it" do
+      opened = fn details ->
+        %{
+          "sessionId" => "v-1",
+          "_meta" => %{"workspace_trust" => %{"status" => "untrusted", "details" => details}}
+        }
+      end
+
+      state = state(%{agent: %{directory: "/work/app", model: nil, session_id: nil}})
+
+      offered = %{
+        "detectedFiles" => ["AGENTS.md"],
+        "availableDecisions" => ["trust_cwd", "decline"]
+      }
+
+      state = Vibe.handle_event(%{"id" => 2, "result" => opened.(offered)}, state)
+
+      assert %{"id" => 5, "method" => "_trust/decision", "params" => params} = written(state)
+      assert params == %{"decision" => "trust_cwd", "cwd" => "/work/app", "sessionId" => "v-1"}
+
+      state = Vibe.handle_event(%{"id" => 5, "result" => %{"trust_status" => "trusted"}}, state)
+      assert %{"id" => 5, "method" => "session/set_mode"} = written(state)
+
+      state = Vibe.handle_event(%{"id" => 5, "result" => %{}}, state)
+      assert %{"id" => 3, "method" => "session/prompt"} = written(state)
+
+      # Nothing in the folder to trust: Vibe has no decision to take, and
+      # asking anyway would fail the turn.
+      for details <- [nil, %{"availableDecisions" => ["decline"]}] do
+        state = state(%{agent: %{directory: "/work/app", model: nil, session_id: nil}})
+        state = Vibe.handle_event(%{"id" => 2, "result" => opened.(details)}, state)
+        assert %{"method" => "session/set_mode"} = written(state)
+      end
+    end
+
     # Captured from the installed vibe-acp: a resume answers with no session id.
     test "a resumed session keeps the id it was resumed with" do
       state = state(%{session: "v-1"})

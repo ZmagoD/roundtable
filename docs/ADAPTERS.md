@@ -172,4 +172,6 @@ Protocol (`grok agent stdio`, `vibe-acp`) the server is part of the
 `session/new` request, and `session/request_permission` is the approval channel,
 so they are wired in there. A CLI that speaks ACP needs only a thin adapter on
 `Roundtable.Agents.Acp` — see `Roundtable.Agents.Grok` and
-`Roundtable.Agents.Vibe`.
+`Roundtable.Agents.Vibe`. Anything the CLI needs between opening the session
+and the prompt goes in `before_prompt/2`: Vibe trusts the room's folder there
+when it reports it untrusted, then sets its approval mode.

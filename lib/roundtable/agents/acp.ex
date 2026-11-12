@@ -9,9 +9,9 @@ defmodule Roundtable.Agents.Acp do
   permission is asked of the client with `session/request_permission`, which
   becomes an approval card in the room.
 
-  The adapter using this supplies its label and, optionally, one request to
-  make once the session is open and before the prompt (Vibe sets its approval
-  mode there). Everything else is the protocol's.
+  The adapter using this supplies its label and any requests to make once the
+  session is open and before the prompt (Vibe trusts the room's folder and
+  sets its approval mode there). Everything else is the protocol's.
   """
   import Roundtable.Agents.Worker, only: [write: 2, put_output: 2, approval: 3, activity: 2]
 
@@ -28,8 +28,11 @@ defmodule Roundtable.Agents.Acp do
 
   # `label/0` comes from `Roundtable.Agents.Adapter`, which every user of this
   # implements too.
-  @doc "A request to make once the session is open and before the prompt, or nil."
-  @callback before_prompt(map()) :: {String.t(), map()} | nil
+  @doc """
+  Requests to make, in order, once the session is open and before the prompt,
+  given the turn's state and the CLI's answer to opening the session.
+  """
+  @callback before_prompt(map(), map()) :: [{String.t(), map()}]
 
   def start(state) do
     write(state, %{
@@ -85,23 +88,13 @@ defmodule Roundtable.Agents.Acp do
     if session != state.session, do: Coordinator.event(state.run.id, {:session, session})
     state = Map.put(state, :session, session)
 
-    case adapter.before_prompt(state) do
-      {method, params} ->
-        write(state, %{
-          jsonrpc: "2.0",
-          id: @before_prompt,
-          method: method,
-          params: Map.put(params, :sessionId, session)
-        })
-
-        state
-
-      nil ->
-        prompt(state)
-    end
+    state
+    |> Map.put(:before_prompt, adapter.before_prompt(state, result))
+    |> next_before_prompt()
   end
 
-  def handle_event(%{"id" => @before_prompt, "result" => _}, state, _adapter), do: prompt(state)
+  def handle_event(%{"id" => @before_prompt, "result" => _}, state, _adapter),
+    do: next_before_prompt(state)
 
   def handle_event(%{"id" => @prompt, "result" => result}, state, adapter) do
     state = Roundtable.Agents.Usage.report(state, tokens(result["usage"]))
@@ -145,6 +138,21 @@ defmodule Roundtable.Agents.Acp do
       do: update(update, state)
 
   def handle_event(_event, state, _adapter), do: state
+
+  # One at a time, each waiting for the last's answer: the CLI may need the
+  # first (a trusted folder) to have taken effect before the next.
+  defp next_before_prompt(%{before_prompt: [{method, params} | rest]} = state) do
+    write(state, %{
+      jsonrpc: "2.0",
+      id: @before_prompt,
+      method: method,
+      params: Map.put(params, :sessionId, state.session)
+    })
+
+    %{state | before_prompt: rest}
+  end
+
+  defp next_before_prompt(state), do: prompt(state)
 
   defp prompt(state) do
     write(state, %{

@@ -146,6 +146,9 @@ approval on for an OpenCode participant allows every tool for its turns,
 without touching your own OpenCode configuration. Vibe runs its turns in its
 `accept-edits` mode: edits go ahead, and anything else it would ask about comes
 to the room as an approval. Automatic approval switches it to `auto-approve`.
+On a Vibe participant's first turn in a folder Vibe does not trust yet,
+Roundtable adds that folder to Vibe's trust list, as if you had accepted Vibe's
+own prompt, so its `AGENTS.md` and `.vibe` config apply.
 
 For a whole room at once, use **Auto** in the room header: every participant
 approves its own tools and the team head keeps working through the work

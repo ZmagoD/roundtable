@@ -32,7 +32,7 @@ defmodule Roundtable.Agents.Grok do
   def start(state), do: Acp.start(state)
   def approve(state, id, decision, request), do: Acp.approve(state, id, decision, request)
   def handle_event(event, state), do: Acp.handle_event(event, state, __MODULE__)
-  def before_prompt(_state), do: nil
+  def before_prompt(_state, _opened), do: []
 
   def exit_status(code, state), do: {"failed", "Grok exited (#{code}). #{state.diagnostics}"}
 end
