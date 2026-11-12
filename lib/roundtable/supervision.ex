@@ -81,6 +81,8 @@ defmodule Roundtable.Supervision do
     |> shorten(300)
   end
 
+  def gist(_text), do: ""
+
   # Long enough for an explanation that says what to do; cut between words
   # when it is not, so a notice never ends half way through one.
   defp shorten(line, limit) do
@@ -93,6 +95,4 @@ defmodule Roundtable.Supervision do
       |> Kernel.<>("…")
     end
   end
-
-  def gist(_text), do: ""
 end
