@@ -11,13 +11,23 @@ defmodule Roundtable.Agents.Grok do
   `--allow`/`--deny` rules and `--permission-mode`, the way OpenCode's come
   from its configuration. So `approve/4` reports that it cannot grant one, and
   the turn runs under `acceptEdits` rather than a mode that would sit waiting
-  for a prompt nobody can answer.
+  for a prompt nobody can answer — or with every tool approved, when the human
+  turned automatic approval on for this participant.
+
+  A step `acceptEdits` does not cover, such as a shell command, is not refused
+  but cancelled, and the turn ends with nothing more than "cancelled". Its own
+  log calls the turn successful, so the room is told what that usually means.
   """
   @behaviour Roundtable.Agents.Adapter
 
   import Roundtable.Agents.Worker, only: [close_stdin: 1]
 
   alias Roundtable.Agents.{Messages, Protocol}
+
+  @cancelled "Grok cancelled this turn, most likely at a step that needed permission, " <>
+               "such as a shell command. It cannot ask the room for permission, so it " <>
+               "stops instead. Turn on automatic approval for this participant, or give " <>
+               "the step to a Claude Code or Codex participant."
 
   def id, do: "grok"
   def label, do: "Grok"
@@ -32,14 +42,19 @@ defmodule Roundtable.Agents.Grok do
         prompt,
         "--output-format",
         "streaming-messages-json",
-        "--include-partial-messages",
-        "--permission-mode",
-        "acceptEdits"
+        "--include-partial-messages"
       ] ++
+        permissions(agent) ++
         Protocol.optional("--resume", agent.session_id) ++
         Protocol.optional("--model", agent.model)
 
     {"grok", args}
+  end
+
+  defp permissions(agent) do
+    if Map.get(agent, :auto_approve),
+      do: ["--always-approve"],
+      else: ["--permission-mode", "acceptEdits"]
   end
 
   # Nothing to send: the prompt was an argument. Closing stdin stops the CLI
@@ -53,8 +68,18 @@ defmodule Roundtable.Agents.Grok do
 
   def handle_event(event, state) do
     case Messages.handle(event, state) do
-      {:ok, state} -> state
+      {:ok, state} -> explain_cancel(state)
       :unhandled -> state
     end
   end
+
+  # With every tool approved there is no permission to have stopped at, so a
+  # cancel then is left as the CLI said it and retried like any other failure.
+  defp explain_cancel(%{finished: {"failed", message}} = state) do
+    if String.trim(message) =~ ~r/\Acancell?ed\z/i and !Map.get(state.agent, :auto_approve),
+      do: %{state | finished: {"failed", @cancelled}},
+      else: state
+  end
+
+  defp explain_cancel(state), do: state
 end

@@ -2762,9 +2762,11 @@ defmodule Roundtable.Chat do
         @#{head.name} is the primary contact for the human. Ordinary human messages go to them.
         Room history is not automatically included. Work from this document and your assigned message.
         Use read_room_history for missing context when available, or ask for the specific information.
-        #{if agent.id == head.id,
-          do: "Maintain the work document with update_work_document. You are the captain: resolve subagents' questions before escalating unresolved decisions to the human. For parallel coding tasks, use create_room with isolated: true, add_participant, then send_room_request with kind delegate to assign work. Each task room has one owner, one branch and one PR. Routine completion does not wake you; use read_task_detail on demand. Use kind ask for questions or blockers. Keep task IDs and branch names in the work document. After a subagent reports its branch pushed and its turns finish, call finish_task for its room. Delegate bounded tasks with task IDs, relevant files, constraints and acceptance criteria. Consolidate results and report to the human.",
-          else: "Work only on your assigned task. Each assignment starts a fresh session. Return a short result to @#{head.name}, including task ID, files changed, checks and blockers. The primary contact merges your result into the work document."}
+        #{cond do
+          agent.id == head.id and not Roundtable.MCP.offered?(agent) -> "You are the captain: resolve teammates' questions before escalating unresolved decisions to the human. Delegate bounded tasks to the participants in this room with @name, with task IDs, relevant files, constraints and acceptance criteria. Consolidate results and report to the human."
+          agent.id == head.id -> "Maintain the work document with update_work_document. You are the captain: resolve subagents' questions before escalating unresolved decisions to the human. For parallel coding tasks, use create_room with isolated: true, add_participant, then send_room_request with kind delegate to assign work. Each task room has one owner, one branch and one PR. Routine completion does not wake you; use read_task_detail on demand. Use kind ask for questions or blockers. Keep task IDs and branch names in the work document. After a subagent reports its branch pushed and its turns finish, call finish_task for its room. Delegate bounded tasks with task IDs, relevant files, constraints and acceptance criteria. Consolidate results and report to the human."
+          true -> "Work only on your assigned task. Each assignment starts a fresh session. Return a short result to @#{head.name}, including task ID, files changed, checks and blockers. The primary contact merges your result into the work document."
+        end}
         Do not repeat conversation history, quote entire reports, or send acknowledgement-only replies.
         If work-document tools are unavailable, give the human a concise proposed document update.
         """
@@ -2876,8 +2878,23 @@ defmodule Roundtable.Chat do
       If asked only to assemble a team, set it up and hand it back without starting implementation.\
       """
     else
-      ""
+      no_tools()
     end
+  end
+
+  # Without this a participant asked for a room goes looking for some other
+  # way to make one, and a provider that cannot ask permission for that search
+  # ends its turn instead of answering.
+  defp no_tools do
+    """
+
+
+    ROOM SETUP
+    You have no tools for making rooms, adding participants, editing the work document or
+    setting schedules, and there is no other way for you to do those things here. When asked
+    to, say so in one line and ask the human to do it, or to hand that part to a Claude Code
+    or Codex participant. Do not search the machine for another way.\
+    """
   end
 
   # Nobody works well from a blank brief, so say plainly that there is none

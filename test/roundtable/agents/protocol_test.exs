@@ -325,6 +325,30 @@ defmodule Roundtable.Agents.ProtocolTest do
       assert message =~ "Not signed in"
     end
 
+    test "edits are accepted, and every tool only when the human turned that on" do
+      {_, args} = Grok.command(%{session_id: nil, model: nil}, "go")
+      assert ["--permission-mode", "acceptEdits"] in Enum.chunk_every(args, 2, 1)
+      refute "--always-approve" in args
+
+      {_, args} = Grok.command(%{session_id: nil, model: nil, auto_approve: true}, "go")
+      assert "--always-approve" in args
+      refute "--permission-mode" in args
+    end
+
+    test "a bare cancel says what it usually means, unless every tool was approved" do
+      event = %{"type" => "result", "is_error" => true, "errors" => ["cancelled"]}
+
+      assert %{finished: {"failed", message}} = event |> Grok.handle_event(state()) |> settle()
+      assert message =~ "cannot ask the room for permission"
+      assert message =~ "automatic approval"
+
+      approving =
+        state(%{agent: %{directory: "/tmp", model: nil, session_id: nil, auto_approve: true}})
+
+      assert %{finished: {"failed", "cancelled"}} =
+               event |> Grok.handle_event(approving) |> settle()
+    end
+
     test "an empty session id is not a session" do
       # The CLI sends session_id: "" before it has one.
       assert %{session: nil} =

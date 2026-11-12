@@ -881,6 +881,9 @@ defmodule Roundtable.MCPTest do
       Application.put_env(:roundtable, :mcp_url, false)
       {without, _} = Chat.prompt(ada, run)
       refute without =~ "THE ROOMS THEMSELVES"
+      refute without =~ "create_room"
+      # Told plainly, so it answers rather than hunting for another way.
+      assert without =~ "You have no tools for making rooms"
     end
   end
 end
