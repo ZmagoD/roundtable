@@ -42,7 +42,8 @@ defmodule Roundtable.Coordinator do
   def remove_agent(agent_id), do: GenServer.call(__MODULE__, {:remove_agent, agent_id})
 
   @doc "Stops every participant in a room, then removes the room and its history."
-  def finish_task(room_id), do: GenServer.call(__MODULE__, {:finish_task, room_id}, :infinity)
+  def finish_task(room_id, actor \\ :human),
+    do: GenServer.call(__MODULE__, {:finish_task, room_id, actor}, :infinity)
 
   @doc "Finishes every task room the human opted into automatic closing, if its evidence holds."
   def close_tasks, do: GenServer.call(__MODULE__, :close_tasks, :infinity)
@@ -151,8 +152,8 @@ defmodule Roundtable.Coordinator do
     end
   end
 
-  def handle_call({:finish_task, room_id}, _, state) do
-    {:reply, Chat.finish_task(room_id), state}
+  def handle_call({:finish_task, room_id, actor}, _, state) do
+    {:reply, Chat.finish_task(room_id, actor), state}
   end
 
   def handle_call(:close_tasks, _, state) do

@@ -33,10 +33,7 @@ defmodule Roundtable.TaskCompletion do
              room.directory
            ),
          :ok <- verify_checks(checks),
-         {:ok, _} <- git(room.directory, ["fetch", "--no-tags", record.remote, "refs/heads/main"]),
-         {:ok, main} <- git(room.directory, ["rev-parse", "FETCH_HEAD"]),
-         {:ok, _} <-
-           git(room.directory, ["merge-base", "--is-ancestor", pr["merge_commit_sha"], main]),
+         {:ok, main} <- ancestor_on_main(record.remote, pr["merge_commit_sha"]),
          :ok <- synchronized(review, record.source, main) do
       {:ok,
        %{
@@ -109,8 +106,30 @@ defmodule Roundtable.TaskCompletion do
   defp ensure(true, _), do: :ok
   defp ensure(_, reason), do: {:error, reason}
 
-  defp git(path, args),
-    do: command("git", ["-c", "core.hooksPath=/dev/null", "-C", path] ++ args, path)
+  # Fetched into an empty repository. The checkout's config is not read:
+  # `insteadOf` survives `-c`, and that is where a checkout would redirect
+  # this fetch. The overrides still apply, for the human's own git config.
+  defp ancestor_on_main(remote, merge_sha) do
+    directory =
+      Path.join(System.tmp_dir!(), "roundtable-fetch-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(directory)
+
+    try do
+      with {:ok, _} <- git(directory, ["init", "-q"], remote),
+           {:ok, _} <- git(directory, ["fetch", "--no-tags", remote, "refs/heads/main"], remote),
+           {:ok, main} <- git(directory, ["rev-parse", "FETCH_HEAD"], remote),
+           {:ok, _} <-
+             git(directory, ["merge-base", "--is-ancestor", merge_sha, main], remote) do
+        {:ok, main}
+      end
+    after
+      File.rm_rf(directory)
+    end
+  end
+
+  defp git(path, args, remote \\ nil),
+    do: command("git", Roundtable.Git.service_config(remote) ++ ["-C", path] ++ args, path)
 
   defp json(program, args, path) do
     with {:ok, output} <- command(program, args, path),

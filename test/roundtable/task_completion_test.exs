@@ -75,6 +75,56 @@ defmodule Roundtable.TaskCompletionTest do
     assert Repo.get_by(TaskClosure, task_room_id: ctx.task.id).status == "complete"
   end
 
+  # The checkout's `insteadOf` survives `-c`. Verification of main has to
+  # fetch somewhere else, with SSH refused for the stored https remote.
+  test "verification fetches main outside the task checkout", ctx do
+    ready(ctx)
+    parent = Application.fetch_env!(:roundtable, :completion_command)
+    {:ok, log} = Agent.start_link(fn -> [] end)
+
+    Application.put_env(:roundtable, :completion_command, fn program, args, opts ->
+      Agent.update(log, &[{program, args, opts[:cd]} | &1])
+      parent.(program, args, opts)
+    end)
+
+    on_exit(fn ->
+      Application.put_env(:roundtable, :completion_command, parent)
+      if Process.alive?(log), do: Agent.stop(log)
+    end)
+
+    assert {:ok, _} = Chat.check_task(ctx.task.id)
+    calls = Agent.get(log, &Enum.reverse/1)
+    assert Enum.any?(calls, fn {"git", _, cd} -> cd == ctx.task.directory end)
+
+    {"git", args, cd} =
+      Enum.find(calls, fn
+        {"git", args, _} -> "fetch" in args
+        _ -> false
+      end)
+
+    assert cd =~ "roundtable-fetch-"
+    refute cd == ctx.task.directory
+    refute Enum.chunk_every(args, 2, 1) |> Enum.member?(["-C", ctx.task.directory])
+    assert "protocol.ssh.allow=never" in args
+    assert Enum.any?(args, &String.starts_with?(&1, "core.sshCommand="))
+  end
+
+  test "only the human or the parent supervisor can check or finish a task", ctx do
+    ready(ctx)
+    {:ok, worker} = Chat.create_agent(ctx.task.id, %{name: "builder", provider: "codex"})
+    {:ok, other} = Chat.create_agent(ctx.parent.id, %{name: "other", provider: "codex"})
+
+    assert {:error, reason} = Chat.check_task(ctx.task.id, worker)
+    assert reason =~ "supervisor"
+    assert {:error, reason} = Chat.finish_task(ctx.task.id, other)
+    assert reason =~ "supervisor"
+    assert {:ok, _} = Chat.check_task(ctx.task.id, ctx.head)
+    assert {:ok, _} = Chat.finish_task(ctx.task.id, ctx.head)
+    assert {:error, reason} = Chat.finish_task(ctx.task.id, worker)
+    assert reason =~ "supervisor"
+    assert {:ok, _} = Chat.finish_task(ctx.task.id)
+  end
+
   test "a squash merge counts when the pull request carries the final commit", ctx do
     dir = ctx.task.directory
     head = git(dir, ["rev-parse", "HEAD"])

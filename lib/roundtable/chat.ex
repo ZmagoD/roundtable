@@ -849,6 +849,12 @@ defmodule Roundtable.Chat do
 
   defp may_accept?(_room, _actor), do: false
 
+  defp task_authority(room, actor) do
+    if may_accept?(room, actor),
+      do: :ok,
+      else: {:error, "Only the human or this task's parent supervisor can do that."}
+  end
+
   defp record_acceptance(room, review, evidence) do
     room
     |> Ecto.Changeset.change(
@@ -860,16 +866,40 @@ defmodule Roundtable.Chat do
     |> notify_rooms()
   end
 
-  def check_task(room_id) do
+  def check_task(room_id, actor \\ :human) do
     room = room!(room_id)
-    with :ok <- task_quiet(room), do: Roundtable.TaskCompletion.verify(room)
+
+    with :ok <- task_authority(room, actor),
+         :ok <- task_quiet(room),
+         do: Roundtable.TaskCompletion.verify(room)
   end
 
   def automatic_task_ids do
     Repo.all(from r in Room, where: r.completion_auto and not r.checkout_finished, select: r.id)
   end
 
-  def finish_task(room_id) do
+  def finish_task(room_id, actor \\ :human) do
+    case Repo.get(Room, room_id) do
+      # Removing the room is part of a successful close. A later finish is the
+      # stored result; there is no room left to authorize against.
+      nil ->
+        finished_summary(room_id)
+
+      room ->
+        with :ok <- task_authority(room, actor) do
+          finish_authorized(room_id)
+        end
+    end
+  end
+
+  defp finished_summary(room_id) do
+    case Repo.get_by(Roundtable.Chat.TaskClosure, task_room_id: room_id) do
+      %{status: "complete", summary: summary} -> {:ok, summary}
+      _ -> {:error, "This task is no longer here."}
+    end
+  end
+
+  defp finish_authorized(room_id) do
     case Repo.get_by(Roundtable.Chat.TaskClosure, task_room_id: room_id) do
       %{status: "complete", summary: summary} ->
         {:ok, summary}

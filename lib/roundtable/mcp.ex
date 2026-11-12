@@ -574,7 +574,7 @@ defmodule Roundtable.MCP do
 
   def call(agent, "check_task", args) do
     with {:ok, room} <- room(agent, args),
-         {:ok, summary} <- Chat.check_task(room.id) do
+         {:ok, summary} <- Chat.check_task(room.id, agent) do
       done(
         agent,
         "task #{room.name} is done: #{summary["url"]} merged as #{summary["merge_sha"]}, " <>
@@ -585,7 +585,7 @@ defmodule Roundtable.MCP do
 
   def call(agent, "finish_task", args) do
     with {:ok, room} <- room(agent, args),
-         {:ok, finished} <- Coordinator.finish_task(room.id) do
+         {:ok, finished} <- Coordinator.finish_task(room.id, agent) do
       done(
         agent,
         "finished task #{finished["name"]}. Its managed copy was removed; the result stays in the parent room."

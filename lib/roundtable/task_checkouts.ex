@@ -72,7 +72,11 @@ defmodule Roundtable.TaskCheckouts do
          true <- branch == record.branch,
          {:ok, head} <- git(path, ["rev-parse", "HEAD"]),
          {:ok, remote} <-
-           git(path, ["ls-remote", "--exit-code", record.remote, "refs/heads/#{branch}"]),
+           git(
+             path,
+             ["ls-remote", "--exit-code", record.remote, "refs/heads/#{branch}"],
+             record.remote
+           ),
          true <- String.starts_with?(remote, head <> "\t") do
       remove(record)
     else
@@ -234,8 +238,10 @@ defmodule Roundtable.TaskCheckouts do
     end
   end
 
-  defp git(directory, args) do
-    case System.cmd("git", ["-c", "core.hooksPath=/dev/null", "-C", directory] ++ args,
+  defp git(directory, args, remote \\ nil) do
+    case System.cmd(
+           "git",
+           Roundtable.Git.service_config(remote) ++ ["-C", directory] ++ args,
            stderr_to_stdout: true,
            env: [{"GIT_TERMINAL_PROMPT", "0"}]
          ) do

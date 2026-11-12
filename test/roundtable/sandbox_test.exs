@@ -46,7 +46,7 @@ defmodule Roundtable.SandboxTest do
       pairs = Enum.chunk_every(args, 2, 1)
 
       assert ["--volume", "/work/project:/work/project"] in pairs
-      assert ["-v", "#{home}/.codex:/home/agent/.codex"] in pairs
+      assert ["-v", "#{home}/.codex:/home/agent/.codex:ro"] in pairs
       refute Enum.any?(args, &String.contains?(&1, ".claude"))
       assert ["--network", "host"] in pairs
       assert ["--name", Sandbox.name(agent)] in pairs
@@ -280,6 +280,22 @@ defmodule Roundtable.SandboxTest do
       assert message =~ "extra packages"
       assert message =~ "Unable to locate package no-such-package"
       refute Enum.any?(calls(log), &String.starts_with?(&1, "run "))
+    end
+
+    # Docker follows a symlink at container create. The room can store the
+    # link — the directory check follows it — and prepare has to refuse it
+    # before anything asks Docker to mount the path.
+    test "refuses a project directory reached through a symbolic link" do
+      real = tmp("roundtable-real")
+      link = Path.join(tmp("roundtable-link"), "project")
+      File.ln_s!(real, link)
+      log = fake_docker()
+      {:ok, room} = Chat.create_room(%{name: "Linked", directory: link, sandbox: true})
+      {:ok, agent} = Chat.create_agent(room.id, %{name: "boxed", provider: "codex"})
+
+      assert {:error, message} = Sandbox.prepare(agent)
+      assert message =~ "symbolic link"
+      refute File.exists?(log)
     end
 
     test "says so when Docker is missing" do

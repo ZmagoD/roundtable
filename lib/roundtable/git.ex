@@ -119,6 +119,44 @@ defmodule Roundtable.Git do
   defp no_external(["diff" | _]), do: ["--no-ext-diff", "--no-textconv"]
   defp no_external(_args), do: []
 
+  @doc """
+  `-c` overrides for git the service runs itself.
+
+  A checkout's `.git/config` is the agent's to write, and several of its keys
+  are programs: `core.sshCommand`, a credential helper, an external protocol.
+  Command-line config wins over the repository and over the human's own
+  files. An empty `credential.helper` clears every helper already configured.
+  SSH is this machine's `ssh`, and it is enabled only for a remote that is
+  already an SSH URL, so an `insteadOf` rule cannot turn an https URL into a
+  command.
+
+  `insteadOf` itself is not cleared by `-c`. A fetch or `ls-remote` that must
+  not see the checkout's rewrite rules has to run in some other repository.
+  """
+  def service_config(remote \\ nil) when is_binary(remote) or is_nil(remote) do
+    [
+      "-c",
+      "core.hooksPath=/dev/null",
+      "-c",
+      "core.sshCommand=#{ssh_command()}",
+      "-c",
+      "credential.helper=",
+      "-c",
+      "credential.interactive=false",
+      "-c",
+      "protocol.ext.allow=never",
+      "-c",
+      "protocol.ssh.allow=#{if ssh_remote?(remote), do: "always", else: "never"}"
+    ]
+  end
+
+  defp ssh_remote?(remote) when is_binary(remote),
+    do: String.starts_with?(remote, "git@") or String.starts_with?(remote, "ssh://")
+
+  defp ssh_remote?(_remote), do: false
+
+  defp ssh_command, do: System.find_executable("ssh") || "/usr/bin/ssh"
+
   defp first_line(output) do
     output |> String.split("\n", parts: 2) |> List.first() |> String.trim()
   end

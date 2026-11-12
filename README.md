@@ -219,10 +219,12 @@ it (the `docker` group, or rootless Docker).
 
 A container sees the team's folder, mounted at the same path so sessions
 resume, and its own provider's login directory (`~/.claude`, `~/.codex`,
-`~/.vibe` and so on), and nothing else of your home. It runs as your uid, so
-files it writes in the project are yours. It shares your network, which is how
-it reaches the room tools on loopback: the sandbox protects your files, not
-your network, and not the provider account it is signed in to.
+`~/.vibe` and so on), read-only, and nothing else of your home. A project path
+that contains a symbolic link is refused, because Docker would follow it. It
+runs as your uid, so files it writes in the project are yours. It shares your
+network, which is how it reaches the room tools on loopback: the sandbox
+protects your files, not your network, and not the provider account it is
+signed in to.
 
 The image carries git, Node, Python and the agent CLIs. **Extra packages** adds
 Debian packages for that team in a layer of its own, for example `elixir

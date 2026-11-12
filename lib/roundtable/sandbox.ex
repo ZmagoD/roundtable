@@ -13,9 +13,11 @@ defmodule Roundtable.Sandbox do
   only when what it was made from changes: the image, the folder, the provider.
 
   It sees the room's folder, mounted at the same path so sessions resume, and
-  its own provider's login directories so it is signed in. Nothing else of the
-  human's home. It shares the host's network, which is what lets it reach the
-  room tools on loopback: the sandbox protects files, not the network.
+  its own provider's login directories so it is signed in. Those logins are
+  read-only: a turn can use the credentials and must not rewrite the human's
+  provider configuration. Nothing else of the human's home. It shares the
+  host's network, which is what lets it reach the room tools on loopback: the
+  sandbox protects files, not the network.
   """
 
   alias Roundtable.Chat
@@ -45,7 +47,8 @@ defmodule Roundtable.Sandbox do
   def prepare(agent) do
     room = Chat.room!(agent.room_id)
 
-    with :ok <- docker_available(),
+    with :ok <- real_directory(agent.directory),
+         :ok <- docker_available(),
          {:ok, image} <- image(room.sandbox_packages) do
       container(agent, image)
     end
@@ -103,7 +106,7 @@ defmodule Roundtable.Sandbox do
       |> Map.get(agent.provider, [])
       |> Enum.map(&Path.join(home, &1))
       |> Enum.filter(&File.exists?/1)
-      |> Enum.flat_map(&["-v", "#{&1}:#{Path.join(@home, Path.relative_to(&1, home))}"])
+      |> Enum.flat_map(&["-v", "#{&1}:#{Path.join(@home, Path.relative_to(&1, home))}:ro"])
 
     spec = hash(Enum.join([image, agent.directory, agent.provider | mounts], "\n"))
 
@@ -229,6 +232,34 @@ defmodule Roundtable.Sandbox do
       {output, _} -> {:error, String.trim(output)}
     end
   end
+
+  # Docker follows a symlink when it bind-mounts. A directory that was real
+  # when the room was saved can be replaced later; mounting it would follow
+  # the new target. Every component has to be a real directory.
+  defp real_directory(path) when is_binary(path) do
+    expanded = Path.expand(path)
+
+    components =
+      expanded
+      |> Path.split()
+      |> Enum.scan(&Path.join(&2, &1))
+
+    cond do
+      Enum.any?(components, &match?({:ok, %{type: :symlink}}, File.lstat(&1))) ->
+        {:error,
+         "The project directory contains a symbolic link, so the sandbox will not mount it. " <>
+           "Point the room at the real directory."}
+
+      not File.dir?(expanded) ->
+        {:error, "The project directory is missing, so the sandbox will not start."}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp real_directory(_path),
+    do: {:error, "The project directory is missing, so the sandbox will not start."}
 
   defp dockerfile, do: Application.app_dir(:roundtable, "priv/sandbox/Dockerfile")
 

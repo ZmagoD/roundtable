@@ -107,6 +107,15 @@ defmodule Roundtable.TaskCheckoutsTest do
     task = Enum.find(Chat.rooms(), &(&1.name == "Isolated"))
     assert task.checkout_id
     {:ok, builder} = Chat.create_agent(task.id, %{name: "builder", provider: "codex"})
+    {:ok, observer} = Chat.create_agent(parent.id, %{name: "observer", provider: "codex"})
+
+    assert {:error, reason} = MCP.call(builder, "check_task", %{"room" => to_string(task.id)})
+    assert reason =~ "supervisor"
+    assert {:error, reason} = MCP.call(builder, "finish_task", %{"room" => to_string(task.id)})
+    assert reason =~ "supervisor"
+    assert {:error, reason} = MCP.call(observer, "finish_task", %{"room" => to_string(task.id)})
+    assert reason =~ "supervisor"
+
     File.write!(Path.join(task.directory, "work.txt"), "done\n")
     git(task.directory, ["add", "."])
     git(task.directory, ["commit", "-m", "Work"])

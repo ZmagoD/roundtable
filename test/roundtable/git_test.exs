@@ -72,6 +72,43 @@ defmodule Roundtable.GitTest do
     refute File.exists?(marker <> ".dot")
   end
 
+  # `insteadOf` is not cleared by `-c`, so an https remote can be rewritten to
+  # SSH and `core.sshCommand` would then run. SSH stays off unless the remote
+  # the service was given is already an SSH URL, and the command is pinned.
+  test "a checkout cannot turn an https remote into an ssh command", %{dir: dir, git: git} do
+    marker = Path.join(dir, "pwned")
+    url = "https://roundtable.invalid/octo/roundtable.git"
+    git.(["config", "core.sshCommand", "touch #{marker}"])
+    git.(["config", "url.git@evil.example:.insteadOf", "https://roundtable.invalid/"])
+
+    {output, status} =
+      System.cmd(
+        "git",
+        Git.service_config(url) ++ ["-C", dir, "ls-remote", "--exit-code", url, "HEAD"],
+        stderr_to_stdout: true,
+        env: [{"GIT_TERMINAL_PROMPT", "0"}]
+      )
+
+    assert status != 0
+    assert output =~ "transport 'ssh' not allowed"
+    refute File.exists?(marker)
+  end
+
+  test "ssh is enabled only for a remote that is already ssh" do
+    assert "protocol.ssh.allow=never" in Git.service_config(
+             "https://github.com/octo/roundtable.git"
+           )
+
+    assert "protocol.ssh.allow=never" in Git.service_config(nil)
+    assert "protocol.ssh.allow=always" in Git.service_config("git@github.com:octo/roundtable.git")
+
+    assert "protocol.ssh.allow=always" in Git.service_config(
+             "ssh://git@github.com/octo/roundtable.git"
+           )
+
+    refute "protocol.file.allow=never" in Git.service_config(nil)
+  end
+
   test "a clean tree reports its branch and nothing else", %{dir: dir} do
     assert {:ok, status} = Git.status(dir)
     assert status.branch == "work"
