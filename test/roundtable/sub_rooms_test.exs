@@ -62,6 +62,33 @@ defmodule Roundtable.SubRoomsTest do
     end
   end
 
+  describe "a sub-room's one participant" do
+    test "a second participant is refused, from every route in", %{root: root} do
+      child = sub_room(root, "Child")
+      {:ok, ada} = Chat.create_agent(child.id, %{"name" => "ada", "provider" => "claude"})
+      running_turn(ada)
+
+      bob = %{"name" => "bob", "provider" => "codex"}
+
+      assert {:error, %{errors: [room: {"already has its one participant" <> _, _}]}} =
+               Chat.create_agent(child.id, bob)
+
+      assert {:error, %{errors: [room: _]}} = Chat.check_agent(child.id, bob)
+
+      assert {:error, "room already has its one participant" <> _} =
+               MCP.call(ada, "add_participant", bob)
+
+      assert [%{name: "ada"}] = Chat.agents(child.id)
+    end
+
+    test "a top-level room still takes a team", %{root: root} do
+      for name <- ~w(ada bob cy),
+          do: {:ok, _} = Chat.create_agent(root.id, %{"name" => name, "provider" => "codex"})
+
+      assert length(Chat.agents(root.id)) == 3
+    end
+  end
+
   describe "deleting a room with sub-rooms" do
     test "takes children, grandchildren and their participants and turns", %{root: root} do
       child = sub_room(root, "Child")

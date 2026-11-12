@@ -1181,6 +1181,7 @@ defmodule Roundtable.Chat do
         %Agent{room_id: room_id}
         |> Agent.changeset(Map.put(normalise(attrs), "directory", effective_directory(room)))
         |> valid_directory()
+        |> one_per_sub_room(room)
         |> Repo.insert()
 
       case result do
@@ -1413,6 +1414,8 @@ defmodule Roundtable.Chat do
       if Enum.any?(agents(room_id), &(&1.name == name)),
         do: Ecto.Changeset.add_error(changeset, :name, "is already used in this room"),
         else: changeset
+
+    changeset = one_per_sub_room(changeset, room)
 
     case Ecto.Changeset.apply_action(changeset, :insert) do
       {:ok, _agent} -> :ok
@@ -1930,6 +1933,22 @@ defmodule Roundtable.Chat do
     do: Repo.rollback("This task is finished. Create another task room to continue.")
 
   defp ensure_open_task(_room), do: :ok
+
+  # Two agents in one sub-room mention each other back and forth, and every
+  # hop is a paid turn nobody asked for. A sub-room is one owner's task; more
+  # hands means another sub-room, each answering to the parent.
+  defp one_per_sub_room(changeset, %Room{parent_id: nil}), do: changeset
+
+  defp one_per_sub_room(changeset, room) do
+    if Repo.exists?(from a in Agent, where: a.room_id == ^room.id),
+      do:
+        Ecto.Changeset.add_error(
+          changeset,
+          :room,
+          "already has its one participant; open another sub-room for more help"
+        ),
+      else: changeset
+  end
 
   defp insert_message(room_id, body, opts) do
     Repo.insert!(%Message{
